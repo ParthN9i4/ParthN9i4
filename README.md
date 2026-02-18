@@ -1,16 +1,58 @@
-## Hi there 👋
+<!-- Header -->
+<h1 align="center">
+    <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=28&pause=1000&color=36BCF7&center=true&vCenter=true&width=800&lines=Hello+there+%F0%9F%91%8B+%7C+My+name+is+Parth+Nagar" alt="Typing SVG" />
+  </h1>
 
-<!--
-**ParthN9i4/ParthN9i4** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+<p align="center">
+  <img src="https://img.shields.io/badge/Doctoral%20Research%20Scholar-SSSIHL-blue?style=for-the-badge&logo=academia&logoColor=white" alt="tagline"/>
+  <img src="https://img.shields.io/badge/Mathematics%20%26%20Computer%20Science-Research-orange?style=for-the-badge" alt="domain"/>
+</p>
 
-Here are some ideas to get you started:
+---
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+## 🧑‍💻 About Me
+Hello! I'm **Parth Nagar**, a Junior Research Fellow at SSSIHL, passionate about building privacy-preserving machine-learning that integrate data privacy in real-world data. 
+
+### 🔭 Current Work
+I am currently learning OpenFHE library, a homomorphic encryption library developed by Duality Technologies.
+
+### 🎯 Research Interests
+- Homomorphic Encryption (OpenFHE, TenSEAL, Concrete-ML)
+- Federated Learning  
+- Secure Multi-party Computation
+- Machine Unlearning
+- Differential privacy 
+- Privacy-preserving AI  
+
+---
+
+%## 🛠️ Technical Skills
+
+| Category | Badges |
+| --- | --- |
+| **Languages** | <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white"/> <img src="https://img.shields.io/badge/C++-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white"/> |
+| **ML / FL** | <img src="https://img.shields.io/badge/TensorFlow-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white"/> <img src="https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white"/> <img src="https://img.shields.io/badge/Flower-FL-FFB400?style=for-the-badge&logo=flower&logoColor=white"/> <img src="https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&logo=scikitlearn&logoColor=white"/> |
+| **HE** | <img src="https://img.shields.io/badge/TenSEAL-6C55AA?style=for-the-badge&logo=seal&logoColor=white"/> <img src="https://img.shields.io/badge/Concrete-ML-00B4B6?style=for-the-badge"/> <img src="https://img.shields.io/badge/CKKS-4B0082?style=for-the-badge"/> |
+
+---
+
+## 📈 GitHub Stats
+<p align="center">
+  <img src="https://github-readme-stats.vercel.app/api?username=ParthN9i4&show_icons=true&theme=default&hide_border=true" alt="Parth's GitHub stats"/>
+  <br/>
+  <img src="https://github-readme-streak-stats.herokuapp.com/?user=ParthN9i4&theme=default&hide_border=true" alt="Parth's GitHub streak"/>
+  <br/>
+  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=ParthN9i4&layout=compact&theme=default&hide_border=true&langs_count=8" alt="Top Langs"/>
+</p>
+
+---
+
+## 📬 Contact
+- <img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=flat&logo=linkedin&logoColor=white"/> [LinkedIn](www.linkedin.com/in/parth-nagar-943b52165)  
+- ✉️ Email: nparth@sssihl.edu.in  
+
+---
+
+<p align="center">
+  <img src="https://komarev.com/ghpvc/?username=ParthN9i4&style=flat-square&color=blue" alt="visitor badge"/>
+</p>
