@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Events — PPML/FHE{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-800">Events & Deadlines</h1>
+        <p class="text-sm text-gray-500">{{ events|length }} events tracked</p>
+    </div>
+    <a href="{{ url_for('event_new') }}" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium">
+        + Add Event
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+    <form method="GET" class="flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-48">
+            <label class="block text-xs font-medium text-gray-500 mb-1">Search</label>
+            <input type="text" name="q" value="{{ current_search }}" placeholder="Search events, tags..."
+                   class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Category</label>
+            <select name="category" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                <option value="">All Categories</option>
+                {% for cat in categories %}
+                <option value="{{ cat }}" {% if cat == current_category %}selected{% endif %}>{{ cat | title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Location</label>
+            <select name="location" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                <option value="">All Locations</option>
+                <option value="India" {% if current_location == 'India' %}selected{% endif %}>India</option>
+                <option value="Outside" {% if current_location == 'Outside' %}selected{% endif %}>Outside India</option>
+                <option value="Online" {% if current_location == 'Online' %}selected{% endif %}>Online</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Status</label>
+            <select name="status" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                <option value="">All Statuses</option>
+                <option value="upcoming" {% if current_status == 'upcoming' %}selected{% endif %}>Upcoming</option>
+                <option value="cfp_open" {% if current_status == 'cfp_open' %}selected{% endif %}>CFP Open</option>
+                <option value="cfp_closed" {% if current_status == 'cfp_closed' %}selected{% endif %}>CFP Closed</option>
+                <option value="ongoing" {% if current_status == 'ongoing' %}selected{% endif %}>Ongoing</option>
+                <option value="past" {% if current_status == 'past' %}selected{% endif %}>Past</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Sort</label>
+            <select name="sort" class="px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                <option value="deadline" {% if current_sort == 'deadline' %}selected{% endif %}>By Deadline</option>
+                <option value="name" {% if current_sort == 'name' %}selected{% endif %}>By Name</option>
+                <option value="date_added" {% if current_sort == 'date_added' %}selected{% endif %}>Recently Added</option>
+            </select>
+        </div>
+        <button type="submit" class="px-4 py-2 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700">Filter</button>
+        {% if current_search or current_category or current_location or current_status %}
+        <a href="{{ url_for('events') }}" class="px-4 py-2 text-gray-600 text-sm hover:underline">Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Events List -->
+<div class="space-y-3">
+    {% for event in events %}
+    <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition p-4 {% if event.pinned %}ring-2 ring-indigo-200{% endif %}">
+        <div class="flex items-start justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap mb-1">
+                    {% if event.pinned %}
+                    <span class="text-indigo-500" title="Pinned">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 5a2 2 0 012-2h6a2 2 0 012 2v2a2 2 0 01-2 2H7a2 2 0 01-2-2V5z"/><path d="M8 12h4v5l-2 2-2-2v-5z"/></svg>
+                    </span>
+                    {% endif %}
+                    <span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full
+                        {% if event.category == 'conference' %}bg-blue-100 text-blue-700
+                        {% elif event.category == 'journal' %}bg-green-100 text-green-700
+                        {% elif event.category == 'workshop' %}bg-purple-100 text-purple-700
+                        {% elif event.category == 'seminar' %}bg-yellow-100 text-yellow-700
+                        {% elif event.category == 'school' %}bg-orange-100 text-orange-700
+                        {% elif event.category == 'call_for_chapters' %}bg-pink-100 text-pink-700
+                        {% else %}bg-gray-100 text-gray-700{% endif %}">
+                        {{ event.category | replace('_', ' ') | title }}
+                    </span>
+                    {% if event.location %}
+                    <span class="inline-flex px-2 py-0.5 text-xs rounded-full
+                        {% if event.location == 'India' %}bg-orange-50 text-orange-600
+                        {% else %}bg-gray-100 text-gray-500{% endif %}">
+                        {{ event.location }}
+                    </span>
+                    {% endif %}
+                    {% if event.association %}
+                    <span class="text-xs text-gray-400">{{ event.association }}</span>
+                    {% endif %}
+                    <span class="inline-flex px-2 py-0.5 text-xs rounded-full
+                        {% if event.status == 'cfp_open' %}bg-green-100 text-green-700
+                        {% elif event.status == 'upcoming' %}bg-blue-50 text-blue-600
+                        {% elif event.status == 'ongoing' %}bg-amber-50 text-amber-600
+                        {% elif event.status == 'past' %}bg-gray-100 text-gray-500
+                        {% else %}bg-gray-100 text-gray-500{% endif %}">
+                        {{ event.status | replace('_', ' ') | title }}
+                    </span>
+                </div>
+                <h3 class="text-lg font-medium text-gray-800">
+                    {% if event.website %}<a href="{{ event.website }}" target="_blank" class="hover:text-indigo-600 transition">{{ event.title }}</a>
+                    {% else %}{{ event.title }}{% endif %}
+                </h3>
+                {% if event.description %}
+                <p class="text-sm text-gray-500 mt-1 line-clamp-2">{{ event.description }}</p>
+                {% endif %}
+                {% if event.relevance_tags %}
+                <div class="mt-2 flex flex-wrap gap-1">
+                    {% for tag in event.relevance_tags.split(',') %}
+                    <span class="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">{{ tag.strip() }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <!-- Dates row -->
+                <div class="mt-2 flex flex-wrap gap-4 text-xs text-gray-400">
+                    {% if event.submission_deadline %}
+                    <span>Deadline: <strong class="text-gray-600">{{ event.submission_deadline.strftime('%b %d, %Y') }}</strong>
+                        {% if event.days_until_deadline is not none and event.days_until_deadline >= 0 %}
+                        <span class="ml-1 {% if event.days_until_deadline <= 7 %}text-red-500{% elif event.days_until_deadline <= 14 %}text-amber-500{% else %}text-green-500{% endif %}">({{ event.days_until_deadline }}d)</span>
+                        {% elif event.days_until_deadline is not none %}
+                        <span class="ml-1 text-gray-400">(passed)</span>
+                        {% endif %}
+                    </span>
+                    {% endif %}
+                    {% if event.notification_date %}
+                    <span>Notification: {{ event.notification_date.strftime('%b %d, %Y') }}</span>
+                    {% endif %}
+                    {% if event.event_start_date %}
+                    <span>Event: {{ event.event_start_date.strftime('%b %d') }}{% if event.event_end_date %} — {{ event.event_end_date.strftime('%b %d, %Y') }}{% else %}, {{ event.event_start_date.strftime('%Y') }}{% endif %}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="flex items-center gap-1 flex-shrink-0">
+                <button onclick="pinEvent({{ event.id }})" class="p-1.5 text-gray-400 hover:text-indigo-500 rounded" title="Pin/Unpin">
+                    <svg class="w-4 h-4" fill="{% if event.pinned %}currentColor{% else %}none{% endif %}" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+                </button>
+                <a href="{{ url_for('event_edit', event_id=event.id) }}" class="p-1.5 text-gray-400 hover:text-gray-700 rounded" title="Edit">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </a>
+                <form method="POST" action="{{ url_for('event_delete', event_id=event.id) }}" onsubmit="return confirm('Delete this event?')">
+                    <button type="submit" class="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Delete">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-white rounded-xl shadow-sm p-12 text-center text-gray-400">
+        <p class="text-lg">No events found.</p>
+        <p class="text-sm mt-1">Try adjusting your filters or <a href="{{ url_for('event_new') }}" class="text-indigo-600 hover:underline">add a new event</a>.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function pinEvent(id) {
+    fetch(`/events/${id}/pin`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json())
+        .then(() => location.reload());
+}
+</script>
+{% endblock %}

@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Daily Log — PPML/FHE{% endblock %}
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Daily Log</h1>
+    <p class="text-sm text-gray-500">Track your daily research work and progress</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Today's Entry -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <h2 class="font-semibold text-gray-800 mb-4">{{ today.strftime('%A, %B %d, %Y') }}</h2>
+            <form method="POST" action="{{ url_for('daily_log_save') }}">
+                <input type="hidden" name="log_date" value="{{ today.isoformat() }}">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">What did you work on today?</label>
+                    <textarea name="content" rows="8" placeholder="Describe your research progress, papers read, experiments run, meetings attended..."
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">{{ today_log.content if today_log else '' }}</textarea>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Hours Worked</label>
+                        <input type="number" name="hours_worked" step="0.5" min="0" max="24"
+                               value="{{ today_log.hours_worked if today_log else '' }}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Mood</label>
+                        <select name="mood" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            <option value="">Select...</option>
+                            <option value="great" {% if today_log and today_log.mood == 'great' %}selected{% endif %}>Great</option>
+                            <option value="good" {% if today_log and today_log.mood == 'good' %}selected{% endif %}>Good</option>
+                            <option value="okay" {% if today_log and today_log.mood == 'okay' %}selected{% endif %}>Okay</option>
+                            <option value="bad" {% if today_log and today_log.mood == 'bad' %}selected{% endif %}>Bad</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+                        <input type="text" name="tags" value="{{ today_log.tags if today_log else '' }}"
+                               placeholder="reading, coding, writing..."
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                    </div>
+                </div>
+                <button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium">
+                    Save Entry
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Recent Logs Sidebar -->
+    <div>
+        <div class="bg-white rounded-xl shadow-sm">
+            <div class="p-4 border-b border-gray-100">
+                <h2 class="font-semibold text-gray-800">Recent Entries</h2>
+            </div>
+            <div class="divide-y divide-gray-50 max-h-96 overflow-y-auto">
+                {% for log in logs %}
+                <div class="p-4 hover:bg-gray-50 cursor-pointer" onclick="loadLog('{{ log.log_date.isoformat() }}')">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="text-sm font-medium text-gray-800">{{ log.log_date.strftime('%b %d, %Y') }}</p>
+                        {% if log.mood %}
+                        <span class="text-xs
+                            {% if log.mood == 'great' %}text-green-500
+                            {% elif log.mood == 'good' %}text-blue-500
+                            {% elif log.mood == 'okay' %}text-amber-500
+                            {% else %}text-red-500{% endif %}">
+                            {% if log.mood == 'great' %}++{% elif log.mood == 'good' %}+{% elif log.mood == 'okay' %}~{% else %}-{% endif %}
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if log.content %}
+                    <p class="text-xs text-gray-500 line-clamp-2">{{ log.content[:100] }}</p>
+                    {% endif %}
+                    {% if log.hours_worked %}
+                    <p class="text-xs text-gray-400 mt-1">{{ log.hours_worked }}h</p>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="p-6 text-center text-sm text-gray-400">No log entries yet.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Weekly Hours Chart -->
+        {% if logs %}
+        <div class="bg-white rounded-xl shadow-sm p-4 mt-4">
+            <h3 class="font-semibold text-gray-800 text-sm mb-3">Hours This Week</h3>
+            <canvas id="hoursChart" height="120"></canvas>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadLog(dateStr) {
+    window.location.href = `{{ url_for('daily_log') }}?date=${dateStr}`;
+}
+
+{% if logs %}
+document.addEventListener('DOMContentLoaded', function() {
+    const logs = {{ logs[:7] | map(attribute='to_dict') | list | tojson }};
+    const ctx = document.getElementById('hoursChart');
+    if (ctx && logs.length > 0) {
+        new Chart(ctx.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: logs.reverse().map(l => {
+                    const d = new Date(l.log_date);
+                    return d.toLocaleDateString('en', {weekday: 'short'});
+                }),
+                datasets: [{
+                    label: 'Hours',
+                    data: logs.map(l => l.hours_worked || 0),
+                    backgroundColor: '#818cf8',
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, max: 14, ticks: { stepSize: 2 } }
+                }
+            }
+        });
+    }
+});
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}{% if event %}Edit Event{% else %}New Event{% endif %} — PPML/FHE{% endblock %}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-6">
+        <a href="{{ url_for('events') }}" class="text-sm text-indigo-600 hover:underline">&larr; Back to Events</a>
+        <h1 class="text-2xl font-bold text-gray-800 mt-2">{% if event %}Edit Event{% else %}New Event{% endif %}</h1>
+    </div>
+
+    <form method="POST" class="bg-white rounded-xl shadow-sm p-6 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                <input type="text" name="title" value="{{ event.title if event else '' }}" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                <select name="category" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    {% for cat in ['conference', 'journal', 'workshop', 'seminar', 'school', 'webinar', 'talk', 'call_for_chapters'] %}
+                    <option value="{{ cat }}" {% if event and event.category == cat %}selected{% endif %}>{{ cat | replace('_', ' ') | title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select name="status" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    {% for s in ['upcoming', 'cfp_open', 'cfp_closed', 'ongoing', 'past'] %}
+                    <option value="{{ s }}" {% if event and event.status == s %}selected{% endif %}>{{ s | replace('_', ' ') | title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                <input type="url" name="website" value="{{ event.website if event else '' }}" placeholder="https://..."
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Association</label>
+                <input type="text" name="association" value="{{ event.association if event else '' }}" placeholder="IEEE, ACM, IACR..."
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <select name="location" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="">Not specified</option>
+                    <option value="India" {% if event and event.location == 'India' %}selected{% endif %}>India</option>
+                    <option value="Outside" {% if event and event.location == 'Outside' %}selected{% endif %}>Outside India</option>
+                    <option value="Online" {% if event and event.location == 'Online' %}selected{% endif %}>Online</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">City</label>
+                <input type="text" name="city" value="{{ event.city if event else '' }}" placeholder="City, Country"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Edition</label>
+                <input type="text" name="edition" value="{{ event.edition if event else '' }}" placeholder="e.g. 3rd, 2025..."
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Relevance Tags</label>
+                <input type="text" name="relevance_tags" value="{{ event.relevance_tags if event else '' }}" placeholder="FHE, PPML, DP, FL..."
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                <p class="text-xs text-gray-400 mt-1">Comma-separated</p>
+            </div>
+        </div>
+
+        <hr class="border-gray-200">
+        <h3 class="font-medium text-gray-700">Key Dates</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Submission Deadline</label>
+                <input type="date" name="submission_deadline" value="{{ event.submission_deadline.isoformat() if event and event.submission_deadline else '' }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Notification Date</label>
+                <input type="date" name="notification_date" value="{{ event.notification_date.isoformat() if event and event.notification_date else '' }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Camera Ready</label>
+                <input type="date" name="camera_ready_date" value="{{ event.camera_ready_date.isoformat() if event and event.camera_ready_date else '' }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Event Start Date</label>
+                <input type="date" name="event_start_date" value="{{ event.event_start_date.isoformat() if event and event.event_start_date else '' }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Event End Date</label>
+                <input type="date" name="event_end_date" value="{{ event.event_end_date.isoformat() if event and event.event_end_date else '' }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+        </div>
+
+        <hr class="border-gray-200">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea name="description" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg">{{ event.description if event else '' }}</textarea>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea name="notes" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Personal notes, submission plans...">{{ event.notes if event else '' }}</textarea>
+        </div>
+
+        <div class="flex justify-end gap-3">
+            <a href="{{ url_for('events') }}" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</a>
+            <button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium">
+                {% if event %}Update Event{% else %}Create Event{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
