@@ -203,7 +203,7 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const deadlines = {{ upcoming_deadlines | map(attribute='to_dict') | list | tojson }};
+    const deadlines = {{ deadlines_json | tojson }};
     if (deadlines.length > 0 && document.getElementById('deadlineChart')) {
         const ctx = document.getElementById('deadlineChart').getContext('2d');
         const colors = {

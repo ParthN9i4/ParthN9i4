@@ -103,7 +103,7 @@ function loadLog(dateStr) {
 
 {% if logs %}
 document.addEventListener('DOMContentLoaded', function() {
-    const logs = {{ logs[:7] | map(attribute='to_dict') | list | tojson }};
+    const logs = {{ logs_json | tojson }};
     const ctx = document.getElementById('hoursChart');
     if (ctx && logs.length > 0) {
         new Chart(ctx.getContext('2d'), {

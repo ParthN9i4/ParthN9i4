@@ -103,8 +103,12 @@ def dashboard():
     # CFP open events
     cfp_open = Event.query.filter_by(status="cfp_open").all()
 
+    # Pre-serialize for JS charts
+    deadlines_json = [e.to_dict() for e in upcoming_deadlines]
+
     return render_template("dashboard.html",
                            upcoming_deadlines=upcoming_deadlines,
+                           deadlines_json=deadlines_json,
                            pinned=pinned,
                            pending_todos=pending_todos,
                            today_log=today_log,
@@ -445,7 +449,11 @@ def daily_log():
     logs = DailyLog.query.order_by(DailyLog.log_date.desc()).limit(30).all()
     today = date.today()
     today_log = DailyLog.query.filter_by(log_date=today).first()
-    return render_template("daily_log.html", logs=logs, today_log=today_log, today=today)
+    # Pre-serialize recent logs for JS chart
+    logs_json = [l.to_dict() for l in logs[:7]]
+
+    return render_template("daily_log.html", logs=logs, logs_json=logs_json,
+                           today_log=today_log, today=today)
 
 
 @app.route("/daily-log/save", methods=["POST"])
