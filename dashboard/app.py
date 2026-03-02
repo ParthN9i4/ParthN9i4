@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from flask import (Flask, render_template, request, redirect, url_for,
                    flash, jsonify, session, abort)
 
-from models import db, User, Event, Researcher, Resource, Todo, DailyLog, PhDMilestone, AppSetting
+from models import db, User, Event, Researcher, Resource, Todo, DailyLog, PhDMilestone, AppSetting, update_event_statuses
 from seed_data import seed_all
 
 load_dotenv()
@@ -21,6 +21,18 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
 db.init_app(app)
+
+# Track the last date we ran the auto-status update to avoid repeating per-request
+_last_status_update = {"date": None}
+
+
+@app.before_request
+def auto_update_statuses():
+    """Run event status sync once per calendar day."""
+    today = date.today()
+    if _last_status_update["date"] != today:
+        _last_status_update["date"] = today
+        update_event_statuses()
 
 
 # ============================================================
@@ -669,6 +681,9 @@ def create_app():
 
         # Seed data
         seed_all()
+
+        # Auto-update event statuses based on today's date
+        update_event_statuses()
 
         # Initialize scheduler
         from scheduler import init_scheduler

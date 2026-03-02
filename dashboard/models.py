@@ -205,6 +205,49 @@ class PhDMilestone(db.Model):
         }
 
 
+def update_event_statuses():
+    """Auto-update event statuses based on today's date.
+
+    Rules:
+      - event_end_date < today → 'past'
+      - event_start_date <= today <= event_end_date → 'ongoing'
+      - submission_deadline >= today (and event hasn't started) → 'cfp_open'
+      - submission_deadline < today (and event hasn't started) → 'cfp_closed'
+      - no submission_deadline but event in future → 'upcoming'
+    Only touches events that aren't already 'past' (avoids churning old rows).
+    """
+    today = date.today()
+    events = Event.query.filter(Event.status != 'past').all()
+    changed = False
+    for e in events:
+        new_status = e.status
+        event_ended = e.event_end_date and e.event_end_date < today
+        event_started = e.event_start_date and e.event_start_date <= today
+
+        if event_ended:
+            new_status = 'past'
+        elif event_started and e.event_end_date and e.event_end_date >= today:
+            new_status = 'ongoing'
+        elif e.submission_deadline:
+            if e.submission_deadline >= today:
+                new_status = 'cfp_open'
+            else:
+                new_status = 'cfp_closed'
+        else:
+            # No deadline; check if event date is still in the future
+            if e.event_start_date and e.event_start_date > today:
+                new_status = 'upcoming'
+            elif e.event_start_date and e.event_start_date <= today:
+                new_status = 'past'
+
+        if new_status != e.status:
+            e.status = new_status
+            changed = True
+
+    if changed:
+        db.session.commit()
+
+
 class AppSetting(db.Model):
     __tablename__ = 'app_settings'
     id = db.Column(db.Integer, primary_key=True)
