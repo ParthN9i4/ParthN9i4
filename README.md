@@ -1,7 +1,7 @@
 <!-- Header -->
 <h1 align="center">
-    <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=28&pause=1000&color=36BCF7&center=true&vCenter=true&width=800&lines=Hello+there+%F0%9F%91%8B+%7C+My+name+is+Parth+Nagar" alt="Typing SVG" />
-  </h1>
+  <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=28&pause=1000&color=36BCF7&center=true&vCenter=true&width=800&lines=Hello+there+%F0%9F%91%8B+%7C+My+name+is+Parth+Nagar" alt="Typing SVG" />
+</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Doctoral%20Research%20Scholar-SSSIHL-blue?style=for-the-badge&logo=academia&logoColor=white" alt="tagline"/>
@@ -11,22 +11,25 @@
 ---
 
 ## 🧑‍💻 About Me
-Hello! I'm **Parth Nagar**, a Junior Research Fellow at SSSIHL, passionate about building privacy-preserving machine-learning that integrate data privacy in real-world data. 
+
+Hello! I'm **Parth Nagar**, a Junior Research Fellow at SSSIHL, passionate about building privacy-preserving machine learning that integrates data privacy in real-world applications.
 
 ### 🔭 Current Work
-I am currently learning OpenFHE library, a homomorphic encryption library developed by Duality Technologies.
+
+I am currently learning the OpenFHE library, a homomorphic encryption library developed by Duality Technologies.
 
 ### 🎯 Research Interests
+
 - Homomorphic Encryption (OpenFHE, TenSEAL, Concrete-ML)
-- Federated Learning  
+- Federated Learning
 - Secure Multi-party Computation
 - Machine Unlearning
-- Differential privacy 
-- Privacy-preserving AI  
+- Differential Privacy
+- Privacy-preserving AI
 
 ---
 
-%## 🛠️ Technical Skills
+## 🛠️ Technical Skills
 
 | Category | Badges |
 | --- | --- |
@@ -37,19 +40,18 @@ I am currently learning OpenFHE library, a homomorphic encryption library develo
 ---
 
 ## 📈 GitHub Stats
+
+<!-- Metrics are auto-generated daily by GitHub Actions — see .github/workflows/metrics.yml -->
 <p align="center">
-  <img src="https://github-readme-stats.vercel.app/api?username=ParthN9i4&show_icons=true&theme=default&hide_border=true" alt="Parth's GitHub stats"/>
-  <br/>
-  <img src="https://github-readme-streak-stats.herokuapp.com/?user=ParthN9i4&theme=default&hide_border=true" alt="Parth's GitHub streak"/>
-  <br/>
-  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=ParthN9i4&layout=compact&theme=default&hide_border=true&langs_count=8" alt="Top Langs"/>
+  <img src="assets/metrics.svg" alt="GitHub Metrics" width="100%"/>
 </p>
 
 ---
 
 ## 📬 Contact
-- <img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=flat&logo=linkedin&logoColor=white"/> [LinkedIn](www.linkedin.com/in/parth-nagar-943b52165)  
-- ✉️ Email: nparth@sssihl.edu.in  
+
+- <img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=flat&logo=linkedin&logoColor=white"/> [LinkedIn](https://www.linkedin.com/in/parth-nagar-943b52165)
+- ✉️ Email: nparth@sssihl.edu.in
 
 ---
 
