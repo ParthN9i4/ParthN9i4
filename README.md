@@ -1,14 +1,22 @@
 <div align="center">
 
-<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=20&pause=1200&color=58A6FF&center=true&vCenter=true&width=720&lines=Parth+Nagar+%E2%80%94+Research+Scholar%2C+SSSIHL;Homomorphic+Encryption+%C2%B7+Privacy-Preserving+ML;Federated+Learning+%C2%B7+Secure+Computation" alt="Parth Nagar" />
+<br/>
+
+> *"Privacy is the power to selectively reveal oneself to the world."*
+>
+> — Eric Hughes, *A Cypherpunk's Manifesto* (1993)
 
 <br/>
 
-<img src="https://img.shields.io/badge/Junior%20Research%20Fellow-SSSIHL-0d1117?style=flat-square&logo=academia&logoColor=58A6FF&labelColor=161b22&color=21262d"/>
+**Parth Nagar**
+
+Junior Research Fellow · Sri Sathya Sai Institute of Higher Learning · Mathematics & Computer Science
+
+<br/>
+
+![Profile updated](https://img.shields.io/github/last-commit/ParthN9i4/ParthN9i4?label=Profile+updated&style=flat-square&color=21262d&labelColor=161b22)
 &nbsp;
-<img src="https://img.shields.io/badge/Mathematics%20%26%20Computer%20Science-21262d?style=flat-square&labelColor=161b22"/>
-&nbsp;
-<img src="https://komarev.com/ghpvc/?username=ParthN9i4&style=flat-square&color=21262d&label=Views"/>
+![Views](https://komarev.com/ghpvc/?username=ParthN9i4&style=flat-square&color=21262d&label=Views&labelColor=161b22)
 
 </div>
 
@@ -16,28 +24,37 @@
 
 ## Research
 
-I am a Junior Research Fellow at **Sri Sathya Sai Institute of Higher Learning (SSSIHL)**, working at the intersection of **cryptography** and **machine learning**. My research focuses on enabling privacy-preserving computation directly over encrypted data — making it possible to train, evaluate, and audit ML models under strong cryptographic guarantees, without ever exposing raw data.
+My work sits at the intersection of modern cryptography and machine learning — specifically, enabling computation directly over encrypted data. The long-term objective is to make it feasible to train and evaluate neural networks under end-to-end cryptographic guarantees, without ever exposing plaintext to the compute infrastructure.
 
-My current work involves implementing CKKS-based approximate arithmetic with **OpenFHE** for neural network inference over ciphertext, targeting practical latency and noise-budget constraints for real-world deployment.
+### Active Work
 
-| Domain | Focus Areas |
+**Homomorphic Encryption · OpenFHE**
+
+- Implementing CKKS-based approximate arithmetic circuits for neural network inference over ciphertext
+- Studying noise growth in leveled HE schemes and evaluating bootstrapping cost for deeper computation graphs
+- Analysing the trade-offs between multiplicative depth, plaintext precision, and ciphertext modulus size in practical deployments
+
+### Research Interests
+
+The following areas directly inform the direction of my work. I am building theoretical and practical knowledge in each.
+
+| Area | Topics |
 |---|---|
-| **Homomorphic Encryption** | CKKS · BFV/BGV · Bootstrapping · Noise budget management · Leveled vs. fully HE |
-| **Federated Learning** | Secure aggregation · Non-IID convergence · Communication efficiency |
-| **Secure Computation** | MPC · Secret sharing · Garbled circuits · Zero-knowledge proofs |
-| **Machine Unlearning** | Exact vs. approximate unlearning · SISA training · Verifiable unlearning |
-| **Differential Privacy** | DP-SGD · Rényi DP · Local vs. central DP · Privacy-utility trade-offs |
+| **Federated Learning** | Privacy-preserving aggregation · Secure aggregation protocols · Non-IID convergence · Communication efficiency |
+| **Secure Multi-party Computation** | Secret sharing · Garbled circuits · Zero-knowledge proofs · Threshold protocols |
+| **Machine Unlearning** | SISA training · Exact vs. approximate unlearning · Verifiable unlearning protocols |
+| **Differential Privacy** | DP-SGD · Renyi DP · Local vs. central DP · Privacy-utility trade-offs |
 
 ---
 
 ## Technical Stack
 
-| Category | Tools |
+Tools I have written code with.
+
+| | |
 |---|---|
-| **Languages** | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![C++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=c%2B%2B&logoColor=white) |
-| **Deep Learning** | ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=flat-square&logo=pytorch&logoColor=white) ![TensorFlow](https://img.shields.io/badge/TensorFlow-FF6F00?style=flat-square&logo=tensorflow&logoColor=white) ![scikit-learn](https://img.shields.io/badge/scikit--learn-F7931E?style=flat-square&logo=scikitlearn&logoColor=white) |
-| **Federated Learning** | ![Flower](https://img.shields.io/badge/Flower%20FL-FFB400?style=flat-square&logoColor=white) |
-| **HE Libraries** | ![OpenFHE](https://img.shields.io/badge/OpenFHE-4B0082?style=flat-square&logoColor=white) ![TenSEAL](https://img.shields.io/badge/TenSEAL-6C55AA?style=flat-square&logoColor=white) ![Concrete-ML](https://img.shields.io/badge/Concrete--ML-00B4B6?style=flat-square&logoColor=white) |
+| **Languages** | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) &nbsp; ![C++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=c%2B%2B&logoColor=white) |
+| **HE Libraries** | ![OpenFHE](https://img.shields.io/badge/OpenFHE-4B0082?style=flat-square&logoColor=white) &nbsp; ![TenSEAL](https://img.shields.io/badge/TenSEAL-6C55AA?style=flat-square&logoColor=white) &nbsp; ![Concrete-ML](https://img.shields.io/badge/Concrete--ML-00B4B6?style=flat-square&logoColor=white) |
 
 ---
 
