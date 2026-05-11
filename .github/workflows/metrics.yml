@@ -39,3 +39,5 @@ jobs:
           output_action: commit
           committer_branch: main
           committer_message: "chore: refresh metrics [skip ci]"
+          committer_name: Parth Nagar
+          committer_email: nparth@sssihl.edu.in
