@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{% if resource %}Edit Resource{% else %}New Resource{% endif %} — PPML/FHE{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="mb-6">
+        <a href="{{ url_for('resources') }}" class="text-sm text-indigo-600 hover:underline">&larr; Back</a>
+        <h1 class="text-2xl font-bold text-gray-800 mt-2">{% if resource %}Edit Resource{% else %}Add Resource{% endif %}</h1>
+    </div>
+    <form method="POST" class="bg-white rounded-xl shadow-sm p-6 space-y-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+            <input type="text" name="name" value="{{ resource.name if resource else '' }}" required
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Type *</label>
+            <select name="resource_type" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                {% for t in ['library', 'company', 'platform', 'framework', 'code_repo', 'organisation'] %}
+                <option value="{{ t }}" {% if resource and resource.resource_type == t %}selected{% endif %}>{{ t | replace('_', ' ') | title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Website</label>
+            <input type="url" name="website" value="{{ resource.website if resource else '' }}" placeholder="https://..."
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea name="description" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg">{{ resource.description if resource else '' }}</textarea>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+            <input type="text" name="tags" value="{{ resource.tags if resource else '' }}" placeholder="FHE, Python, Open Source..."
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            <p class="text-xs text-gray-400 mt-1">Comma-separated</p>
+        </div>
+        <div class="flex justify-end gap-3">
+            <a href="{{ url_for('resources') }}" class="px-4 py-2 text-gray-600">Cancel</a>
+            <button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
+                {% if resource %}Update{% else %}Add{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{% if researcher %}Edit Researcher{% else %}New Researcher{% endif %} — PPML/FHE{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="mb-6">
+        <a href="{{ url_for('researchers') }}" class="text-sm text-indigo-600 hover:underline">&larr; Back</a>
+        <h1 class="text-2xl font-bold text-gray-800 mt-2">{% if researcher %}Edit Researcher{% else %}Add Researcher{% endif %}</h1>
+    </div>
+    <form method="POST" class="bg-white rounded-xl shadow-sm p-6 space-y-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+            <input type="text" name="name" value="{{ researcher.name if researcher else '' }}" required
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Website / Scholar Profile</label>
+            <input type="url" name="website" value="{{ researcher.website if researcher else '' }}" placeholder="https://..."
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Affiliation</label>
+            <input type="text" name="affiliation" value="{{ researcher.affiliation if researcher else '' }}" placeholder="University / Company"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Research Areas</label>
+            <input type="text" name="research_areas" value="{{ researcher.research_areas if researcher else '' }}" placeholder="FHE, PPML, DP, FL..."
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            <p class="text-xs text-gray-400 mt-1">Comma-separated</p>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea name="notes" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg">{{ researcher.notes if researcher else '' }}</textarea>
+        </div>
+        <div class="flex justify-end gap-3">
+            <a href="{{ url_for('researchers') }}" class="px-4 py-2 text-gray-600">Cancel</a>
+            <button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
+                {% if researcher %}Update{% else %}Add{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
