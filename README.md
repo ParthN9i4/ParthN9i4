@@ -1,58 +1,74 @@
-<!-- Header -->
-<h1 align="center">
-    <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=28&pause=1000&color=36BCF7&center=true&vCenter=true&width=800&lines=Hello+there+%F0%9F%91%8B+%7C+My+name+is+Parth+Nagar" alt="Typing SVG" />
-  </h1>
+<div align="center">
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Doctoral%20Research%20Scholar-SSSIHL-blue?style=for-the-badge&logo=academia&logoColor=white" alt="tagline"/>
-  <img src="https://img.shields.io/badge/Mathematics%20%26%20Computer%20Science-Research-orange?style=for-the-badge" alt="domain"/>
-</p>
+<br/>
 
----
+> *"Privacy is the power to selectively reveal oneself to the world."*
+>
+> — Eric Hughes, *A Cypherpunk's Manifesto* (1993)
 
-## 🧑‍💻 About Me
-Hello! I'm **Parth Nagar**, a Junior Research Fellow at SSSIHL, passionate about building privacy-preserving machine-learning that integrate data privacy in real-world data. 
+<br/>
 
-### 🔭 Current Work
-I am currently learning OpenFHE library, a homomorphic encryption library developed by Duality Technologies.
+**Parth Nagar**
 
-### 🎯 Research Interests
-- Homomorphic Encryption (OpenFHE, TenSEAL, Concrete-ML)
-- Federated Learning  
-- Secure Multi-party Computation
-- Machine Unlearning
-- Differential privacy 
-- Privacy-preserving AI  
+Junior Research Fellow · Sri Sathya Sai Institute of Higher Learning · Mathematics & Computer Science
+
+<br/>
+
+![Profile updated](https://img.shields.io/github/last-commit/ParthN9i4/ParthN9i4?label=Profile+updated&style=flat-square&color=21262d&labelColor=161b22)
+&nbsp;
+![Views](https://komarev.com/ghpvc/?username=ParthN9i4&style=flat-square&color=21262d&label=Views&labelColor=161b22)
+
+</div>
 
 ---
 
-%## 🛠️ Technical Skills
+## Research
 
-| Category | Badges |
-| --- | --- |
-| **Languages** | <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white"/> <img src="https://img.shields.io/badge/C++-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white"/> |
-| **ML / FL** | <img src="https://img.shields.io/badge/TensorFlow-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white"/> <img src="https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white"/> <img src="https://img.shields.io/badge/Flower-FL-FFB400?style=for-the-badge&logo=flower&logoColor=white"/> <img src="https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&logo=scikitlearn&logoColor=white"/> |
-| **HE** | <img src="https://img.shields.io/badge/TenSEAL-6C55AA?style=for-the-badge&logo=seal&logoColor=white"/> <img src="https://img.shields.io/badge/Concrete-ML-00B4B6?style=for-the-badge"/> <img src="https://img.shields.io/badge/CKKS-4B0082?style=for-the-badge"/> |
+My work sits at the intersection of modern cryptography and machine learning — specifically, enabling computation directly over encrypted data. The long-term objective is to make it feasible to train and evaluate neural networks under end-to-end cryptographic guarantees, without ever exposing plaintext to the compute infrastructure.
 
----
+### Active Work
 
-## 📈 GitHub Stats
-<p align="center">
-  <img src="https://github-readme-stats.vercel.app/api?username=ParthN9i4&show_icons=true&theme=default&hide_border=true" alt="Parth's GitHub stats"/>
-  <br/>
-  <img src="https://github-readme-streak-stats.herokuapp.com/?user=ParthN9i4&theme=default&hide_border=true" alt="Parth's GitHub streak"/>
-  <br/>
-  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=ParthN9i4&layout=compact&theme=default&hide_border=true&langs_count=8" alt="Top Langs"/>
-</p>
+**Homomorphic Encryption · OpenFHE**
 
----
+- Implementing CKKS-based approximate arithmetic circuits for neural network inference over ciphertext
+- Studying noise growth in leveled HE schemes and evaluating bootstrapping cost for deeper computation graphs
+- Analysing the trade-offs between multiplicative depth, plaintext precision, and ciphertext modulus size in practical deployments
 
-## 📬 Contact
-- <img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=flat&logo=linkedin&logoColor=white"/> [LinkedIn](www.linkedin.com/in/parth-nagar-943b52165)  
-- ✉️ Email: nparth@sssihl.edu.in  
+### Research Interests
+
+The following areas directly inform the direction of my work. I am building theoretical and practical knowledge in each.
+
+| Area | Topics |
+|---|---|
+| **Federated Learning** | Privacy-preserving aggregation · Secure aggregation protocols · Non-IID convergence · Communication efficiency |
+| **Secure Multi-party Computation** | Secret sharing · Garbled circuits · Zero-knowledge proofs · Threshold protocols |
+| **Machine Unlearning** | SISA training · Exact vs. approximate unlearning · Verifiable unlearning protocols |
+| **Differential Privacy** | DP-SGD · Renyi DP · Local vs. central DP · Privacy-utility trade-offs |
 
 ---
 
-<p align="center">
-  <img src="https://komarev.com/ghpvc/?username=ParthN9i4&style=flat-square&color=blue" alt="visitor badge"/>
-</p>
+## Technical Stack
+
+Tools I have written code with.
+
+| | |
+|---|---|
+| **Languages** | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) &nbsp; ![C++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=c%2B%2B&logoColor=white) |
+| **HE Libraries** | ![OpenFHE](https://img.shields.io/badge/OpenFHE-4B0082?style=flat-square&logoColor=white) &nbsp; ![TenSEAL](https://img.shields.io/badge/TenSEAL-6C55AA?style=flat-square&logoColor=white) &nbsp; ![Concrete-ML](https://img.shields.io/badge/Concrete--ML-00B4B6?style=flat-square&logoColor=white) |
+
+---
+
+## GitHub Activity
+
+<!-- Auto-generated daily by GitHub Actions — see .github/workflows/metrics.yml -->
+<div align="center">
+  <img src="assets/metrics.svg" alt="GitHub Metrics" width="100%"/>
+</div>
+
+---
+
+## Contact
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Parth%20Nagar-0A66C2?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/parth-nagar-943b52165)
+&nbsp;
+[![Email](https://img.shields.io/badge/Email-nparth%40sssihl.edu.in-EA4335?style=flat-square&logo=gmail&logoColor=white)](mailto:nparth@sssihl.edu.in)
