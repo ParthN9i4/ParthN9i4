@@ -58,15 +58,6 @@ Tools I have written code with.
 
 ---
 
-## GitHub Activity
-
-<!-- Auto-generated daily by GitHub Actions — see .github/workflows/metrics.yml -->
-<div align="center">
-  <img src="assets/metrics.svg" alt="GitHub Metrics" width="100%"/>
-</div>
-
----
-
 ## Contact
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Parth%20Nagar-0A66C2?style=flat-square&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/parth-nagar-943b52165)
