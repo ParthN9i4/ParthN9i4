@@ -54,8 +54,7 @@ Tools I have written code with.
 | | |
 |---|---|
 | **Languages** | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) &nbsp; ![C++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=c%2B%2B&logoColor=white) |
-| **HE Libraries** | ![OpenFHE](https://img.shields.io/badge/OpenFHE-4B0082?style=flat-square&logoColor=white) &nbsp; ![TenSEAL](https://img.shields.io/badge/TenSEAL-6C55AA?style=flat-square&logoColor=white) &nbsp; ![Concrete-ML](https://img.shields.io/badge/Concrete--ML-00B4B6?style=flat-square&logoColor=white) |
-
+| **HE Libraries** | ![OpenFHE](https://img.shields.io/badge/OpenFHE-4B0082?style=flat-square&logoColor=white) &nbsp; ![TenSEAL](https://img.shields.io/badge/TenSEAL-6C55AA?style=flat-square&logoColor=white) &nbsp; ![Concrete-ML](https://img.shields.io/badge/Concrete--ML-00B4B6?style=flat-square&logoColor=white) &nbsp; ![HEAAN](https://img.shields.io/badge/HEAAN-555555?style=flat-square&logoColor=white) |
 ---
 
 ## Contact
