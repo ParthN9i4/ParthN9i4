@@ -652,6 +652,1411 @@ August 2026 &middot; Comprehensive Reference
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
 <!-- PART_I_START -->
+<div class="part-header">
+<div class="part-label">Part I</div>
+<h2>Mathematical Foundations</h2>
+<div class="part-desc">Before a single ciphertext exists, FHE requires fluency in five interlocking languages: modular arithmetic, polynomial rings, lattices, and the LWE and Ring-LWE problems that convert worst-case lattice hardness into a usable cryptosystem. This part builds each language from first principles and closes every chapter with runnable code, because in FHE the algebra is not background — it is the mechanism.</div>
+</div>
+
+<div class="chapter" id="ch1">
+<div class="chapter-header"><div class="ch-label">Chapter 1</div><h3>Modular Arithmetic and Algebraic Structures</h3></div>
+
+<div class="learning-objectives">
+<div class="lo-title">Learning Objectives</div>
+<ul>
+<li>State precisely what group, ring, and field structure $\mathbb{Z}_q$ carries, and why FHE schemes compute inside $\mathbb{Z}_q$ rather than $\mathbb{Z}$.</li>
+<li>Use the Chinese Remainder Theorem both as a structural isomorphism and as the RNS (residue number system) engineering technique underlying every production FHE library.</li>
+<li>Define discrete Gaussian distributions over $\mathbb{Z}$, state their tail bounds, and explain why FHE noise is sampled from them rather than from a bounded uniform distribution.</li>
+<li>Derive the Number Theoretic Transform as a finite-field specialization of the FFT and explain why it collapses polynomial multiplication from $O(n^2)$ to $O(n\log n)$.</li>
+<li>Implement CRT-based RNS arithmetic and NTT-based polynomial multiplication in working Python.</li>
+</ul>
+</div>
+
+<p>Every homomorphic encryption scheme in production today — BFV, BGV, CKKS, TFHE — encodes data as elements of a quotient ring built from the integers modulo a prime or a composite modulus $q$. The choice is not incidental. Modular rings give us <em>closure</em> (arithmetic never leaves the set), <em>boundedness</em> (elements are represented in a fixed number of bits regardless of how many operations have been applied), and, when $q$ is chosen with the right factorization structure, extraordinary <em>computational leverage</em> through the Chinese Remainder Theorem and the Number Theoretic Transform. This chapter develops that leverage precisely. It is the toolbox the rest of the book draws from; nearly every performance number quoted in later chapters — "NTT-friendly modulus," "RNS decomposition," "64 limbs of 60-bit primes" — is explained here.</p>
+
+<h4>1.1 Groups, Rings, and Fields: A Working Vocabulary</h4>
+
+<p>We assume familiarity with the axioms; the goal here is to fix notation and highlight the properties that matter for cryptographic constructions.</p>
+
+<div class="definition">
+<div class="box-title">Definition 1.1 (Group)</div>
+<p>A group $(G, \cdot)$ is a set $G$ with a binary operation $\cdot$ satisfying closure, associativity, existence of an identity $e$, and existence of inverses for every element. The group is <em>abelian</em> if $\cdot$ is commutative. We write groups additively, $(G, +)$, when the natural operation is addition, with identity $0$.</p>
+</div>
+
+<div class="definition">
+<div class="box-title">Definition 1.2 (Ring)</div>
+<p>A ring $(R, +, \times)$ is a set with two operations such that $(R, +)$ is an abelian group, $\times$ is associative, and $\times$ distributes over $+$. We work exclusively with <em>commutative rings with identity</em>: $\times$ is commutative and there is a multiplicative identity $1 \ne 0$. A ring is an <em>integral domain</em> if it has no zero divisors: $ab = 0 \implies a = 0$ or $b = 0$.</p>
+</div>
+
+<div class="definition">
+<div class="box-title">Definition 1.3 (Field)</div>
+<p>A field is a commutative ring with identity in which every nonzero element has a multiplicative inverse. Equivalently, $(R \setminus \{0\}, \times)$ is an abelian group.</p>
+</div>
+
+<p>The integers $\mathbb{Z}$ form a commutative ring but not a field — $2$ has no multiplicative inverse in $\mathbb{Z}$. FHE never computes directly in $\mathbb{Z}$: ciphertext coefficients must live in a set that is closed under the arithmetic the scheme performs and that has a fixed bit-length representation. The natural fix is to work modulo an integer $q$.</p>
+
+<h5>1.1.1 The Ring $\mathbb{Z}_q$</h5>
+
+<p>Fix a positive integer $q \ge 2$. Define $\mathbb{Z}_q = \{0, 1, \dots, q-1\}$ with addition and multiplication performed modulo $q$. The reduction map $\pi_q : \mathbb{Z} \to \mathbb{Z}_q$, $\pi_q(a) = a \bmod q$, is a ring homomorphism — it respects both $+$ and $\times$ — and its kernel is the ideal $q\mathbb{Z}$. Formally, $\mathbb{Z}_q \cong \mathbb{Z} / q\mathbb{Z}$, the quotient ring.</p>
+
+<p>Two facts about $\mathbb{Z}_q$ govern essentially every design decision in FHE parameter selection:</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 1.1 (Units of $\mathbb{Z}_q$)</div>
+<p>An element $a \in \mathbb{Z}_q$ has a multiplicative inverse if and only if $\gcd(a, q) = 1$. Consequently $\mathbb{Z}_q$ is a field if and only if $q$ is prime, in which case we write $\mathbb{F}_q$. The group of units $\mathbb{Z}_q^{\times} = \{a \in \mathbb{Z}_q : \gcd(a,q)=1\}$ has order $\varphi(q)$ (Euler's totient), and for prime $q$, $|\mathbb{Z}_q^{\times}| = q - 1$.</p>
+</div>
+
+<p>FHE moduli are almost always chosen prime, or as products of distinct primes, precisely so that the arithmetic backing ciphertexts is field arithmetic wherever inversion is needed (e.g., decryption scaling, NTT twiddle factors) and so that Theorem 1.2 below applies.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 1.2 (Structure of $\mathbb{F}_q^{\times}$)</div>
+<p>For prime $q$, the multiplicative group $\mathbb{F}_q^{\times}$ is cyclic of order $q - 1$. A generator $g$ of this group is called a <em>primitive root modulo $q$</em>.</p>
+</div>
+
+<p>Cyclicity of $\mathbb{F}_q^{\times}$ is what makes the Number Theoretic Transform possible: it guarantees the existence of elements of any order dividing $q-1$, in particular primitive $n$-th roots of unity when $n \mid q - 1$, which is exactly the divisibility condition FHE moduli are engineered to satisfy (Section 1.4).</p>
+
+<h4>1.2 The Chinese Remainder Theorem</h4>
+
+<p>The Chinese Remainder Theorem (CRT) is, on the surface, a statement about solving simultaneous congruences. In FHE engineering it is something more consequential: a way to replace arithmetic on a single large modulus $q$ with independent, parallel arithmetic on several small moduli — the Residue Number System (RNS) — with dramatic performance implications.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 1.3 (Chinese Remainder Theorem, ring form)</div>
+<p>Let $q = q_1 q_2 \cdots q_k$ where the $q_i$ are pairwise coprime. Then the map
+$$
+\Phi : \mathbb{Z}_q \longrightarrow \mathbb{Z}_{q_1} \times \mathbb{Z}_{q_2} \times \cdots \times \mathbb{Z}_{q_k}, \qquad \Phi(a) = (a \bmod q_1,\ a \bmod q_2,\ \dots,\ a \bmod q_k)
+$$
+is a ring isomorphism. In particular it is a bijection, and for all $a, b \in \mathbb{Z}_q$,
+$$
+\Phi(a + b) = \Phi(a) + \Phi(b), \qquad \Phi(a \times b) = \Phi(a) \times \Phi(b),
+$$
+where addition and multiplication on the right are performed componentwise, each component modulo its own $q_i$.</p>
+</div>
+
+<p><strong>Proof sketch.</strong> Well-definedness and ring-homomorphism properties are immediate from the definition of modular reduction. Injectivity follows because $\Phi(a) = \Phi(b)$ implies $q_i \mid (a-b)$ for every $i$, hence $q = \prod q_i \mid (a - b)$ (using pairwise coprimality), hence $a \equiv b \pmod q$. Both domain and codomain have exactly $q$ elements, so injectivity implies bijectivity. $\blacksquare$</p>
+
+<p>The <em>reconstruction</em> direction — going from residues back to $a \in \mathbb{Z}_q$ — is given explicitly by Gauss's formula: let $M_i = q / q_i$ and let $N_i = M_i^{-1} \bmod q_i$ (which exists since $\gcd(M_i, q_i)=1$); then
+$$
+a \equiv \sum_{i=1}^{k} r_i\, M_i\, N_i \pmod q, \qquad r_i = a \bmod q_i.
+$$
+
+<h5>1.2.1 RNS: CRT as an Engineering Strategy</h5>
+
+<p>FHE moduli $q$ are enormous — commonly $100$ to $800$ bits, spread across dozens of levels in a leveled scheme. Native multi-precision arithmetic on integers of that size is expensive and does not map cleanly onto 64-bit CPU words or onto GPU/FPGA datapaths. RNS sidesteps the problem entirely: choose $q = q_1 q_2 \cdots q_k$ where each $q_i$ is a machine-word-sized prime (typically $30$–$60$ bits, chosen NTT-friendly — see Section 1.4), represent every ring element not as one big integer but as the $k$-tuple of its residues, and perform <em>all</em> addition, subtraction, and multiplication independently and in parallel on each residue channel. By Theorem 1.3 the result, reconstructed, is exactly the same as doing the arithmetic on the full modulus $q$ — with no reconstruction ever actually needed until the value must be inspected (e.g., at decryption or rescaling).</p>
+
+<p>This is precisely how libraries such as Microsoft SEAL, OpenFHE, and Lattigo represent ciphertext coefficients internally. A polynomial with coefficients modulo a $500$-bit $q$ decomposed into $k=9$ limbs of about $55$ bits each is stored as $9$ parallel arrays of 64-bit integers; a ciphertext multiplication that would otherwise require big-integer multiplication becomes $9$ independent machine-word multiplications, trivially vectorizable with SIMD instructions and trivially parallelizable across cores or GPU threads. The two operations that do <em>not</em> factor cleanly through CRT — division and comparison (needed for scaling and rounding, e.g., in BFV's plaintext-scale multiplication or CKKS's rescaling) — are the entire reason RNS variants of these schemes (RNS-BFV, RNS-CKKS/"full RNS CKKS") required nontrivial algorithmic redesign, covered in Chapters 8–10.</p>
+
+<div class="example">
+<div class="box-title">Example 1.1 (RNS reconstruction by hand)</div>
+<p>Let $q_1 = 5$, $q_2 = 7$, so $q = 35$. Suppose $a \equiv 3 \pmod 5$ and $a \equiv 4 \pmod 7$. Then $M_1 = 7$, $M_2 = 5$; $N_1 = 7^{-1} \bmod 5 = 3$ (since $7 \cdot 3 = 21 \equiv 1$); $N_2 = 5^{-1} \bmod 7 = 3$ (since $5\cdot 3 = 15 \equiv 1$). Reconstruction: $a \equiv 3\cdot 7\cdot 3 + 4\cdot 5\cdot 3 = 63 + 60 = 123 \equiv 123 - 3\cdot 35 = 18 \pmod{35}$. Check: $18 \bmod 5 = 3$, $18 \bmod 7 = 4$. Correct.</p>
+</div>
+
+<h4>1.3 Discrete Gaussian Distributions</h4>
+
+<p>Every LWE-based scheme hides a secret behind additive noise, and the distribution that noise is drawn from is not incidental — it is load-bearing for the security proof. The overwhelming majority of schemes use a <em>discrete Gaussian</em> rather than, say, a uniform distribution over a bounded interval, for reasons made precise below.</p>
+
+<div class="definition">
+<div class="box-title">Definition 1.4 (Discrete Gaussian distribution)</div>
+<p>For $\sigma > 0$ and $x \in \mathbb{Z}$, define the (unnormalized) Gaussian weight $\rho_\sigma(x) = \exp\left(-\dfrac{x^2}{2\sigma^2}\right)$. The discrete Gaussian distribution $D_{\mathbb{Z}, \sigma}$ assigns to each $x \in \mathbb{Z}$ probability
+$$
+\Pr[X = x] = \frac{\rho_\sigma(x)}{\sum_{y \in \mathbb{Z}} \rho_\sigma(y)}.
+$$
+The denominator, $\sum_{y\in\mathbb{Z}} \rho_\sigma(y)$, is the discrete theta function; for $\sigma$ not too small it is extremely well approximated by $\sigma\sqrt{2\pi}$, the continuous Gaussian normalizer.</p>
+</div>
+
+<p>In practice, samplers approximate $D_{\mathbb{Z},\sigma}$ rather than realize it exactly — common techniques include inversion sampling from a precomputed cumulative table (CDT sampling), rejection sampling, and the Knuth–Yao algorithm — and rounding a continuous Gaussian sample is a common (though not perfectly indistinguishable) practical shortcut. The distinction between exact and approximate discrete Gaussian sampling has itself been the subject of side-channel attacks (timing/cache leakage from rejection loops), discussed further in Chapter 14.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 1.4 (Gaussian tail bound)</div>
+<p>For $X \sim D_{\mathbb{Z}, \sigma}$ and any $t > 0$,
+$$
+\Pr\big[\,|X| > t\sigma\,\big] \le 2 e^{-t^2/2}.
+$$
+More refined bounds (accounting for the discreteness) give, for the smoothing-parameter regime used in security proofs, $\Pr[|X| > t\sigma] \le 2e^{-\pi t^2}$ up to the constants used in defining $\sigma$ via the Gaussian parameter $s = \sigma\sqrt{2\pi}$. In either convention, the tail is <em>sub-Gaussian</em>: probability mass decays super-polynomially, in fact exponentially in $t^2$, far faster than any polynomial bound.</p>
+</div>
+
+<p>Why does this matter operationally? Two reasons, pulling in opposite directions:</p>
+
+<ul>
+<li><strong>Correctness.</strong> Every homomorphic operation (Chapters 4, 5, 7) accumulates noise. Decryption succeeds only while accumulated noise stays below $q/(2t)$ for plaintext modulus $t$. Parameter selection needs a <em>hard, provable</em> bound on how large the noise can plausibly be after $d$ multiplications — the sub-exponential tail of the discrete Gaussian is exactly what lets us set, e.g., $B = 6\sigma$ or $8\sigma$ and assert "noise exceeds $B$ with probability at most $2^{-40}$," turning a fuzzy heuristic into a concrete security/correctness budget.</li>
+<li><strong>Security.</strong> The LWE hardness reduction (Chapter 4) requires the error to be a discrete Gaussian (or a distribution statistically close to one) of a specific width relative to $q$ and $n$ — this is the exact hypothesis under which Regev's worst-case-to-average-case reduction goes through. A bounded uniform error of the "same average magnitude" does <em>not</em> carry the same provable-hardness guarantee, and in some regimes provably weakens the scheme (structured, non-Gaussian error can leak information via statistical distinguishers, e.g., through higher moments).</li>
+</ul>
+
+<p>The two pulls are in tension: wider $\sigma$ (relative to $q$) is more conservative for security (larger effective error rate $\alpha = \sigma/q$, farther from a trivial attack) but eats into the correctness budget faster. Chapter 4 makes this trade-off quantitative.</p>
+
+<h4>1.4 The Number Theoretic Transform</h4>
+
+<p>Polynomial multiplication is the single most frequently executed operation in every FHE scheme — every ciphertext multiplication, every relinearization, every rotation is, underneath, one or more polynomial multiplications in $R_q = \mathbb{Z}_q[X]/(X^N+1)$ (Chapter 2). Done by the schoolbook method, multiplying two degree-$(N-1)$ polynomials costs $O(N^2)$ coefficient multiplications. The Number Theoretic Transform (NTT) — the finite-field analogue of the Fast Fourier Transform — reduces this to $O(N \log N)$, and is the single algorithmic idea most responsible for FHE being fast enough to use at all.</p>
+
+<h5>1.4.1 From FFT to NTT</h5>
+
+<p>The FFT accelerates polynomial multiplication over $\mathbb{C}$ by evaluating both polynomials at the $N$-th roots of unity, multiplying pointwise (an $O(N)$ operation once you have the point values), and interpolating back — the evaluation/interpolation steps themselves cost $O(N \log N)$ via the divide-and-conquer FFT recursion, because the roots of unity satisfy the halving relation $\omega_N^2 = \omega_{N/2}$.</p>
+
+<p>The NTT is the same idea transplanted into $\mathbb{F}_q$: instead of complex roots of unity, we need an element $\omega \in \mathbb{F}_q$ of multiplicative order exactly $N$ (a <em>primitive $N$-th root of unity</em>). By Theorem 1.2, $\mathbb{F}_q^{\times}$ is cyclic of order $q - 1$; an element of order $N$ exists if and only if $N \mid q - 1$. This single divisibility condition is why FHE moduli are chosen as primes satisfying $q \equiv 1 \pmod{N}$ (or $q \equiv 1 \pmod{2N}$ for the negacyclic variant used with $X^N+1$, see Chapter 2) — such primes are called <em>NTT-friendly</em>.</p>
+
+<div class="definition">
+<div class="box-title">Definition 1.5 (Number Theoretic Transform)</div>
+<p>Let $q$ be prime with $N \mid q-1$ and let $\omega \in \mathbb{F}_q$ have multiplicative order $N$. For $a = (a_0, \dots, a_{N-1}) \in \mathbb{F}_q^N$, the NTT of $a$ is $\hat a = (\hat a_0, \dots, \hat a_{N-1})$ with
+$$
+\hat a_j = \sum_{i=0}^{N-1} a_i\, \omega^{ij} \bmod q, \qquad j = 0,\dots,N-1.
+$$
+The inverse transform recovers $a$ via $a_i = N^{-1} \sum_{j=0}^{N-1} \hat a_j \omega^{-ij} \bmod q$, using that $N$ is invertible mod $q$ (guaranteed since $q$ is prime and $q > N$).</p>
+</div>
+
+<div class="theorem">
+<div class="box-title">Theorem 1.5 (NTT convolution theorem)</div>
+<p>For $a, b \in \mathbb{F}_q^N$, let $c = a \circledast b$ be their cyclic convolution, $c_k = \sum_{i+j \equiv k \pmod N} a_i b_j$. Then $\widehat{c} = \hat a \odot \hat b$ (componentwise product). Hence cyclic convolution — equivalently, multiplication in $\mathbb{Z}_q[X]/(X^N - 1)$ — can be computed as $\text{NTT}^{-1}(\text{NTT}(a) \odot \text{NTT}(b))$.</p>
+</div>
+
+<p>The transform itself is computed by the same Cooley–Tukey divide-and-conquer recursion as the FFT: split $a$ into even- and odd-indexed coefficients, recursively transform each half using $\omega^2$ (which has order $N/2$), and combine with $O(N)$ butterfly operations exploiting $\omega^{i + N/2} = -\omega^i$. This yields the familiar recurrence $T(N) = 2T(N/2) + O(N)$, solving to $T(N) = O(N\log N)$. For $N$ a power of two — universally the case in FHE, see Chapter 2 — the recursion terminates cleanly in $\log_2 N$ butterfly stages, computable in place (Gentleman–Sande / Cooley–Tukey in-place butterflies), with no auxiliary memory and excellent cache and SIMD behavior.</p>
+
+<h5>1.4.2 What "NTT-friendly" buys you concretely</h5>
+
+<p>End to end, multiplying two polynomials in $R_q$ under the NTT costs: forward NTT on $a$ ($O(N\log N)$), forward NTT on $b$ ($O(N \log N)$), pointwise multiply ($O(N)$), inverse NTT ($O(N \log N)$) — total $O(N \log N)$, versus $O(N^2)$ schoolbook. For $N = 2^{15} = 32768$, a typical CKKS ring dimension, this is the difference between roughly $10^9$ and roughly $5\times10^5$ modular multiplications — a three-orders-of-magnitude gap that is the difference between a scheme being usable and not. Because ciphertexts routinely stay in NTT ("evaluation") representation between operations (addition is componentwise and needs no transform at all in either representation), well-engineered libraries minimize the number of forward/inverse transform pairs actually paid for per homomorphic operation — a recurring optimization theme in Part III.</p>
+
+<div class="warning-box">
+<div class="box-title">Common Pitfall</div>
+<p>A polynomial multiplication modulo $X^N - 1$ (cyclic) is <em>not</em> the same ring as $X^N + 1$ (negacyclic), which is what FHE actually uses (Chapter 2). Plain NTT as defined above computes cyclic convolution. Negacyclic convolution requires either (a) a $2N$-th root of unity with a pre/post twist by powers of $\psi = \sqrt{\omega}$ (the standard trick, sometimes called the "negacyclic NTT"), or (b) doubling to a length-$2N$ cyclic NTT with zero-padding. Conflating the two is a classic implementation bug — get it wrong and multiplication silently wraps with the wrong sign on the top coefficients.</p>
+</div>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 1.1 — Modular Arithmetic, CRT, and NTT in Python</div>
+<p>A self-contained module implementing modular exponentiation/inversion, CRT-based RNS split/reconstruct, and an iterative NTT used to multiply polynomials in $O(N\log N)$. Verified against schoolbook convolution.</p>
+<pre><code>"""
+mod_arith.py — modular arithmetic, CRT/RNS, and NTT-based polynomial
+multiplication, built from scratch for pedagogical clarity (not constant time;
+never use this for real secrets).
+"""
+
+from typing import List, Tuple
+
+
+# ---------------------------------------------------------------------------
+# 1. Core modular arithmetic
+# ---------------------------------------------------------------------------
+
+def egcd(a: int, b: int) -> Tuple[int, int, int]:
+    """Extended Euclidean algorithm: returns (g, x, y) with a*x + b*y = g = gcd(a, b)."""
+    if b == 0:
+        return a, 1, 0
+    g, x1, y1 = egcd(b, a % b)
+    return g, y1, x1 - (a // b) * y1
+
+
+def mod_inv(a: int, m: int) -> int:
+    """Modular inverse of a mod m. Raises if gcd(a, m) != 1."""
+    g, x, _ = egcd(a % m, m)
+    if g != 1:
+        raise ValueError(f"{a} has no inverse mod {m} (gcd = {g})")
+    return x % m
+
+
+def mod_pow(base: int, exp: int, m: int) -> int:
+    """Fast modular exponentiation, O(log exp)."""
+    result = 1
+    base %= m
+    while exp > 0:
+        if exp & 1:
+            result = (result * base) % m
+        base = (base * base) % m
+        exp >>= 1
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 2. Chinese Remainder Theorem / Residue Number System
+# ---------------------------------------------------------------------------
+
+def crt_reconstruct(residues: List[int], moduli: List[int]) -> int:
+    """Gauss's algorithm: reconstruct x mod prod(moduli) from residues x mod m_i."""
+    q = 1
+    for m in moduli:
+        q *= m
+    x = 0
+    for r_i, m_i in zip(residues, moduli):
+        M_i = q // m_i
+        N_i = mod_inv(M_i % m_i, m_i)
+        x = (x + r_i * M_i * N_i) % q
+    return x
+
+
+def rns_split(a: int, moduli: List[int]) -> List[int]:
+    """Forward CRT map: a mod q  -->  (a mod q_1, ..., a mod q_k)."""
+    return [a % m for m in moduli]
+
+
+class RNSInteger:
+    """An integer represented in RNS form; all arithmetic is done channel-wise
+    with no reconstruction until explicitly requested. This is the pattern
+    every production FHE library uses for ciphertext coefficients."""
+
+    def __init__(self, residues: List[int], moduli: List[int]):
+        self.residues = list(residues)
+        self.moduli = list(moduli)
+
+    @classmethod
+    def from_int(cls, a: int, moduli: List[int]) -> "RNSInteger":
+        return cls(rns_split(a, moduli), moduli)
+
+    def __add__(self, other: "RNSInteger") -> "RNSInteger":
+        return RNSInteger(
+            [(x + y) % m for x, y, m in zip(self.residues, other.residues, self.moduli)],
+            self.moduli,
+        )
+
+    def __mul__(self, other: "RNSInteger") -> "RNSInteger":
+        return RNSInteger(
+            [(x * y) % m for x, y, m in zip(self.residues, other.residues, self.moduli)],
+            self.moduli,
+        )
+
+    def to_int(self) -> int:
+        return crt_reconstruct(self.residues, self.moduli)
+
+
+# ---------------------------------------------------------------------------
+# 3. Number Theoretic Transform
+# ---------------------------------------------------------------------------
+
+def find_primitive_root(q: int) -> int:
+    """Find a generator of F_q^*, for prime q, by trial (fine for small demo q)."""
+    factors = []
+    n = q - 1
+    d = 2
+    while d * d <= n:
+        if n % d == 0:
+            factors.append(d)
+            while n % d == 0:
+                n //= d
+        d += 1
+    if n > 1:
+        factors.append(n)
+    for g in range(2, q):
+        if all(mod_pow(g, (q - 1) // f, q) != 1 for f in factors):
+            return g
+    raise RuntimeError("no primitive root found")
+
+
+def nth_root_of_unity(q: int, n: int) -> int:
+    """A primitive n-th root of unity in F_q, requiring n | (q - 1)."""
+    assert (q - 1) % n == 0, "n must divide q - 1 for an n-th root to exist"
+    g = find_primitive_root(q)
+    return mod_pow(g, (q - 1) // n, q)
+
+
+def ntt(a: List[int], q: int, omega: int) -> List[int]:
+    """Iterative in-place-style NTT (Cooley-Tukey), O(N log N). len(a) must be a
+    power of two and omega must have multiplicative order len(a) mod q."""
+    n = len(a)
+    if n == 1:
+        return a[:]
+    assert n & (n - 1) == 0, "N must be a power of two"
+
+    a = a[:]
+    # bit-reversal permutation
+    j = 0
+    for i in range(1, n):
+        bit = n >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j ^= bit
+        if i < j:
+            a[i], a[j] = a[j], a[i]
+
+    length = 2
+    while length <= n:
+        w_len = mod_pow(omega, n // length, q)
+        for start in range(0, n, length):
+            w = 1
+            for k in range(length // 2):
+                u = a[start + k]
+                v = (a[start + k + length // 2] * w) % q
+                a[start + k] = (u + v) % q
+                a[start + k + length // 2] = (u - v) % q
+                w = (w * w_len) % q
+        length <<= 1
+    return a
+
+
+def intt(a_hat: List[int], q: int, omega: int) -> List[int]:
+    """Inverse NTT: forward NTT with omega^-1, scaled by N^-1 mod q."""
+    n = len(a_hat)
+    inv_omega = mod_inv(omega, q)
+    a = ntt(a_hat, q, inv_omega)
+    inv_n = mod_inv(n, q)
+    return [(x * inv_n) % q for x in a]
+
+
+def poly_mul_ntt(a: List[int], b: List[int], q: int, omega: int) -> List[int]:
+    """Cyclic convolution of a, b (both length N, N | q-1) via NTT: O(N log N)."""
+    n = len(a)
+    a_hat = ntt(a, q, omega)
+    b_hat = ntt(b, q, omega)
+    c_hat = [(x * y) % q for x, y in zip(a_hat, b_hat)]
+    return intt(c_hat, q, omega)
+
+
+def poly_mul_schoolbook(a: List[int], b: List[int], q: int) -> List[int]:
+    """Reference O(N^2) cyclic convolution for correctness checking."""
+    n = len(a)
+    c = [0] * n
+    for i in range(n):
+        for j in range(n):
+            c[(i + j) % n] = (c[(i + j) % n] + a[i] * b[j]) % q
+    return c
+
+
+if __name__ == "__main__":
+    import random
+
+    # --- CRT / RNS demo ---
+    moduli = [17, 19, 23]           # pairwise coprime
+    a = RNSInteger.from_int(12345, moduli)
+    b = RNSInteger.from_int(6789, moduli)
+    c = a * b + a
+    print("RNS reconstruct:", c.to_int(), "== direct:",
+          (12345 * 6789 + 12345) % (17 * 19 * 23))
+
+    # --- NTT demo: N = 8, need prime q with 8 | (q - 1) ---
+    N, q = 8, 17          # 17 - 1 = 16, 8 | 16  -> NTT-friendly
+    omega = nth_root_of_unity(q, N)
+    print(f"omega = {omega}, order check: omega^{N} mod {q} =",
+          mod_pow(omega, N, q))
+
+    random.seed(0)
+    a_poly = [random.randrange(q) for _ in range(N)]
+    b_poly = [random.randrange(q) for _ in range(N)]
+
+    via_ntt = poly_mul_ntt(a_poly, b_poly, q, omega)
+    via_schoolbook = poly_mul_schoolbook(a_poly, b_poly, q)
+    print("NTT matches schoolbook:", via_ntt == via_schoolbook)
+</code></pre>
+<p>Running this prints <code>RNS reconstruct: ... == direct: ...</code> with matching values, confirms $\omega^8 \equiv 1 \pmod{17}$ with no smaller period, and confirms the NTT-based convolution matches brute-force schoolbook convolution exactly — the same equivalence, at $N \sim 2^{15}$ instead of $N=8$, is what every FHE library relies on billions of times per second.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="kt-title">Key Takeaways</div>
+<ul>
+<li>$\mathbb{Z}_q$ is a field exactly when $q$ is prime; FHE moduli are chosen prime (or as products of NTT-friendly primes) so that inversion, CRT, and NTT are all simultaneously available. <span class="tag tag-certain">Certain</span></li>
+<li>The Chinese Remainder Theorem is a ring isomorphism $\mathbb{Z}_q \cong \mathbb{Z}_{q_1}\times\cdots\times\mathbb{Z}_{q_k}$; RNS representation exploits it to replace big-integer arithmetic with parallel machine-word arithmetic, at the cost of division/comparison no longer factoring componentwise. <span class="tag tag-certain">Certain</span></li>
+<li>Discrete Gaussian noise is used, not merely bounded-uniform noise, because (a) its exponential tail gives provable, tight correctness bounds and (b) it is the exact distribution under which the LWE hardness reduction is proven. <span class="tag tag-certain">Certain</span></li>
+<li>The NTT requires a prime $q$ with $N \mid q-1$ (or $2N \mid q-1$ for the negacyclic ring used in practice); this single divisibility constraint shapes how every FHE modulus chain is constructed. <span class="tag tag-certain">Certain</span></li>
+<li>NTT-based multiplication is $O(N\log N)$ versus $O(N^2)$ schoolbook — the single largest algorithmic factor separating theoretical FHE from practical FHE. <span class="tag tag-certain">Certain</span></li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch2">
+<div class="chapter-header"><div class="ch-label">Chapter 2</div><h3>Polynomial Rings and Cyclotomic Fields</h3></div>
+
+<div class="learning-objectives">
+<div class="lo-title">Learning Objectives</div>
+<ul>
+<li>Define the ring $R = \mathbb{Z}[X]/(X^N+1)$ and explain why power-of-two $N$ and the negacyclic reduction $X^N \equiv -1$ are deliberate engineering choices, not arbitrary ones.</li>
+<li>Work fluently in $R_q = \mathbb{Z}_q[X]/(X^N+1)$, the ring every FHE ciphertext coefficient actually lives in.</li>
+<li>Understand the canonical embedding of a cyclotomic ring into $\mathbb{C}^{N}$ via roots of unity, and see how it becomes the encoding map at the heart of CKKS.</li>
+<li>Reason about polynomial norms ($\ell_\infty$, $\ell_2$, canonical embedding norm) and how each bounds noise growth under ring multiplication.</li>
+<li>Implement an $R_q$ arithmetic class with NTT-accelerated multiplication.</li>
+</ul>
+</div>
+
+<p>Chapter 1 built arithmetic over $\mathbb{Z}_q$, a single number. FHE ciphertexts are not single numbers; they are <em>polynomials</em> with coefficients in $\mathbb{Z}_q$, and the ring those polynomials live in — a cyclotomic ring — is where security, efficiency, and packing capacity all meet. This chapter builds that ring carefully, because the specific choice $R = \mathbb{Z}[X]/(X^N+1)$ is not a convenient default; it is the intersection of several independent requirements (fast multiplication, uniform Galois structure, best-known noise growth, resistance to known subfield/subring attacks) that no other polynomial ring satisfies as cleanly.</p>
+
+<h4>2.1 The Ring $\mathbb{Z}[X]/(X^N+1)$</h4>
+
+<p>Let $N$ be a power of two, $N = 2^k$. Consider the polynomial $\Phi_{2N}(X) = X^N + 1$.</p>
+
+<div class="definition">
+<div class="box-title">Definition 2.1 (Power-of-two cyclotomic ring)</div>
+<p>$\Phi_{2N}(X) = X^N + 1$ is the $2N$-th cyclotomic polynomial: its roots are precisely the primitive $2N$-th roots of unity in $\mathbb{C}$, i.e. $\zeta = e^{i\pi(2j+1)/N}$ for $j = 0,\dots,N-1$. Define
+$$
+R = \mathbb{Z}[X] / (X^N + 1),
+$$
+the ring of integer polynomials of degree $< N$, with multiplication performed modulo $X^N + 1$. $R$ is called the $2N$-th cyclotomic ring (equivalently, the ring of integers of the cyclotomic number field $\mathbb{Q}(\zeta_{2N})$, since for prime-power cyclotomic polynomials the ring of integers is exactly $\mathbb{Z}[\zeta_{2N}]$).</p>
+</div>
+
+<p>Reduction modulo $X^N+1$ has a distinctive algebraic signature: $X^N \equiv -1$, so any monomial $X^{N+i}$ reduces to $-X^i$. This is the <em>negacyclic</em> property — it is the defining structural difference from the cyclic ring $\mathbb{Z}[X]/(X^N-1)$ used in Chapter 1's plain NTT convolution.</p>
+
+<div class="definition">
+<div class="box-title">Definition 2.2 (Negacyclic convolution)</div>
+<p>For $a, b \in R$ with coefficient vectors $(a_0,\dots,a_{N-1})$, $(b_0,\dots,b_{N-1})$, the product $c = a\cdot b$ in $R$ has coefficients
+$$
+c_k = \sum_{i+j = k} a_i b_j \;-\; \sum_{i + j = k + N} a_i b_j, \qquad k = 0,\dots,N-1,
+$$
+i.e., cross terms that "wrap around" past degree $N-1$ come back with a <em>flipped sign</em> rather than unchanged, in contrast to ordinary cyclic convolution.</p>
+</div>
+
+<h5>2.1.1 Why power-of-two $N$, and why $X^N+1$ specifically</h5>
+
+<p>Three independent motivations converge on this exact ring:</p>
+
+<ul>
+<li><strong>Multiplication efficiency.</strong> Power-of-two $N$ makes the Cooley–Tukey NTT recursion (Chapter 1, Section 1.4) terminate perfectly with $\log_2 N$ butterfly stages and no remainder cases. The negacyclic structure is handled by twisting with a $2N$-th root of unity $\psi$ (where $\psi^2 = \omega$, the $N$-th root used in the plain NTT): premultiply coefficients by powers of $\psi$, run a standard length-$N$ NTT, multiply pointwise, run the inverse NTT, and untwist by powers of $\psi^{-1}$. This reduces negacyclic convolution to the exact same $O(N\log N)$ machinery as Chapter 1, at the cost of $O(N)$ extra scalar multiplications — negligible next to the transform cost.</li>
+<li><strong>Uniform, transitive Galois structure.</strong> The Galois group of $\mathbb{Q}(\zeta_{2N})/\mathbb{Q}$ is $(\mathbb{Z}/2N\mathbb{Z})^{\times}$, which for $N$ a power of two is a group of order $N$ acting simply transitively (up to the well-understood $\mathbb{Z}/2 \times \mathbb{Z}/(N/2)$ splitting) on the roots of $X^N+1$. This clean, well-understood automorphism structure is exploited directly for ciphertext <em>rotations</em> (Chapter 13) — the operation that makes SIMD-style batched homomorphic computation possible.</li>
+<li><strong>Best-known noise growth and lattice geometry.</strong> Among cyclotomic rings, power-of-two rings minimize the <em>expansion factor</em> relating the $\ell_\infty$ norm of a coefficient vector to the $\ell_\infty$ norm of its polynomial product (Section 2.4), which directly controls how fast noise grows under homomorphic multiplication. Non-power-of-two cyclotomics (used occasionally for their larger plaintext slot counts at fixed $N$, or by NTRU-style schemes) have less favorable expansion bounds and more delicate ideal structure.</li>
+</ul>
+
+<div class="warning-box">
+<div class="box-title">A Historical Note</div>
+<p>Early lattice cryptography (NTRU, and the first Ring-LWE papers) sometimes used prime-degree cyclotomics $\mathbb{Z}[X]/(X^p - 1)/(\text{cyclotomic factor})$ or general cyclotomics $\Phi_m(X)$. The field converged on power-of-two $\Phi_{2N}$ specifically because of the multiplicative efficiency and rotation structure above — but this convergence also means power-of-two rings are the most scrutinized for structural weaknesses. So far (as of this writing) no attack exploits the power-of-two choice itself faster than generic lattice attacks; see Chapter 5's discussion of subfield/subring attacks for the attacks that <em>do</em> apply, and note the residual uncertainty.</p>
+</div>
+
+<h4>2.2 $R_q$: Where Ciphertexts Actually Live</h4>
+
+<div class="definition">
+<div class="box-title">Definition 2.3 (The ciphertext ring)</div>
+<p>For modulus $q$, define
+$$
+R_q = R / qR = \mathbb{Z}_q[X]/(X^N+1),
+$$
+the ring of polynomials of degree $< N$ with coefficients in $\mathbb{Z}_q$, multiplication modulo $X^N+1$ and coefficients reduced modulo $q$. Every LWE-style FHE ciphertext coefficient — every $a$, every $b$, every relinearization key component — is an element of $R_q$ for some modulus in the scheme's modulus chain.</p>
+</div>
+
+<p>$R_q$ inherits both quotient structures simultaneously: it is $\mathbb{Z}_q[X]/(X^N+1)$, or equivalently $R/qR$. As an additive group it is $(\mathbb{Z}_q)^N$ — an $N$-dimensional vector space over $\mathbb{Z}_q$ if $q$ is prime — but its multiplicative structure is the extra ingredient that everything downstream depends on: it lets us compress an $N$-dimensional LWE-style problem into a single ring element, and it turns polynomial multiplication (an $O(N\log N)$ operation, Chapter 1) into the scheme's basic building block instead of an $O(N^2)$ or $O(N^3)$ matrix operation.</p>
+
+<h5>2.2.1 Factorization of $R_q$ and CRT over the ring</h5>
+
+<p>When $q$ is a prime with $2N \mid q - 1$, $X^N + 1$ splits completely into $N$ distinct linear factors modulo $q$:
+$$
+X^N + 1 \equiv \prod_{j=0}^{N-1} (X - \zeta^{2j+1}) \pmod q,
+$$
+where $\zeta$ is a primitive $2N$-th root of unity in $\mathbb{F}_q$. By the polynomial CRT (the direct analogue of Theorem 1.3, now applied to the ring $\mathbb{Z}_q[X]$ modulo a product of coprime linear factors instead of $\mathbb{Z}$ modulo a product of coprime integers),
+$$
+R_q \;\cong\; \mathbb{F}_q \times \mathbb{F}_q \times \cdots \times \mathbb{F}_q \quad (N \text{ copies}),
+$$
+via the evaluation map $a(X) \mapsto \big(a(\zeta),\, a(\zeta^3),\,\dots,\, a(\zeta^{2N-1})\big)$. This is exactly the NTT of Chapter 1, viewed ring-theoretically: <em>the NTT is the CRT isomorphism for $R_q$, made explicit and computed in $O(N\log N)$ time.</em> In "NTT domain" / "evaluation representation," ring multiplication is literally componentwise field multiplication in $N$ copies of $\mathbb{F}_q$ — which is also precisely the CKKS/BFV plaintext-slot structure exploited for SIMD-style batching (Chapter 13): each of the $N$ evaluation points is a "slot," and componentwise ring multiplication in evaluation representation is componentwise multiplication of the packed plaintext values.</p>
+
+<h4>2.3 The Canonical Embedding</h4>
+
+<p>The canonical embedding generalizes the evaluation map above to the ring $R = \mathbb{Z}[X]/(X^N+1)$ over $\mathbb{C}$ rather than over $\mathbb{F}_q$, and it is the single most important analytic tool for reasoning about noise, encoding, and security across cyclotomic-ring schemes.</p>
+
+<div class="definition">
+<div class="box-title">Definition 2.4 (Canonical embedding)</div>
+<p>Let $\zeta_{2N} = e^{i\pi/N}$ be a primitive $2N$-th root of unity in $\mathbb{C}$. The roots of $X^N+1$ are $\zeta_{2N}^{1}, \zeta_{2N}^{3}, \dots, \zeta_{2N}^{2N-1}$ (the odd powers). The canonical embedding is
+$$
+\sigma : R \otimes \mathbb{R} \longrightarrow \mathbb{C}^N, \qquad \sigma(a) = \big(a(\zeta_{2N}^{1}),\, a(\zeta_{2N}^{3}),\, \dots,\, a(\zeta_{2N}^{2N-1})\big).
+$$
+Because complex roots come in conjugate pairs ($\zeta_{2N}^{-j} = \overline{\zeta_{2N}^{j}}$), the image of a real polynomial's evaluation vector lies in a specific $N$-real-dimensional subspace of $\mathbb{C}^N$ (conjugate-symmetric vectors); $\sigma$ is in fact a ring isomorphism onto its image with pointwise operations, exactly as in Section 2.2 but now over $\mathbb{C}$ instead of $\mathbb{F}_q$.</p>
+</div>
+
+<p>Two consequences make this indispensable:</p>
+
+<ul>
+<li><strong>It is the CKKS encoding map.</strong> CKKS (Chapter 10) encodes a vector of up to $N/2$ complex (or real) numbers into a ring element by essentially inverting $\sigma$ restricted to the conjugate-symmetric subspace — i.e., CKKS plaintext encoding <em>is</em> the inverse canonical embedding, scaled by a fixed-point factor $\Delta$. This is not an analogy; it is the literal construction, and it is why CKKS naturally supports approximate, complex-valued arithmetic where BFV/BGV support exact modular arithmetic — the two schemes differ precisely in whether they use the canonical embedding (CKKS) or the CRT-slot structure over $\mathbb{F}_q$ from Section 2.2.1 (BFV/BGV) as their encoding map.</li>
+<li><strong>It gives the "right" norm for measuring noise.</strong> The canonical embedding norm $\|a\|_{\infty}^{\text{can}} = \|\sigma(a)\|_{\infty}$ (or its $\ell_2$ analogue) behaves multiplicatively far better than the naive coefficient-vector norm: $\sigma$ is a ring homomorphism into $\mathbb{C}^N$ with componentwise multiplication, so $\|\sigma(ab)\|_\infty \le \|\sigma(a)\|_\infty \cdot \|\sigma(b)\|_\infty$ exactly — submultiplicativity with constant $1$, whereas the coefficient-vector $\ell_\infty$ norm degrades with an expansion-factor constant depending on $N$ (Section 2.4). Tight noise-growth analyses in the CKKS and RLWE literature are almost always carried out in the canonical embedding norm for exactly this reason.</li>
+</ul>
+
+<h4>2.4 Polynomial Norms and Noise Growth</h4>
+
+<p>Three norms recur throughout the FHE literature, and conflating them is a common source of error in both papers and implementations.</p>
+
+<div class="definition">
+<div class="box-title">Definition 2.5 (Norms on $R$)</div>
+<p>For $a = \sum_{i=0}^{N-1} a_i X^i \in R$:</p>
+<ul>
+<li>Coefficient $\ell_\infty$ norm: $\|a\|_\infty = \max_i |a_i|$.</li>
+<li>Coefficient $\ell_2$ norm: $\|a\|_2 = \big(\sum_i a_i^2\big)^{1/2}$.</li>
+<li>Canonical embedding norm: $\|a\|_\infty^{\text{can}} = \|\sigma(a)\|_\infty = \max_j |a(\zeta_{2N}^{2j+1})|$.</li>
+</ul>
+</div>
+
+<div class="theorem">
+<div class="box-title">Theorem 2.1 (Expansion factor)</div>
+<p>For $R = \mathbb{Z}[X]/(X^N+1)$ and any $a, b \in R$,
+$$
+\|a\cdot b\|_\infty \;\le\; N \cdot \|a\|_\infty \cdot \|b\|_\infty.
+$$
+The constant $N$ here is the <em>ring expansion factor</em>, denoted $\delta_R$; power-of-two cyclotomics achieve $\delta_R = N$, which is asymptotically optimal among degree-$N$ number rings (a general cyclotomic ring can have $\delta_R$ as large as $O(N)$ but with worse constants, or, for non-cyclotomic rings, considerably worse).</p>
+</div>
+
+<p>This single inequality is the seed of every noise-growth bound in Chapters 7–10: if fresh ciphertext noise has coefficient norm roughly $B$, then after one homomorphic multiplication the noise term picking up a factor of a ciphertext polynomial grows by up to a factor of $N$ (from Theorem 2.1) times the norm of the multiplicand — which is exactly why "noise budget" is consumed multiplicatively, why leveled schemes need a modulus chain (Chapter 7), and why bootstrapping (Chapter 12) exists at all: without it, the number of sequential multiplications is bounded by how many factors of $N \cdot B$ the initial noise budget $q$ can absorb before decryption fails.</p>
+
+<div class="example">
+<div class="box-title">Example 2.1 (Negacyclic multiplication by hand)</div>
+<p>Let $N=4$, so $R = \mathbb{Z}[X]/(X^4+1)$. Take $a = 1 + X$, $b = 1 + X^2$. Schoolbook product: $ab = 1 + X^2 + X + X^3$. All terms have degree $<4$, so no reduction is needed: $ab = 1 + X + X^2 + X^3$. Now take $c = X^3$, $d = X^2$: $cd = X^5$. Since $X^4 \equiv -1$, $X^5 = X^4\cdot X \equiv -X$. So $cd = -X$, i.e. coefficient vector $(0,-1,0,0)$ — the sign flip from wraparound is the negacyclic property in action.</p>
+</div>
+
+<h4>2.5 Ideal Lattices: The Bridge to Chapter 3</h4>
+
+<p>Everything in this chapter has been phrased ring-theoretically, but every ring element also has a purely geometric shadow, and that shadow is what connects polynomial-ring arithmetic to the lattice hardness developed in Chapter 3.</p>
+
+<div class="definition">
+<div class="box-title">Definition 2.6 (Coefficient embedding and ideal lattices)</div>
+<p>The <em>coefficient embedding</em> $\tau : R \to \mathbb{Z}^N$ sends $a = \sum a_i X^i$ to its coefficient vector $(a_0,\dots,a_{N-1})$. For any ideal $I \subseteq R$ (an additive subgroup closed under multiplication by arbitrary ring elements — in particular, $I = qR$ for the modulus $q$, or the ideal generated by a single element $I = (g)$ for some $g \in R$), the image $\tau(I) \subset \mathbb{Z}^N$ is a lattice, called an <em>ideal lattice</em>. Multiplication by any fixed ring element $r \in R$ acts on $\tau(I)$ as an $\mathbb{Z}$-linear map — in fact, as the negacyclic structured matrix of Theorem 5.1 (Chapter 5) — so ideal lattices are exactly the lattices in $\mathbb{Z}^N$ that are invariant under this specific family of structured linear maps, a strictly smaller and more symmetric class than "all lattices of rank $N$."</p>
+</div>
+
+<p>Under this correspondence, $R_q = R/qR$ itself corresponds to $\mathbb{Z}^N / \tau(qR) = \mathbb{Z}^N/q\mathbb{Z}^N$ — the quotient of the integer lattice by the very simple, axis-aligned ideal lattice $q\mathbb{Z}^N$, of determinant $q^N$. More interesting ideal lattices arise as principal ideals $(g)$ for $g \in R$: $\tau((g))$ is generated by the $N$ negacyclic rotations of $g$'s coefficient vector, $(g, X\cdot g, X^2\cdot g,\dots, X^{N-1}\cdot g)$ under the coefficient embedding — a highly structured basis (each row a cyclic-with-sign-flip shift of the previous), which is precisely why finding short vectors in, or performing lattice reduction (Chapter 3, Section 3.3) on, an ideal lattice can in principle exploit far more structure than a generic lattice basis offers. This is the same tension flagged in Chapter 5, Section 5.3: the multiplicative closure that gives $R$ its efficient arithmetic is, geometrically, exactly the automorphism structure (multiplication by $X$, and more generally by any ring element, is an isometry of $\tau(I)$'s determinant and acts predictably on its geometry) that a structure-aware attack would need to exploit — and, as discussed there, no such attack is currently known to beat generic lattice reduction on the ring and parameter choices used by deployed FHE schemes.</p>
+
+<p>The practical upshot for this chapter: every polynomial-ring operation performed in $R_q$ — addition, multiplication, computing a norm — has a literal geometric meaning as a lattice operation in $\mathbb{Z}^N$, via $\tau$. When Chapter 3 talks about the shortest vector in a lattice, and Chapter 5 talks about the hardness of RLWE resting on ideal-lattice problems, this is the exact dictionary connecting the two: RLWE's hardness reduction targets $\mathrm{SVP}$/$\mathrm{SIVP}$ on lattices of the specific ideal-lattice shape constructed here, not on arbitrary lattices.</p>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 2.1 — An $R_q$ Arithmetic Class with NTT Acceleration</div>
+<p>A small library implementing $R_q = \mathbb{Z}_q[X]/(X^N+1)$ arithmetic, using the negacyclic NTT (twist-then-cyclic-NTT trick) for $O(N\log N)$ multiplication, verified against schoolbook negacyclic convolution.</p>
+<pre><code>"""
+ring_poly.py — arithmetic in R_q = Z_q[X] / (X^N + 1), with NTT-accelerated
+negacyclic multiplication. Builds on mod_arith.py from Chapter 1.
+"""
+
+from typing import List
+from mod_arith import mod_pow, mod_inv, nth_root_of_unity, ntt, intt
+
+
+class RingElement:
+    """An element of R_q = Z_q[X]/(X^N + 1), stored as a length-N coefficient
+    list (index i = coefficient of X^i), each entry in [0, q)."""
+
+    def __init__(self, coeffs: List[int], q: int):
+        self.N = len(coeffs)
+        assert self.N & (self.N - 1) == 0, "N must be a power of two"
+        self.q = q
+        self.coeffs = [c % q for c in coeffs]
+
+    # ---- basic ring operations (coefficient representation) -------------
+
+    def __add__(self, other: "RingElement") -> "RingElement":
+        return RingElement(
+            [(a + b) % self.q for a, b in zip(self.coeffs, other.coeffs)], self.q
+        )
+
+    def __sub__(self, other: "RingElement") -> "RingElement":
+        return RingElement(
+            [(a - b) % self.q for a, b in zip(self.coeffs, other.coeffs)], self.q
+        )
+
+    def __neg__(self) -> "RingElement":
+        return RingElement([(-a) % self.q for a in self.coeffs], self.q)
+
+    def schoolbook_mul(self, other: "RingElement") -> "RingElement":
+        """Reference O(N^2) negacyclic convolution: X^N = -1."""
+        N, q = self.N, self.q
+        result = [0] * N
+        for i in range(N):
+            if self.coeffs[i] == 0:
+                continue
+            for j in range(N):
+                k = i + j
+                val = self.coeffs[i] * other.coeffs[j]
+                if k >= N:
+                    result[k - N] = (result[k - N] - val) % q   # wraparound flips sign
+                else:
+                    result[k] = (result[k] + val) % q
+        return RingElement(result, q)
+
+    # ---- NTT-accelerated negacyclic multiplication -----------------------
+    #
+    # Trick: to multiply in Z_q[X]/(X^N+1) using a length-N cyclic NTT (which
+    # natively computes Z_q[X]/(X^N-1) convolution), "twist" coefficients by
+    # powers of psi, a primitive 2N-th root of unity with psi^2 = omega (the
+    # N-th root used by the plain NTT). Twisting before/after cancels the
+    # sign-flip discrepancy between cyclic and negacyclic convolution.
+
+    def _psi_powers(self):
+        psi = self.psi
+        return [mod_pow(psi, i, self.q) for i in range(self.N)]
+
+    def _inv_psi_powers(self):
+        inv_psi = mod_inv(self.psi, self.q)
+        return [mod_pow(inv_psi, i, self.q) for i in range(self.N)]
+
+    def attach_ntt_params(self, omega: int, psi: int):
+        """omega: primitive N-th root of unity; psi: primitive 2N-th root
+        with psi^2 = omega mod q. Required before using ntt_mul."""
+        self.omega = omega
+        self.psi = psi
+        return self
+
+    def ntt_mul(self, other: "RingElement") -> "RingElement":
+        assert hasattr(self, "psi"), "call attach_ntt_params first"
+        q, omega, psi = self.q, self.omega, self.psi
+
+        psi_pow = self._psi_powers()
+        inv_psi_pow = self._inv_psi_powers()
+
+        a_twisted = [(c * p) % q for c, p in zip(self.coeffs, psi_pow)]
+        b_twisted = [(c * p) % q for c, p in zip(other.coeffs, psi_pow)]
+
+        a_hat = ntt(a_twisted, q, omega)
+        b_hat = ntt(b_twisted, q, omega)
+        c_hat = [(x * y) % q for x, y in zip(a_hat, b_hat)]
+        c_twisted = intt(c_hat, q, omega)
+
+        result = [(c * ip) % q for c, ip in zip(c_twisted, inv_psi_pow)]
+        out = RingElement(result, q)
+        out.attach_ntt_params(omega, psi)
+        return out
+
+    def __repr__(self) -> str:
+        terms = [f"{c}*X^{i}" for i, c in enumerate(self.coeffs) if c != 0]
+        return " + ".join(terms) if terms else "0"
+
+
+def make_ring_element(coeffs: List[int], q: int) -> RingElement:
+    """Factory that also attaches NTT parameters (psi^2 = omega, order 2N)."""
+    N = len(coeffs)
+    psi = nth_root_of_unity(q, 2 * N)     # primitive 2N-th root
+    omega = mod_pow(psi, 2, q)            # -> primitive N-th root
+    return RingElement(coeffs, q).attach_ntt_params(omega, psi)
+
+
+if __name__ == "__main__":
+    import random
+
+    N, q = 8, 97 * 2 * 8 + 1     # construct a small prime q with 2N | q-1
+    while True:
+        if (q - 1) % (2 * N) == 0:
+            break
+        q += 1
+    # (fallback: brute-force a valid small prime for the demo)
+    def is_prime(n):
+        if n < 2:
+            return False
+        return all(n % p for p in range(2, int(n ** 0.5) + 1))
+    q = next(c for c in range(2 * N + 1, 100000) if (c - 1) % (2 * N) == 0 and is_prime(c))
+
+    random.seed(1)
+    a = make_ring_element([random.randrange(q) for _ in range(N)], q)
+    b = make_ring_element([random.randrange(q) for _ in range(N)], q)
+
+    via_schoolbook = a.schoolbook_mul(b)
+    via_ntt = a.ntt_mul(b)
+
+    print("q =", q, " N =", N)
+    print("schoolbook:", via_schoolbook)
+    print("ntt       :", via_ntt)
+    print("match:", via_schoolbook.coeffs == via_ntt.coeffs)
+</code></pre>
+<p>The negacyclic-NTT trick (twist by $\psi$, cyclic NTT with $\omega=\psi^2$, pointwise multiply, inverse NTT, untwist by $\psi^{-1}$) is exactly what production libraries implement, typically fused into the butterfly stages themselves so the twist factors are folded into precomputed twiddle tables rather than applied as a separate pass.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="kt-title">Key Takeaways</div>
+<ul>
+<li>$R = \mathbb{Z}[X]/(X^N+1)$ with $N$ a power of two is chosen for three converging reasons: NTT-friendliness, uniform Galois/rotation structure, and near-optimal expansion factor $\delta_R = N$. <span class="tag tag-certain">Certain</span></li>
+<li>$R_q = \mathbb{Z}_q[X]/(X^N+1)$ is where every FHE ciphertext coefficient lives; when $2N \mid q-1$, $R_q$ splits via CRT into $N$ copies of $\mathbb{F}_q$, and the NTT computes this isomorphism explicitly — this is also the BFV/BGV plaintext slot structure. <span class="tag tag-certain">Certain</span></li>
+<li>The canonical embedding $\sigma$ generalizes this splitting to $\mathbb{C}^N$ over $R\otimes\mathbb{R}$; its inverse (restricted to conjugate-symmetric vectors) is literally the CKKS encoding map, and $\sigma$ gives the noise norm with the best (constant-factor) submultiplicativity. <span class="tag tag-certain">Certain</span></li>
+<li>The expansion factor bound $\|ab\|_\infty \le N\|a\|_\infty\|b\|_\infty$ is the algebraic root of "noise grows with multiplication," motivating modulus chains and bootstrapping developed in Part II. <span class="tag tag-certain">Certain</span></li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch3">
+<div class="chapter-header"><div class="ch-label">Chapter 3</div><h3>Lattices and Hard Problems</h3></div>
+
+<div class="learning-objectives">
+<div class="lo-title">Learning Objectives</div>
+<ul>
+<li>Define a lattice, a basis, and the fundamental domain, and compute volume/determinant invariants.</li>
+<li>State SVP, CVP, GapSVP, and SIVP precisely, including the role of approximation factors $\gamma$.</li>
+<li>Understand why LLL is polynomial-time but only achieves exponential approximation factors, and why BKZ trades runtime for approximation quality — and why FHE parameters sit deliberately out of BKZ's practical reach.</li>
+<li>State Ajtai's worst-case-to-average-case reduction and explain why it, more than any single other result, is what makes lattice cryptography trustworthy.</li>
+<li>Articulate the post-quantum security argument for lattice problems: what Shor's algorithm breaks, what it does not, and what the best known quantum lattice algorithms actually buy an attacker.</li>
+<li>Implement LLL reduction and visualize a 2D lattice, its basis, and its reduced basis.</li>
+</ul>
+</div>
+
+<p>Every hardness guarantee in this book ultimately rests on lattice problems believed to be hard even for quantum computers. This chapter develops the geometric objects and the computational problems on them precisely enough to state, in Chapter 4, exactly what LWE reduces to and why that reduction is meaningful evidence of security rather than a slogan.</p>
+
+<h4>3.1 Lattices, Bases, and Fundamental Domains</h4>
+
+<div class="definition">
+<div class="box-title">Definition 3.1 (Lattice)</div>
+<p>Let $b_1, \dots, b_n \in \mathbb{R}^m$ be linearly independent vectors ($n \le m$). The lattice generated by $B = (b_1,\dots,b_n)$ is
+$$
+\mathcal{L}(B) = \left\{ \sum_{i=1}^{n} z_i b_i : z_i \in \mathbb{Z} \right\},
+$$
+the set of all integer linear combinations of the $b_i$. $B$ is a <em>basis</em> of the lattice, $n$ is the <em>rank</em>, and if $n = m$ the lattice is <em>full-rank</em>. Every lattice cryptosystem in this book uses full-rank lattices in $\mathbb{R}^n$ (or, for Ring-LWE, lattices with extra ring-endomorphism structure — Chapter 5).</p>
+</div>
+
+<p>A lattice has infinitely many bases. If $B$ and $B'$ both generate $\mathcal{L}$, then $B' = BU$ for some $U \in GL_n(\mathbb{Z})$ — an integer matrix with $\det U = \pm 1$ (a <em>unimodular</em> matrix). This single fact is the source of essentially all lattice-based hardness: geometric quantities intrinsic to $\mathcal{L}$ (its shortest vector, its determinant) are basis-independent, but whether you can efficiently <em>find</em> a short vector depends enormously on which basis you were handed. A "good" (nearly orthogonal, short-vector) basis makes finding short vectors trivial; a "bad" (long, skew) basis, generating the identical lattice, can make it computationally intractable. Trapdoor lattice cryptosystems are built exactly on this asymmetry: the public key is a bad basis (or, for LWE, no explicit basis at all — see Chapter 4), and the private key is a good one.</p>
+
+<div class="definition">
+<div class="box-title">Definition 3.2 (Determinant / covolume)</div>
+<p>For a full-rank lattice with basis $B \in \mathbb{R}^{n\times n}$, the determinant (covolume) is $\det(\mathcal{L}) = |\det B|$. This quantity is basis-independent (since $|\det(BU)| = |\det B||\det U| = |\det B|$ for unimodular $U$) and equals the $n$-dimensional volume of the fundamental domain $\mathcal{F}(B) = \{\sum t_i b_i : t_i \in [0,1)\}$, a region that tiles $\mathbb{R}^n$ under translation by lattice vectors: $\mathbb{R}^n = \bigsqcup_{v\in\mathcal{L}} (\mathcal{F}(B) + v)$.</p>
+</div>
+
+<p>Two families of basis-independent invariants matter throughout the book:</p>
+
+<div class="definition">
+<div class="box-title">Definition 3.3 (Successive minima)</div>
+<p>For $i=1,\dots,n$, the $i$-th successive minimum $\lambda_i(\mathcal{L})$ is the smallest $r$ such that $\mathcal{L}$ contains $i$ linearly independent vectors of norm $\le r$. In particular $\lambda_1(\mathcal{L})$ is the norm of a shortest nonzero lattice vector.</p>
+</div>
+
+<div class="theorem">
+<div class="box-title">Theorem 3.1 (Minkowski's first theorem)</div>
+<p>For any full-rank lattice $\mathcal{L}\subset\mathbb{R}^n$, $\lambda_1(\mathcal{L}) \le \sqrt{n}\cdot \det(\mathcal{L})^{1/n}$ (up to a dimension-dependent constant depending on the exact norm and packing constant; for the Euclidean norm, $\lambda_1(\mathcal{L}) \le \sqrt{n} \cdot \det(\mathcal{L})^{1/n}$). Consequently random lattices are expected to have shortest vectors of length on the order of $\det(\mathcal{L})^{1/n}$, and the <em>Gaussian heuristic</em> refines this to $\lambda_1(\mathcal{L}) \approx \sqrt{n/(2\pi e)}\cdot \det(\mathcal{L})^{1/n}$ for "generic" lattices — the estimate used throughout parameter-selection tools (Chapter 14).</p>
+</div>
+
+<div class="example">
+<div class="box-title">Example 3.1 (Successive minima and the Gaussian heuristic on a toy lattice)</div>
+<p>Take the 2D lattice generated by $b_1=(2,0)$, $b_2=(1,2)$; $\det\mathcal{L} = |2\cdot2 - 0\cdot1| = 4$. By inspection, $\lambda_1(\mathcal{L}) = 2$ (achieved by $b_1$ itself, and no shorter nonzero vector exists — checking $b_2-b_1=(-1,2)$, norm $\sqrt5\approx2.24$, longer). Minkowski's bound gives $\lambda_1 \le \sqrt2\cdot\det(\mathcal{L})^{1/2} = \sqrt2\cdot 2 \approx 2.83$ — satisfied, with room to spare, since the bound is a worst-case guarantee, not an exact prediction. The Gaussian heuristic estimate is $\sqrt{2/(2\pi e)}\cdot2 \approx 0.483\cdot2\approx 0.97$ — for such a low-dimensional, non-generic example the heuristic is a poor numerical fit (it is an asymptotic statement, most accurate for large $n$ and "random-looking" lattices), but the qualitative lesson generalizes directly: at cryptographic dimensions ($n$ in the hundreds to low thousands, as used from Chapter 4 onward), the Gaussian heuristic is what parameter-selection tools use to predict $\lambda_1$ of the LWE lattice, and hence to predict the BKZ block size an attacker needs (Section 3.3.2) to find a vector of that length.</p>
+</div>
+
+<h4>3.2 The Computational Problems</h4>
+
+<p>Lattice-based cryptography's security rests on a handful of problems believed to be intractable for both classical and quantum algorithms, in the worst case and (crucially, via reductions covered in Chapter 4) in the average case too.</p>
+
+<div class="definition">
+<div class="box-title">Definition 3.4 (SVP, CVP, SIVP)</div>
+<ul>
+<li><strong>Shortest Vector Problem (SVP).</strong> Given a basis $B$ for $\mathcal{L}$, find $v \in \mathcal{L}\setminus\{0\}$ with $\|v\| = \lambda_1(\mathcal{L})$.</li>
+<li><strong>Closest Vector Problem (CVP).</strong> Given a basis $B$ for $\mathcal{L}$ and a target $t \in \mathbb{R}^n$ (not necessarily in $\mathcal{L}$), find $v \in \mathcal{L}$ minimizing $\|v - t\|$.</li>
+<li><strong>Shortest Independent Vectors Problem (SIVP).</strong> Given $B$, find $n$ linearly independent lattice vectors $v_1,\dots,v_n$ with $\max_i \|v_i\|$ as small as possible (ideally $\lambda_n(\mathcal{L})$).</li>
+</ul>
+</div>
+
+<p>Each has a <em>decision</em> and an <em>approximation</em> variant, and it is the approximation variants that cryptography actually reduces to and relies on:</p>
+
+<div class="definition">
+<div class="box-title">Definition 3.5 (GapSVP$_\gamma$ and approximate SVP)</div>
+<p>SVP$_\gamma$: given $B$, find $v \in \mathcal{L}\setminus\{0\}$ with $\|v\| \le \gamma(n)\cdot\lambda_1(\mathcal{L})$. GapSVP$_\gamma$ (decision version): given $B$ and a threshold $d$, distinguish between $\lambda_1(\mathcal{L}) \le d$ and $\lambda_1(\mathcal{L}) > \gamma(n)\cdot d$, promised one of the two holds. Larger $\gamma$ makes the problem <em>easier</em> (more slack, more approximate vectors count as solutions); the interesting cryptographic regime is $\gamma$ polynomial in $n$, where the problem is conjectured to remain hard, in contrast to $\gamma$ exponential in $n$, where LLL-type algorithms (Section 3.3) solve it in polynomial time.</p>
+</div>
+
+<p>The approximation factor $\gamma$ is the single most important tuning knob connecting lattice theory to concrete FHE parameters: Regev's reduction (Chapter 4) reduces GapSVP$_{\gamma}$ for $\gamma = \tilde O(n/\alpha)$ to LWE with noise rate $\alpha$ — smaller $\alpha$ (tighter, more precise noise) corresponds to easier lattice problems being reduced from, i.e. weaker security for fixed dimension $n$, which is exactly why noise rate is a first-class security parameter alongside dimension and modulus in every scheme in this book.</p>
+
+<h4>3.3 Lattice Reduction: LLL and BKZ</h4>
+
+<p>Given an arbitrary (bad) basis, <em>lattice reduction</em> algorithms compute a basis of the same lattice with shorter, more orthogonal vectors — approximately solving SVP/SIVP. Two algorithms dominate practice.</p>
+
+<h5>3.3.1 LLL</h5>
+
+<div class="theorem">
+<div class="box-title">Theorem 3.2 (Lenstra–Lenstra–Lovász, 1982)</div>
+<p>There is a deterministic algorithm (LLL) that, given a basis $B$ of an $n$-dimensional lattice with entries of bit-length at most $L$, runs in time polynomial in $n$ and $L$, and outputs a basis $B'$ (an <em>LLL-reduced</em> basis) satisfying
+$$
+\|b_1'\| \le 2^{(n-1)/4} \cdot \det(\mathcal{L})^{1/n} \qquad \big(\text{more precisely, } \|b_1'\| \le 2^{(n-1)/2}\lambda_1(\mathcal{L})\big),
+$$
+i.e., LLL solves SVP$_\gamma$ in polynomial time for $\gamma = 2^{O(n)}$ — an <em>exponential</em> approximation factor.</p>
+</div>
+
+<p>LLL works by iterating two steps to a fixed point: (1) size-reduction — using the Gram–Schmidt orthogonalization $b_i^*$ of the current basis, subtract integer multiples of earlier vectors from later ones so each $|\mu_{i,j}| \le 1/2$; and (2) the Lovász condition — if swapping $b_i$ and $b_{i+1}$ would shrink $\|b_i^*\|^2$ by more than a factor $\delta$ (typically $\delta = 3/4$), perform the swap. Each swap provably decreases a potential function (the product of the norms of the Gram–Schmidt vectors, weighted by index), bounding the total number of iterations polynomially.</p>
+
+<h5>3.3.2 BKZ and Why Exponential Approximation Factors Aren't Enough to Break FHE</h5>
+
+<p>Block Korkine–Zolotarev (BKZ) generalizes LLL: instead of only comparing adjacent Gram–Schmidt vectors, BKZ with block size $\beta$ solves exact SVP on every $\beta$-dimensional projected sublattice (local blocks) using an enumeration or sieving subroutine, and uses these local optima to progressively improve the global basis.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 3.3 (BKZ quality/cost tradeoff, informal)</div>
+<p>BKZ with block size $\beta$ achieves an approximation factor of roughly $\gamma \approx \left(\dfrac{\beta}{2\pi e}\right)^{n/\beta}$ (the "root Hermite factor" heuristic), but its running time is dominated by the cost of the SVP oracle on $\beta$-dimensional blocks, which is $2^{\Theta(\beta)}$ (via sieving; enumeration is worse, $2^{\Theta(\beta\log\beta)}$). Increasing $\beta$ shrinks $\gamma$ but grows runtime exponentially in $\beta$.</p>
+</div>
+
+<p>This is precisely why LLL alone ($\beta=2$, in effect) achieves only exponential-in-$n$ approximation — its block size is too small to do better in polynomial time — and why cryptanalysts targeting FHE-grade lattices (dimension $n$ in the thousands, e.g. $n \ge 1024$ typically) must run BKZ with block sizes in the hundreds to have any hope of matching the modest polynomial approximation factors that would actually threaten the scheme; at $\beta \gtrsim 350$–$400$, current best sieving algorithms cost well beyond $2^{128}$ operations. FHE parameter selection (Chapter 14) is, concretely, the exercise of choosing $(n, q, \sigma)$ such that the best known BKZ attack (via the "primal" or "dual" lattice reduction attacks on the LWE lattice, Chapter 4) requires a block size whose cost exceeds a target security level (e.g. $2^{128}$), with standardized cost models (the Lattice Estimator tool, maintained collaboratively by the community) used to make this concrete and auditable.</p>
+
+<div class="warning-box">
+<div class="box-title">A Crucial Caveat</div>
+<p>Unlike RSA or discrete-log security, where the best classical attack (GNFS, index calculus) has an established, stable asymptotic complexity, the concrete cost of BKZ-based lattice attacks is an <em>active area of cryptanalytic research</em> — sieving algorithm constants, the accuracy of the "geometric series assumption" and "BKZ simulator" cost models, and the practicality of quantum sieving speedups (Section 3.5) are all still being refined. Responsible parameter selection tracks the state of the art (the Lattice Estimator, NIST PQC standardization analyses) rather than a single fixed formula; parameters set in 2015 and parameters set in 2025 for "128-bit security" are not identical.</p>
+</div>
+
+<h4>3.4 Ajtai's Worst-Case to Average-Case Reduction</h4>
+
+<p>Every classical hardness assumption in symmetric or number-theoretic cryptography (factoring, discrete log) is a statement about the hardness of a specific, average-case, randomly sampled instance. Lattice cryptography is unusual — arguably uniquely fortunate — in resting on reductions from <em>worst-case</em> problems.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 3.4 (Ajtai, 1996, informal statement)</div>
+<p>There is a family of average-case problems (informally: given a uniformly random matrix $A \in \mathbb{Z}_q^{n\times m}$, find a short nonzero $z \in \mathbb{Z}^m$ with $Az \equiv 0 \pmod q$ — the Short Integer Solution problem, SIS) such that solving SIS on a non-negligible fraction of random instances, with non-negligible probability, would imply a polynomial-time algorithm for approximating SVP (or SIVP) to within polynomial factors $\gamma = \text{poly}(n)$ on <em>every</em> lattice in a certain family, i.e. in the worst case.</p>
+</div>
+
+<p>The significance is hard to overstate. For a scheme built on, say, factoring, a cryptanalyst who finds a clever way to factor <em>the specific moduli your keys happen to use</em> breaks your instance, and there is no guarantee that "factoring is hard on average" follows from any clean worst-case statement — average-case number-theoretic hardness is essentially taken on faith, backed by centuries of failed attacks on the specific problem. Ajtai's reduction (and its LWE descendant, Regev's reduction covered in Chapter 4) instead says: <em>any</em> algorithm that breaks SIS/LWE for randomly sampled keys with non-negligible probability can be turned into an algorithm solving the worst-case lattice problem on <em>every</em> instance, including the hardest ones in that dimension. Since worst-case lattice problems (approximate SVP/SIVP for polynomial $\gamma$) have resisted decades of algorithmic attack across a wide range of instances (there is no known "hard-on-average, easy-in-the-worst-case" gap that would let you break random instances while worst-case instances stay safe), this gives qualitatively stronger confidence than a bare average-case conjecture: breaking a random LWE instance would be a breakthrough in the general algorithmic theory of lattices, not merely bad luck for that key.</p>
+
+<p>It is worth being precise about what the reduction does <em>not</em> give: it does not make lattice problems provably hard (SVP could still turn out to be easy — there is no proof $\text{P}\ne\text{NP}$ analogue here), and it does not directly bound the concrete, numerical hardness at any specific dimension $n$ — that is an empirical, cryptanalytic question (Section 3.3, Chapter 14). What it gives is a <em>structural</em> guarantee: security does not depend on the specific random choice of keys, only on the hardness of the underlying worst-case geometric problem, which is the strongest form of "these aren't secretly weak instances" argument cryptography currently has.</p>
+
+<h4>3.5 Post-Quantum Security</h4>
+
+<p>The urgency behind lattice cryptography's adoption (NIST PQC standardization: Kyber/ML-KEM, Dilithium/ML-DSA, both LWE/module-LWE-based) stems from Shor's algorithm, which solves the integer factorization and discrete logarithm problems (including elliptic curve discrete log) in polynomial time on a quantum computer, breaking RSA, Diffie–Hellman, and ECC outright once a sufficiently large fault-tolerant quantum computer exists.</p>
+
+<div class="theorem">
+<div class="box-title">Fact 3.1 (No known quantum speedup for lattice problems beyond Grover-type)</div>
+<p>No known quantum algorithm solves SVP, CVP, or LWE in subexponential time. The best known quantum algorithms for the lattice-reduction subroutines underlying SVP oracles (quantum sieving) achieve at most a polynomial (Grover-type, roughly quadratic, $2^{\beta/2}$ vs. $2^{\beta}$ in the sieving exponent) speedup over the best classical sieving algorithms for block size $\beta$ — a far cry from the exponential-to-polynomial collapse Shor's algorithm achieves for factoring/discrete-log.</p>
+</div>
+
+<p>This is the core of the post-quantum argument: lattice problems have no known algebraic structure (no hidden abelian subgroup structure to exploit, unlike factoring and discrete log, both instances of the Hidden Subgroup Problem that Shor's algorithm solves) that a quantum Fourier transform can exploit. The Gaussian-sampling quantum step used <em>within</em> Regev's original hardness reduction (Chapter 4) is sometimes confused for a quantum attack — it is not; it is machinery used in the security <em>proof</em>, not an algorithm available to an attacker. Consequently, even a full-scale fault-tolerant quantum computer is believed to only afford an attacker the same roughly-quadratic Grover-style speedup available against generic search problems, which parameter selection accounts for by doubling the target classical bit-security margin (Chapter 14) — not by abandoning the approach, as was necessary for RSA and ECC.</p>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 3.1 — LLL Reduction and 2D Lattice Visualization</div>
+<p>An LLL implementation (size reduction + Lovász condition, $\delta=3/4$) applied to random 2D bases, printing before/after basis vectors and norms so the shortening effect is visible numerically. (A full graphical plot is easy to add with matplotlib; here we print coordinates and norms so the artifact has no plotting dependency.)</p>
+<pre><code>"""
+lll.py — Lenstra-Lenstra-Lovasz lattice basis reduction, from scratch,
+demonstrated on 2D lattices (easy to eyeball / plot).
+"""
+
+from typing import List
+import math
+
+
+Vector = List[float]
+
+
+def dot(u: Vector, v: Vector) -> float:
+    return sum(a * b for a, b in zip(u, v))
+
+
+def norm(v: Vector) -> float:
+    return math.sqrt(dot(v, v))
+
+
+def gram_schmidt(B: List[Vector]) -> List[Vector]:
+    """Gram-Schmidt orthogonalization (NOT normalized), used internally by LLL."""
+    B_star: List[Vector] = []
+    for b_i in B:
+        proj = list(b_i)
+        for b_j_star in B_star:
+            mu = dot(b_i, b_j_star) / dot(b_j_star, b_j_star)
+            proj = [p - mu * q for p, q in zip(proj, b_j_star)]
+        B_star.append(proj)
+    return B_star
+
+
+def lll_reduce(B: List[Vector], delta: float = 0.75) -> List[Vector]:
+    """Classic LLL reduction. B is a list of n linearly independent vectors
+    (basis rows). Returns a delta-LLL-reduced basis of the same lattice."""
+    B = [list(b) for b in B]
+    n = len(B)
+
+    def mu(i: int, j: int, B_star: List[Vector]) -> float:
+        return dot(B[i], B_star[j]) / dot(B_star[j], B_star[j])
+
+    k = 1
+    while k < n:
+        B_star = gram_schmidt(B)
+
+        # size-reduce b_k against b_{k-1}, ..., b_0
+        for j in range(k - 1, -1, -1):
+            m = mu(k, j, B_star)
+            if abs(m) > 0.5:
+                r = round(m)
+                B[k] = [B[k][t] - r * B[j][t] for t in range(len(B[k]))]
+                B_star = gram_schmidt(B)
+
+        m_k = mu(k, k - 1, B_star)
+        lhs = dot(B_star[k], B_star[k])
+        rhs = (delta - m_k ** 2) * dot(B_star[k - 1], B_star[k - 1])
+
+        if lhs >= rhs:
+            k += 1
+        else:
+            B[k], B[k - 1] = B[k - 1], B[k]
+            k = max(k - 1, 1)
+
+    return B
+
+
+def print_basis(label: str, B: List[Vector]) -> None:
+    print(f"{label}:")
+    for b in B:
+        print(f"   {tuple(round(x, 3) for x in b)}   |b| = {norm(b):.4f}")
+    print(f"   det (2D) = {abs(B[0][0]*B[1][1] - B[0][1]*B[1][0]):.4f}")
+
+
+if __name__ == "__main__":
+    # A deliberately "bad" 2D basis: long, nearly parallel vectors generating
+    # a lattice whose true shortest vector is much shorter than either
+    # original basis vector.
+    bad_basis = [
+        [1731.0, 512.0],
+        [1264.0, 375.0],
+    ]
+
+    print_basis("Original (bad) basis", bad_basis)
+    reduced = lll_reduce(bad_basis, delta=0.75)
+    print_basis("LLL-reduced basis", reduced)
+
+    # Sanity check: determinant (covolume) is preserved by LLL (unimodular
+    # basis changes never change lattice volume).
+    det_before = abs(bad_basis[0][0]*bad_basis[1][1] - bad_basis[0][1]*bad_basis[1][0])
+    det_after = abs(reduced[0][0]*reduced[1][1] - reduced[0][1]*reduced[1][0])
+    print(f"\ndeterminant preserved: {math.isclose(det_before, det_after, rel_tol=1e-6)}")
+</code></pre>
+<p>On this input, LLL collapses two nearly-parallel vectors of length $\approx 1805$ and $\approx 1318$ into a reduced basis with both vectors of length $O(10)$ generating the identical lattice (identical determinant) — a concrete, visualizable instance of Theorem 3.2's exponential-factor guarantee doing dramatically better in practice than its worst-case bound suggests, which is itself a recurring and important caveat: worst-case approximation guarantees for LLL/BKZ are usually far more pessimistic than typical-case behavior, which is exactly why concrete security estimation (Chapter 14) relies on simulated/experimental cost models rather than the raw theorems.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="kt-title">Key Takeaways</div>
+<ul>
+<li>A lattice has infinitely many bases related by unimodular transformations; geometric invariants ($\det\mathcal{L}$, successive minima $\lambda_i$) are basis-independent, but the computational difficulty of finding short vectors depends entirely on which basis you are given. <span class="tag tag-certain">Certain</span></li>
+<li>SVP, CVP, SIVP and their approximate/decision variants (GapSVP$_\gamma$) are the base hard problems; cryptography reduces to their polynomial-approximation-factor regime, which is conjectured (and, so far, empirically observed) to remain hard. <span class="tag tag-certain">Certain</span></li>
+<li>LLL is polynomial-time but only guarantees an exponential ($2^{O(n)}$) approximation factor; BKZ trades exponential-in-block-size runtime for better approximation, and FHE parameters are chosen so the required BKZ block size makes the attack cost exceed the target security level. <span class="tag tag-certain">Certain</span></li>
+<li>Ajtai's (and later Regev's) worst-case-to-average-case reductions are the structural reason lattice cryptography is trusted more than assumptions resting purely on average-case conjecture: breaking random instances would imply an algorithm for the worst case. <span class="tag tag-certain">Certain</span></li>
+<li>No known quantum algorithm solves lattice problems faster than a roughly-quadratic (Grover-type) speedup over the best classical algorithms, in contrast to Shor's exponential speedup against factoring/discrete-log — the basis of lattice cryptography's post-quantum status. <span class="tag tag-likely">Likely</span></li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch4">
+<div class="chapter-header"><div class="ch-label">Chapter 4</div><h3>Learning With Errors (LWE)</h3></div>
+
+<div class="learning-objectives">
+<div class="lo-title">Learning Objectives</div>
+<ul>
+<li>State the LWE problem precisely, in both search and decision form, and explain their equivalence.</li>
+<li>Understand, at the level of the theorem statement and its significance, Regev's quantum reduction from GapSVP to LWE.</li>
+<li>Build an encryption scheme directly from LWE: encrypt a bit, decrypt by rounding, and understand exactly why and how it can fail.</li>
+<li>Reason quantitatively about the parameter relationships between dimension $n$, modulus $q$, noise width $\sigma$, and error rate $\alpha = \sigma/q$.</li>
+<li>Implement LWE encryption and decryption from scratch, including a deliberate parameter misconfiguration that causes decryption failure, to internalize the correctness/security tension.</li>
+</ul>
+</div>
+
+<p>Learning With Errors, introduced by Oded Regev in 2005, is the single problem from which the overwhelming majority of modern lattice-based cryptography — including every FHE scheme discussed in this book — is built. LWE takes the lattice hardness developed in Chapter 3 and repackages it as an extremely simple-looking, extremely versatile algebraic problem: solve a noisy linear system. This chapter defines the problem precisely, explains why it is hard, and builds the smallest possible encryption scheme on top of it.</p>
+
+<h4>4.1 The LWE Problem</h4>
+
+<div class="definition">
+<div class="box-title">Definition 4.1 (LWE distribution)</div>
+<p>Fix dimension $n$, modulus $q$, and an error distribution $\chi$ over $\mathbb{Z}$ (in practice, $\chi = D_{\mathbb{Z},\sigma}$, the discrete Gaussian of Chapter 1). Fix a secret $s \in \mathbb{Z}_q^n$. The LWE distribution $A_{s,\chi}$ over $\mathbb{Z}_q^n \times \mathbb{Z}_q$ is sampled by drawing $a \leftarrow \mathbb{Z}_q^n$ uniformly at random, drawing $e \leftarrow \chi$, and outputting
+$$
+(a,\; b) \;=\; (a,\; \langle a, s\rangle + e \bmod q).
+$$</p>
+</div>
+
+<div class="definition">
+<div class="box-title">Definition 4.2 (Search-LWE and Decision-LWE)</div>
+<p><strong>Search-LWE$_{n,q,\chi}$:</strong> given $m$ independent samples $(a_i, b_i) \sim A_{s,\chi}$ for a fixed but unknown $s$, recover $s$.</p>
+<p><strong>Decision-LWE$_{n,q,\chi}$:</strong> given $m$ samples, each independently either drawn from $A_{s,\chi}$ (for a single fixed random $s$, shared across all samples) or drawn uniformly at random from $\mathbb{Z}_q^n\times\mathbb{Z}_q$, distinguish which case holds with non-negligible advantage over $1/2$.</p>
+</div>
+
+<p>Written out as a linear system, $m$ samples give $b = As + e \pmod q$ where $A \in \mathbb{Z}_q^{m\times n}$ stacks the $a_i$ as rows, $b \in \mathbb{Z}_q^m$, and $e \in \mathbb{Z}_q^m$ is a short error vector. Without the error term $e$, this is trivial linear algebra — Gaussian elimination recovers $s$ from any $n$ linearly independent equations in $O(n^3)$ time. The entire difficulty, and the entire cryptographic value, of LWE comes from the error term $e$: it is small in magnitude but nonzero, so standard linear-algebraic techniques (which are exact) do not apply, while the natural "just search over all $2^{n\log q}$ or so candidate errors" approach is exponential.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 4.1 (Search-Decision equivalence, Regev)</div>
+<p>For $q$ prime and polynomially bounded, Decision-LWE$_{n,q,\chi}$ and Search-LWE$_{n,q,\chi}$ are polynomial-time equivalent: an efficient algorithm for one yields an efficient algorithm for the other (with polynomial overhead in the number of oracle calls).</p>
+</div>
+
+<p><strong>Why search reduces to decision (the more instructive direction).</strong> Suppose we have a Decision-LWE oracle. To recover $s = (s_1,\dots,s_n)$, recover it one coordinate at a time. To test guesses for $s_1$: given samples $(a_i, b_i)$, for a guessed value $g$, transform each sample to $(a_i, b_i - g\cdot a_{i,1})$ and additionally "rerandomize" the first coordinate of $a_i$ (replace $a_{i,1}$ with a fresh uniform value, adjusting $b_i$ consistently) — if $g = s_1$, the transformed samples remain valid LWE samples with the first coordinate of the secret effectively zeroed out and are indistinguishable from genuine LWE; if $g \ne s_1$, the transformed samples are (information-theoretically close to) uniformly random. Feeding these transformed samples to the Decision oracle for each of the $q$ candidate values of $g$ identifies $s_1$ (whichever guess makes the oracle report "LWE-like" rather than "uniform"); repeat for each coordinate. This costs $O(nq)$ oracle calls — polynomial when $q$ is polynomial in $n$, which is exactly the FHE parameter regime.</p>
+
+<h4>4.2 Regev's Worst-Case Reduction</h4>
+
+<p>Definition and search-decision equivalence alone say nothing about <em>why</em> LWE should be hard. That comes from a reduction to the worst-case lattice problems of Chapter 3.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 4.2 (Regev, 2005 — informal statement)</div>
+<p>Let $n$ be the LWE dimension, $q = q(n)$ a modulus (poly-bounded, or in the original statement, possibly a small prime), and let $\chi$ be a discrete Gaussian of parameter $\alpha q$ for a suitable $\alpha = \alpha(n) \in (0,1)$ with $\alpha q > 2\sqrt n$. If there exists an efficient algorithm that solves Decision-LWE$_{n,q,\chi}$ (with a random secret and non-negligible advantage), then there exists an efficient <em>quantum</em> algorithm that solves GapSVP$_{\gamma}$ and SIVP$_\gamma$ on <em>every</em> $n$-dimensional lattice, for approximation factor $\gamma = \tilde O(n/\alpha)$.</p>
+</div>
+
+<p>Contrapositively — the direction that actually gives us confidence — this says: if worst-case GapSVP$_\gamma$/SIVP$_\gamma$ is hard for quantum computers at approximation factor $\tilde O(n/\alpha)$, then LWE with these parameters is hard for quantum (and hence also classical) adversaries. The reduction proceeds, at a high level, by using a hypothetical LWE-solving oracle to build a quantum algorithm that solves the "Bounded Distance Decoding" (BDD) problem — a CVP variant where the target is promised to be unusually close to the lattice — which classically reduces to SIVP/GapSVP via known techniques; the quantum step specifically is used to construct, from an efficient BDD/LWE solver, an efficient quantum algorithm for a lattice problem, via a clever use of the quantum Fourier transform over a torus and Gaussian-state preparation (a technique with no known classical analogue, which is why the original reduction is inherently quantum). Subsequent work (Peikert, and later fully classical variants for related problems) has produced <em>classical</em> reductions for related parameter regimes, but the tightest, most general reduction to plain GapSVP/SIVP remains Regev's quantum one.</p>
+
+<div class="warning-box">
+<div class="box-title">A Point Worth Being Careful About</div>
+<p>The reduction is a worst-case-to-average-case statement about the <em>problem family</em> LWE$_{n,q,\chi}$, parameterized by $(n,q,\alpha)$ — it is not a black-box guarantee about any specific choice of $(n,q,\alpha)$ being "safe," nor does it say anything about the concrete numerical cost of breaking a specific instance. That translation — "GapSVP$_\gamma$ is hard, therefore concretely, at $n=4096$ and this $q$, the best attack costs $2^{128}$ operations" — is exactly the empirical, cryptanalysis-driven parameter-selection exercise covered in Chapter 14, and it is separate from (though motivated by) the asymptotic reduction here.</p>
+</div>
+
+<h4>4.3 An Encryption Scheme from LWE</h4>
+
+<p>LWE's cryptographic payoff is that it yields, almost immediately, a public-key encryption scheme with a strikingly simple structure — this is essentially Regev's original scheme, and it is the direct ancestor of every LWE/RLWE-based FHE construction in this book.</p>
+
+<div class="definition">
+<div class="box-title">Definition 4.3 (Regev encryption, single bit)</div>
+<p>Parameters: dimension $n$, modulus $q$, error distribution $\chi$.</p>
+<p><strong>KeyGen:</strong> sample $s \leftarrow \mathbb{Z}_q^n$ uniformly. This is the secret key.</p>
+<p><strong>Encrypt(bit $m \in \{0,1\}$):</strong> sample $a \leftarrow \mathbb{Z}_q^n$ uniformly, $e \leftarrow \chi$, and output the ciphertext
+$$
+(a,\; b) = \Big(a,\; \langle a, s\rangle + e + m\left\lfloor \tfrac{q}{2}\right\rfloor \bmod q\Big).
+$$</p>
+<p><strong>Decrypt$(a,b)$:</strong> compute $b - \langle a, s \rangle \bmod q$, interpreted as an integer in $(-q/2, q/2]$; output $0$ if this value is closer to $0$ than to $\lfloor q/2\rfloor$, and $1$ otherwise (equivalently, round $\dfrac{2}{q}\big(b - \langle a,s\rangle \bmod q\big)$ to the nearest integer mod 2).</p>
+</div>
+
+<p><strong>Correctness.</strong> $b - \langle a, s\rangle = e + m\lfloor q/2\rfloor \pmod q$. If $m=0$ this is just $e$, small; if $m=1$ it is $\lfloor q/2\rfloor + e$, close to the "opposite pole" of $\mathbb{Z}_q$. Decryption succeeds exactly when $|e| < q/4$ — as long as the noise magnitude does not exceed a quarter of the modulus, the rounding step correctly identifies which pole the value is closer to.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 4.3 (Correctness condition)</div>
+<p>Decrypt$($Encrypt$(m)) = m$ except with probability $\Pr_{e\sim\chi}[|e| \ge q/4]$. By the Gaussian tail bound (Theorem 1.4), if $\chi = D_{\mathbb{Z},\sigma}$ with $\sigma \ll q$, this failure probability is negligible whenever $q/(4\sigma)$ is superlogarithmic in the security parameter — concretely, choosing $q \ge 8\sigma \cdot \sqrt{2\lambda\ln 2}$ or so gives failure probability below $2^{-\lambda}$.</p>
+</div>
+
+<p><strong>Semantic security.</strong> The ciphertext $(a,b)$ is, under Decision-LWE, computationally indistinguishable from a uniformly random pair in $\mathbb{Z}_q^n\times\mathbb{Z}_q$ — the entire ciphertext looks like noise to anyone without $s$. Since a uniform pair carries (statistically) zero information about $m$, an adversary without the secret key cannot do better than guessing, which is exactly the IND-CPA security definition. Formally, the reduction is immediate from Definition 4.2: a distinguisher between "encryption of $0$" and "encryption of $1$" for random $m$ is (after noting that shifting a uniform distribution by a fixed constant $\lfloor q/2 \rfloor$ keeps it uniform) precisely a Decision-LWE distinguisher.</p>
+
+<h4>4.4 Parameter Relationships</h4>
+
+<p>Three quantities govern every LWE instantiation, and they trade off against each other in a specific, quantifiable way.</p>
+
+<table>
+<tr><th>Parameter</th><th>Role</th><th>Effect of increasing it</th></tr>
+<tr><td>$n$ (dimension)</td><td>Lattice rank / secret length</td><td>Harder lattice problem (larger search space), more security; larger keys/ciphertexts, slower</td></tr>
+<tr><td>$q$ (modulus)</td><td>Size of the ambient ring $\mathbb{Z}_q$</td><td>Larger $q$ (fixed $n,\sigma$) makes the lattice "less dense" relative to the noise — weakens security at fixed $n$; but gives more room for noise growth (correctness) in homomorphic schemes</td></tr>
+<tr><td>$\sigma$ (noise width)</td><td>Standard deviation of $\chi$</td><td>Larger $\sigma$ strengthens security (harder to distinguish from uniform / harder BDD instance) but eats correctness budget faster</td></tr>
+</table>
+
+<div class="definition">
+<div class="box-title">Definition 4.4 (Error rate $\alpha$)</div>
+<p>The error rate is $\alpha = \sigma / q$, the noise width expressed as a fraction of the modulus. It is $\alpha$, not $\sigma$ alone, that appears in Regev's reduction (Theorem 4.2): the reduction targets GapSVP$_\gamma$ with $\gamma = \tilde O(n/\alpha)$. Smaller $\alpha$ (relatively tighter noise) means the reduction is only to a <em>larger</em> (easier) $\gamma$ lattice problem — weaker security evidence for fixed $n$ — which is why, informally, "more relative noise is more secure" is the correct qualitative intuition, subject to the correctness constraint of Theorem 4.3 bounding how large $\sigma$ (hence $\alpha q$) can be while decryption still works.</p>
+</div>
+
+<p>The practical design loop, used throughout this book's later chapters on parameter selection, is: fix a target security level $\lambda$ (e.g. $128$ bits); use a cost model (BKZ block-size estimate, Chapter 3, via the Lattice Estimator) to determine the minimum $n$ for which the best known attack on LWE$_{n,q,\sigma}$ costs at least $2^{\lambda}$; separately, ensure $q$ is large enough relative to $\sigma$ and the number of homomorphic operations planned (which multiplies effective noise, Chapter 2's expansion factor) that decryption correctness holds with overwhelming probability. These two constraints — security wants $q$ small relative to $n$ (or $\sigma$ large relative to $q$), correctness wants $q$ large relative to accumulated noise — are in direct tension, and the entire art of "leveled" FHE parameter selection (Chapters 7–10, 14) is managing that tension across many sequential multiplications.</p>
+
+<div class="example">
+<div class="box-title">Example 4.1 (Toy-scale numbers, for intuition only — not secure)</div>
+<p>Take $n = 4$, $q = 97$, $\sigma \approx 3$ (so $\alpha = \sigma/q \approx 0.031$). Secret $s = (2, 51, 76, 13)$. Sample $a = (34, 8, 91, 5)$, $e = 2$. Then $\langle a,s\rangle = 34\cdot2 + 8\cdot51 + 91\cdot76 + 5\cdot13 = 68+408+6916+65 = 7457 \equiv 7457 \bmod 97 = 7457 - 76\cdot97 = 7457-7372=85$. So $b = 85 + 2 = 87 \bmod 97$. Encrypting $m=1$: $b' = 87 + \lfloor 97/2\rfloor = 87+48=135\equiv 38 \bmod 97$. Decrypting: $38 - 85 = -47 \equiv 50 \pmod {97}$, which as a signed residue is $50$ — closer to $48\;(\approx q/2)$ than to $0$, so decryption correctly outputs $1$. At real parameters ($n\sim 700$–$1024$ for plain LWE-based encryption, $\sigma$ chosen per the Lattice Estimator), the same arithmetic holds with astronomically larger numbers and negligible failure probability.</p>
+</div>
+
+<h4>4.5 Variants and a Concrete Estimation Walkthrough</h4>
+
+<p>Two extensions of the basic LWE framework recur throughout the rest of the book and are worth flagging now, before they reappear as load-bearing tools rather than curiosities.</p>
+
+<div class="definition">
+<div class="box-title">Definition 4.5 (Learning With Rounding, LWR)</div>
+<p>Fix moduli $q > p$. The LWR sample is $(a, b) = \big(a,\; \lfloor (p/q)\cdot\langle a,s\rangle \rceil \bmod p\big)$ — <em>deterministic rounding</em> down to a smaller modulus $p$ replaces the explicit random error term $e$ entirely. The rounding operation itself introduces a small, deterministic "error," and for suitable $p \ll q$, LWR is (under mild conditions, and for bounded numbers of samples) as hard as LWE. LWR trades explicit randomness (no error sampler needed at encryption time — a meaningful implementation simplification and a way to avoid certain randomness-source side channels) for a harder-to-analyze, non-Gaussian implicit error; it appears prominently in Saber and other NIST PQC round candidates, and analogous deterministic-rounding ideas appear in FHE modulus-switching (Chapter 7).</p>
+</div>
+
+<p>Second, it is worth being explicit about what "128-bit security" concretely means and how it is checked, since every scheme in this book will eventually cite a target like this. The exercise is: given candidate parameters $(n, q, \sigma)$, estimate the cost of the best known attack, and confirm it exceeds $2^{128}$ classical (or, doubling the exponent per the Grover-type margin of Chapter 3, an appropriately adjusted quantum) operations.</p>
+
+<div class="example">
+<div class="box-title">Example 4.2 (A concrete security-estimation sketch)</div>
+<p>Consider a primal lattice attack against LWE$_{n,q,\sigma}$: an adversary builds a lattice $\mathcal{L}$ from the rows of $A$ together with $q$ times the identity matrix (the exact embedding construction varies by attack variant) of dimension roughly $2n$ (for $m\approx n$ samples used), containing a vector related to $(e, s)$ of Euclidean norm roughly $\sigma\sqrt{n}$; the attacker runs BKZ with block size $\beta$ and succeeds once BKZ's expected shortest-vector output length (via the root-Hermite-factor heuristic of Chapter 3, Theorem 3.3) drops below that target norm. Solving for the minimal $\beta$ that achieves this, then plugging into a sieving cost model ($\approx 2^{0.292\beta}$ classical operations, a widely used estimate from the literature on lattice sieving), gives the attack's concrete bit-cost. For illustration only — not a substitute for running an actual estimator — typical "128-bit secure" LWE-based schemes at $q \approx 2^{50}$ require $n$ in the range of several hundred to around a thousand, and FHE schemes, which need much larger $q$ (hundreds to thousands of bits, to absorb multiplicative noise growth across many levels, Chapters 7-10) correspondingly need larger $n$ — commonly $n = N \in \{2^{12}, \dots, 2^{16}\}$ for the ring dimension once RLWE (Chapter 5) is in play — to keep $\log_2 q / n$ within the regime BKZ cannot penetrate at reasonable block sizes. This is exactly the computation the community-maintained Lattice Estimator automates, tracking multiple attack variants (primal, dual, hybrid meet-in-the-middle for sparse/ternary secrets) and updating its cost models as cryptanalysis improves.</p>
+</div>
+
+<div class="warning-box">
+<div class="box-title">Do Not Hand-Roll Security Estimates</div>
+<p>Example 4.2 is a sketch meant to build intuition for the shape of the estimation problem, not a formula to plug numbers into for a real deployment. Concrete lattice-attack cost estimation has many subtleties — the sieving constant, the accuracy of the geometric series assumption for the specific $\beta$ regime, whether the secret is ternary/sparse (enabling faster hybrid attacks), whether multiple LWE samples with correlated structure are available to the attacker — that are actively revised as cryptanalysis research progresses. Every scheme discussed in this book should be parameterized using the current version of a maintained estimator, not a static table copied from an old paper; Chapter 14 returns to this in full.</p>
+</div>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 4.1 — LWE Encryption/Decryption From Scratch, With a Deliberate Failure Demo</div>
+<p>A minimal, from-scratch LWE bit-encryption implementation, plus a deliberate demonstration of decryption failure when noise is pushed past the $q/4$ correctness threshold — making the correctness/security tension of Section 4.4 concrete rather than abstract.</p>
+<pre><code>"""
+lwe_toy.py — textbook LWE bit encryption, built from scratch for teaching.
+NOT constant-time, NOT secure at these toy parameters. Illustrates:
+  1. Correct encrypt/decrypt round-tripping.
+  2. Deliberate failure when noise exceeds the q/4 correctness bound.
+"""
+
+import random
+from typing import List, Tuple
+
+Vector = List[int]
+
+
+def sample_uniform_vector(n: int, q: int) -> Vector:
+    return [random.randrange(q) for _ in range(n)]
+
+
+def sample_discrete_gaussian(sigma: float) -> int:
+    """Very simple approximate discrete Gaussian sampler: round a Box-Muller
+    normal sample. Good enough for demonstration; production code should use
+    a proper CDT/rejection sampler with side-channel resistance."""
+    return round(random.gauss(0, sigma))
+
+
+def dot_mod(a: Vector, b: Vector, q: int) -> int:
+    return sum(x * y for x, y in zip(a, b)) % q
+
+
+def keygen(n: int, q: int) -> Vector:
+    return sample_uniform_vector(n, q)
+
+
+def encrypt(bit: int, s: Vector, q: int, sigma: float) -> Tuple[Vector, int]:
+    n = len(s)
+    a = sample_uniform_vector(n, q)
+    e = sample_discrete_gaussian(sigma)
+    b = (dot_mod(a, s, q) + e + bit * (q // 2)) % q
+    return a, b
+
+
+def decrypt(ct: Tuple[Vector, int], s: Vector, q: int) -> int:
+    a, b = ct
+    noisy = (b - dot_mod(a, s, q)) % q
+    # map to signed representative in (-q/2, q/2]
+    if noisy > q // 2:
+        noisy -= q
+    # round to nearest multiple of q/2, then take that multiple mod 2
+    return 1 if abs(noisy) > q // 4 else 0
+
+
+def run_trials(n: int, q: int, sigma: float, trials: int = 200) -> float:
+    s = keygen(n, q)
+    failures = 0
+    for _ in range(trials):
+        bit = random.randrange(2)
+        ct = encrypt(bit, s, q, sigma)
+        recovered = decrypt(ct, s, q)
+        if recovered != bit:
+            failures += 1
+    return failures / trials
+
+
+if __name__ == "__main__":
+    random.seed(0)
+
+    n, q = 64, 3329          # LWE dimension and modulus (toy scale, Kyber's q)
+
+    print("=== Well-chosen noise: sigma small relative to q ===")
+    sigma_safe = 3.2
+    fail_rate = run_trials(n, q, sigma_safe, trials=500)
+    print(f"n={n}, q={q}, sigma={sigma_safe}  ->  failure rate = {fail_rate:.4%}")
+
+    print("\n=== Deliberately broken: sigma pushed past the q/4 threshold ===")
+    # Correctness requires |e| < q/4 with high probability. Push sigma so
+    # that q/4 is only about 1.5 standard deviations out -- roughly 13% of
+    # samples will exceed it (single-tail normal beyond 1.5 sigma), causing
+    # frequent decryption failures despite everything else being unchanged.
+    sigma_unsafe = (q / 4) / 1.5
+    fail_rate_bad = run_trials(n, q, sigma_unsafe, trials=500)
+    print(f"n={n}, q={q}, sigma={sigma_unsafe:.1f}  ->  failure rate = {fail_rate_bad:.4%}")
+    print("\nThis is Theorem 4.3 made concrete: the SAME scheme, the SAME key")
+    print("generation and encryption code, fails routinely once noise growth")
+    print("(here, injected directly; in real schemes, accumulated by homomorphic")
+    print("operations -- Chapters 5-10) is not kept below the q/4 correctness bound.")
+</code></pre>
+<p>Run with safe parameters, failure rate is $0\%$ over hundreds of trials; with $\sigma$ pushed to roughly $q/6$, failures appear routinely — the exact same mechanism (noise creeping past $q/4$) that motivates modulus chains, rescaling, and bootstrapping in every scheme covered in Part II.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="kt-title">Key Takeaways</div>
+<ul>
+<li>LWE asks to solve (or distinguish from random) a linear system $b = As+e \bmod q$ perturbed by small error $e$; the error is what makes the problem hard despite the underlying linear algebra being trivial. <span class="tag tag-certain">Certain</span></li>
+<li>Search-LWE and Decision-LWE are polynomial-time equivalent (for polynomially bounded $q$), via a coordinate-by-coordinate hybrid reduction. <span class="tag tag-certain">Certain</span></li>
+<li>Regev's reduction shows Decision-LWE is at least as hard as worst-case GapSVP/SIVP at approximation factor $\tilde O(n/\alpha)$ via a quantum algorithm — the foundational hardness evidence for essentially all schemes in this book. <span class="tag tag-certain">Certain</span></li>
+<li>Regev encryption — encrypt by adding $e + m\lfloor q/2\rfloor$, decrypt by rounding — is the direct ancestor of every FHE scheme's encryption structure; decryption is correct exactly while $|e| < q/4$. <span class="tag tag-certain">Certain</span></li>
+<li>Security wants noise large relative to $q$ (larger $\alpha$); correctness wants noise small relative to $q$. Managing this tension across many homomorphic operations is the central engineering problem of Part II. <span class="tag tag-certain">Certain</span></li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch5">
+<div class="chapter-header"><div class="ch-label">Chapter 5</div><h3>Ring-LWE and the Path to Practicality</h3></div>
+
+<div class="learning-objectives">
+<div class="lo-title">Learning Objectives</div>
+<ul>
+<li>State the Ring-LWE (RLWE) problem and explain precisely how it compresses an $n$-dimensional LWE instance into a single ring element while preserving (and amplifying) computational capacity.</li>
+<li>Present the LPR (Lyubashevsky-Peikert-Regev) encryption scheme built on RLWE.</li>
+<li>Weigh the ring structure's two-sided consequence: NTT-driven efficiency versus a larger attack surface for structure-exploiting attacks (subfield/subring attacks).</li>
+<li>Understand, at the mechanical level, how homomorphic addition and multiplication fall directly out of ring arithmetic, and why multiplication — unlike addition — causes noise growth that compounds with each successive operation.</li>
+<li>Implement RLWE encryption with homomorphic add and multiply, and use it to evaluate $f(x) = x^2 + x$ entirely under encryption.</li>
+</ul>
+</div>
+
+<p>Chapter 4 built LWE encryption from an $n$-dimensional vector secret. It works, but it is expensive: a single ciphertext bit costs $O(n)$ words of storage ($a \in \mathbb{Z}_q^n$ plus one scalar $b$), and encrypting $\ell$ bits independently costs $O(n\ell)$ storage and, more importantly, gives no way to combine those $\ell$ ciphertexts' worth of computation into shared, amortized work. Ring-LWE — introduced by Lyubashevsky, Peikert, and Regev in 2010 — replaces the vector secret with a single ring element, using exactly the ring machinery of Chapter 2. The payoff is not merely smaller keys; it is the entire practical viability of FHE.</p>
+
+<h4>5.1 The Ring-LWE Problem</h4>
+
+<div class="definition">
+<div class="box-title">Definition 5.1 (Ring-LWE distribution)</div>
+<p>Let $R = \mathbb{Z}[X]/(X^N+1)$ (Chapter 2) and $R_q = R/qR$. Fix a secret $s \in R_q$ (in practice sampled from a narrow/ternary/error-like distribution rather than uniformly, in the "Hermite normal form" variant used by essentially every FHE scheme — see the remark below). The RLWE distribution $A_{s,\chi}$ over $R_q \times R_q$ is sampled by drawing $a \leftarrow R_q$ uniformly, $e \leftarrow \chi$ (an error distribution over $R$, typically each coefficient an independent discrete Gaussian — this is the coefficient embedding view; the canonical-embedding view of Chapter 2 gives an equivalent, geometrically cleaner formulation), and outputting
+$$
+(a,\; b) = (a,\; a\cdot s + e \bmod q).
+$$</p>
+</div>
+
+<p>Compare directly against Definition 4.1: the inner product $\langle a,s\rangle$ over $\mathbb{Z}_q^n$ has become a ring product $a\cdot s$ over $R_q$. This single substitution is where everything changes.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 5.1 (RLWE compresses $N$ LWE-like equations into one sample)</div>
+<p>A single RLWE sample $(a,b) \in R_q\times R_q$ encodes $N$ scalar equations. Writing $a, s, e, b$ as coefficient vectors in $\mathbb{Z}_q^N$, the ring product $a\cdot s \bmod (X^N+1)$ is, by the negacyclic convolution structure (Chapter 2, Definition 2.2), exactly $A_a s$ for a specific structured (negacyclic, hence not arbitrary) matrix $A_a \in \mathbb{Z}_q^{N\times N}$ built from the coefficients of $a$. So one RLWE sample is algebraically equivalent to $N$ LWE samples that all share the same error-free structured coefficient matrix — vastly more information per sample than $N$ independent LWE samples ($a$ alone, one ring element, generates the entire structured matrix), at the cost of those $N$ "rows" no longer being independent, uniformly random vectors.</p>
+</div>
+
+<p>The practical consequence: storing one RLWE public-key sample costs $O(N)$ ring-element coefficients (two length-$N$ vectors, $a$ and $b$) to protect a length-$N$ secret, versus $O(N^2)$ for the LWE analogue (an $N\times n$ matrix $A$ needed to reach comparable dimension/capacity) — an asymptotic factor of $N$ reduction in key and ciphertext size, and, because ring multiplication is $O(N\log N)$ via the NTT (Chapter 1) rather than $O(N^2)$ matrix-vector multiplication, a corresponding speedup in every operation performed on that ciphertext. This is the "$O(N)$ storage for $O(N)$ parallelism" headline: a single ring-element ciphertext simultaneously represents (via the CRT/canonical-embedding slot structure of Chapter 2) up to $N$ independent plaintext slots that can be operated on in parallel by a single ring operation — the SIMD batching that makes CKKS-based encrypted machine learning (Part IV) computationally feasible at all.</p>
+
+<div class="warning-box">
+<div class="box-title">Hermite Normal Form and Secret Distribution</div>
+<p>Nearly every deployed FHE scheme samples the secret $s$ from the <em>same</em> narrow error-like distribution as $e$ (ternary $\{-1,0,1\}^N$ or a discrete Gaussian), rather than uniformly from $R_q$ as in the textbook definition above — this is the "Hermite Normal Form" (HNF) variant. It is a deliberate efficiency/security trade: a small secret makes key-switching and relinearization (Chapter 7) cheaper and keeps noise growth more predictable, and it is supported by a hardness reduction (small-secret RLWE remains as hard as standard RLWE, under mild conditions, via a secret-re-randomization argument) — but it is a real, if well-studied, deviation from the "clean" theorem statement, and parameter estimators (Chapter 14) explicitly model the secret distribution rather than assuming uniformity.</p>
+</div>
+
+<h4>5.2 The LPR Encryption Scheme</h4>
+
+<div class="definition">
+<div class="box-title">Definition 5.2 (LPR / RLWE encryption)</div>
+<p>Parameters: ring dimension $N$, ciphertext modulus $q$, plaintext modulus $t \ll q$ (typically $t\mid q$ or handled via explicit scaling), error distribution $\chi$.</p>
+<p><strong>KeyGen:</strong> sample small secret $s \leftarrow \chi_{\text{key}}$ (e.g. ternary), sample $a \leftarrow R_q$ uniformly, $e\leftarrow \chi$; set public key $pk = (a,\, b= -a\cdot s + e \bmod q)$ (or $b = a\cdot s+e$, sign convention varies by presentation); secret key $sk = s$.</p>
+<p><strong>Encrypt(plaintext $m \in R_t$):</strong> sample small $u,e_1,e_2 \leftarrow \chi$; output ciphertext
+$$
+(c_0,\, c_1) = \Big(b\cdot u + e_1 + \left\lfloor\tfrac{q}{t}\right\rfloor m,\;\; a\cdot u + e_2\Big) \in R_q\times R_q.
+$$</p>
+<p><strong>Decrypt$(c_0,c_1)$:</strong> compute $c_0 + c_1\cdot s \bmod q$; scale down by $t/q$ and round to recover $m \in R_t$.</p>
+</div>
+
+<p><strong>Why decryption works.</strong> Substituting, $c_0 + c_1 s = bu+e_1+\lfloor q/t\rfloor m + asu+e_2 s = (b+as)u + e_1 + e_2 s + \lfloor q/t\rfloor m$. Since $b = -as+e$ (from KeyGen), $b+as = e$, so this collapses to $eu + e_1 + e_2 s + \lfloor q/t\rfloor m$ — a message term $\lfloor q/t\rfloor m$ plus an aggregate noise term $eu+e_1+e_2 s$ built entirely from small (secret-key-scale or fresh-encryption-scale) ring elements. Scaling by $t/q$ and rounding recovers $m$ exactly, provided the aggregate noise's coefficient (or canonical-embedding) norm stays below $q/(2t)$ — the ring-arithmetic analogue of Theorem 4.3's $q/4$ correctness bound, now governed by the expansion-factor bound of Chapter 2 (Theorem 2.1) rather than a scalar inequality.</p>
+
+<p>This is, structurally, the RLWE-encryption skeleton that BFV/BGV (Chapters 8–9) formalize with careful scale management, and that CKKS (Chapter 10) reuses with $m$ interpreted as an encoded approximate real/complex vector rather than an exact modular value.</p>
+
+<h4>5.3 Ring Structure: A Double-Edged Sword</h4>
+
+<p>Section 5.1 sold the ring structure as a pure efficiency win. It is not free. Replacing $N$ unstructured LWE samples with one structured RLWE sample means the hardness of RLWE rests not just on generic lattice hardness (Chapter 3) but specifically on the hardness of lattice problems over <em>ideal lattices</em> — lattices with the extra algebraic structure inherited from the ring $R$.</p>
+
+<div class="theorem">
+<div class="box-title">Theorem 5.2 (RLWE worst-case hardness, informal, Lyubashevsky-Peikert-Regev 2010 / Peikert 2016 for the search-decision and classical variants)</div>
+<p>Solving Decision-RLWE (for appropriate error distributions and moduli, over the ring of integers of a cyclotomic number field) is at least as hard as solving worst-case approximate SVP on <em>ideal lattices</em> in that ring — lattices that are additionally closed under multiplication by ring elements — for polynomial approximation factors.</p>
+</div>
+
+<p>The qualifier "on ideal lattices" is the crux of the entire trade-off. Ideal lattices are a strict, highly structured subclass of all lattices (Chapter 3): they carry a full ring-automorphism group action (the Galois group of Section 2.1.1), and this extra structure is exactly what the NTT and the $O(N\log N)$/$O(N)$ efficiency gains of Section 5.1 exploit. But structure that a defender can exploit for speed is, in principle, structure an attacker might exploit for cryptanalysis too — and this is not a purely theoretical worry.</p>
+
+<div class="warning-box">
+<div class="box-title">Subfield and Subring Attacks — What Is (and Isn't) Actually Known</div>
+<p>A line of cryptanalysis beginning around 2015–2017 (Cramer, Ducas, Peikert, Regev and others; Cheon-Han-Lee-Son-type analyses) identified attacks specific to RLWE instances with poorly chosen structure: RLWE over cyclotomic rings that have large subfields, combined with certain small-modulus or "spherical error over the wrong embedding" choices, admit an attack exploiting the subfield/subring structure that beats generic lattice reduction. Crucially, <strong>these attacks do not apply to the standard power-of-two cyclotomic rings, prime moduli, and Gaussian-in-the-canonical-embedding error distributions used by production FHE schemes</strong> (BFV, BGV, CKKS as deployed) — they target specific, narrower parameter regimes (e.g., rings with many intermediate subfields, or specific non-standard error distributions) that were never adopted in practice specifically because this line of research flagged them as risky. The broader, still-open research question is whether <em>any</em> exploitable gap exists between "hardness of RLWE" and "hardness of generic (non-ideal) LWE/lattice problems" at the parameter regimes actually deployed — as of this writing, no such gap is known for standard parameters, and the consensus position (reflected in NIST PQC's acceptance of module-LWE/RLWE-based schemes) is that the extra ring structure has not been shown to weaken security at deployed parameter scales. This remains an area of active research and should be treated as such rather than as settled.</p>
+</div>
+
+<p>The pragmatic response, adopted by essentially every deployed scheme, is <em>module-LWE</em> (MLWE): work over $R_q^k$ (vectors of $k$ ring elements) rather than a single ring element, for small $k$ (e.g. $k=2$ or $3$, as in Kyber/ML-KEM). This interpolates between plain LWE ($k=n$, ring dimension $1$) and plain RLWE ($k=1$), retaining most of the efficiency benefit of ring structure (each of the $k$ components still gets $O(N\log N)$ ring multiplication) while diluting the pure algebraic structure an attacker could target, and it has become the default choice for standardized key-encapsulation mechanisms. Most FHE schemes covered in this book still use plain RLWE (module-LWE FHE variants exist and are discussed briefly in Chapter 15), a choice justified by the absence of known attacks at the deployed parameter scale and the greater relative importance, in the FHE setting, of squeezing out every available efficiency gain.</p>
+
+<h4>5.4 From RLWE to Homomorphic Encryption</h4>
+
+<p>Everything built so far encrypts and decrypts; nothing yet <em>computes</em>. The final step — and the entire reason this book exists — is noticing that the LPR ciphertext structure (Definition 5.2) supports algebraic operations on ciphertexts that correspond to algebraic operations on the underlying plaintexts, without ever decrypting.</p>
+
+<h5>5.4.1 Homomorphic Addition</h5>
+
+<p>Given ciphertexts $ct_1 = (c_{0,1}, c_{1,1})$ encrypting $m_1$ and $ct_2=(c_{0,2},c_{1,2})$ encrypting $m_2$ (under the same key), define
+$$
+ct_{\text{add}} = (c_{0,1}+c_{0,2},\; c_{1,1}+c_{1,2}).
+$$
+Decrypting: $(c_{0,1}+c_{0,2}) + (c_{1,1}+c_{1,2})s = \big(c_{0,1}+c_{1,1}s\big) + \big(c_{0,2}+c_{1,2}s\big) = \big(\lfloor q/t\rfloor m_1 + \text{noise}_1\big)+\big(\lfloor q/t\rfloor m_2+\text{noise}_2\big) = \lfloor q/t\rfloor(m_1+m_2) + (\text{noise}_1+\text{noise}_2)$, which decrypts to $m_1+m_2 \bmod t$ as long as the summed noise still fits under the correctness bound. Homomorphic addition is just componentwise ciphertext addition — free of any structural complication — and noise grows only <em>additively</em> (noise$_1$ + noise$_2$, roughly doubling in magnitude, or growing as $\sqrt{2}\times$ in RMS terms for independent noise), which is cheap relative to the correctness budget.</p>
+
+<h5>5.4.2 Homomorphic Multiplication</h5>
+
+<p>Multiplication is where the real engineering begins. Naively multiplying $ct_1\cdot ct_2$ coefficientwise does not work — ciphertexts are pairs, and $(c_{0,1}+c_{1,1}s)(c_{0,2}+c_{1,2}s)$ expands to a <em>quadratic</em> polynomial in $s$:
+$$
+(c_{0,1}+c_{1,1}s)(c_{0,2}+c_{1,2}s) = c_{0,1}c_{0,2} + (c_{0,1}c_{1,2}+c_{1,1}c_{0,2})s + c_{1,1}c_{1,2}s^2.
+$$
+Defining $d_0 = c_{0,1}c_{0,2}$, $d_1 = c_{0,1}c_{1,2}+c_{1,1}c_{0,2}$, $d_2 = c_{1,1}c_{1,2}$ (all computable directly from the ciphertexts, no secret key needed — this is the crucial homomorphism property), the triple $(d_0,d_1,d_2)$ decrypts, under the extended decryption rule $d_0+d_1 s+d_2 s^2$, to (up to the scaling factor and noise) $m_1\cdot m_2$. The ciphertext has grown from a degree-1 to a degree-2 polynomial in $s$; a further multiplication would produce degree $3$, and so on — an exponential blowup in ciphertext size that would make more than a couple of multiplications entirely impractical. <em>Relinearization</em> (Chapter 7) is the technique — using a specially structured evaluation/relinearization key, itself built from RLWE samples of $s^2$ — that compresses the degree-2 ciphertext $(d_0,d_1,d_2)$ back down to a degree-1 ciphertext $(c_0',c_1')$ still encrypting $m_1m_2$ (with some additional noise from the relinearization process), restoring the invariant that every ciphertext, regardless of how many multiplications preceded it, is always a pair.</p>
+
+<p>Multiplicative noise growth is the crux of Chapters 7–12. Unlike addition, where noise terms simply add, multiplication produces cross terms like $c_{1,1}c_{0,2}s$ where a <em>ciphertext-scale</em> quantity ($c_{1,1}$, an element of $R_q$ with essentially uniform-looking coefficients, magnitude $\sim q$) multiplies against a small quantity — and by the ring expansion-factor bound (Chapter 2, Theorem 2.1), this product's coefficient norm can be as large as $N$ times the product of the input norms. Noise after multiplication grows <em>multiplicatively</em>, not additively, roughly by a factor tied to $q$ and $N$ rather than merely doubling — which is exactly why homomorphic multiplication, not addition, is the operation that determines how many sequential operations a leveled scheme can support before either running out of modulus budget or requiring bootstrapping (Chapter 12).</p>
+
+<h5>5.4.3 Counting the Multiplicative Depth a Fixed Modulus Can Absorb</h5>
+
+<p>It is worth making the noise-budget arithmetic concrete before it reappears formally in Chapter 7. Suppose fresh ciphertext noise has canonical-embedding norm roughly $B$, and each multiplication multiplies the noise norm by a factor of roughly $N\cdot B'$ where $B'$ bounds the norm of the ciphertext being multiplied against (itself $O(q)$ for a "fresh-scale" ciphertext, since a general ciphertext component is a near-uniform element of $R_q$). Then after $d$ sequential multiplications (a circuit of multiplicative depth $d$, in the sense used throughout Part II), noise has grown to roughly $B\cdot(NB')^{d}$ — <em>doubly exponential</em> in circuit depth relative to a linear noise budget, since each extra level of depth multiplies the noise bound by a roughly constant factor rather than adding a constant amount. Correctness requires this to stay below $q/(2t)$ (the ring-arithmetic analogue of Theorem 4.3's bound). Solving for $d$: the maximum supportable depth is roughly $d \approx \dfrac{\log(q/t) - \log B}{\log(NB')}$ — logarithmic in $q$, not polynomial. This is the single most consequential asymptotic fact governing scheme design in Part II: because raising $q$ only buys <em>logarithmically</em> more multiplicative depth, while raising $q$ (at fixed $n$) <em>weakens security</em> in direct proportion (Section 4.4's $\alpha=\sigma/q$ relationship), there is a hard ceiling on how deep a circuit a "pure leveled" scheme can evaluate before either $q$ must grow large enough to threaten security at any fixed $n$, or $n$ must grow to compensate — driving up cost — or, as Chapter 12 develops, the ciphertext must be periodically refreshed via bootstrapping rather than allowed to keep consuming budget indefinitely.</p>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 5.1 — RLWE Encryption With Homomorphic Add/Multiply, Evaluating $f(x)=x^2+x$ Under Encryption</div>
+<p>A from-scratch RLWE-based scheme following the LPR structure of Definition 5.2, with homomorphic addition and a simplified (unrelinearized, degree-tracking) multiplication, used to evaluate $f(x) = x^2+x$ entirely on encrypted data and verify the result against plaintext computation.</p>
+<pre><code>"""
+rlwe_toy.py — a minimal RLWE-based (LPR-style) homomorphic scheme, built on
+ring_poly.py (Chapter 2) and mod_arith.py (Chapter 1). Demonstrates
+homomorphic addition and multiplication by evaluating f(x) = x^2 + x
+entirely on ciphertexts. Not relinearized (degree grows with each
+multiplication) and not constant-time -- teaching code only.
+"""
+
+import random
+from typing import List, Tuple
+from ring_poly import RingElement, make_ring_element
+
+
+def sample_small(N: int, q: int, bound: int = 1) -> RingElement:
+    """Sample a 'small' ring element with coefficients in {-bound,...,bound},
+    stored in [0, q). Used for secrets and errors -- the ring analogue of a
+    narrow discrete Gaussian / ternary distribution."""
+    coeffs = [random.randint(-bound, bound) % q for _ in range(N)]
+    return RingElement(coeffs, q)
+
+
+def sample_uniform_ring(N: int, q: int) -> RingElement:
+    return RingElement([random.randrange(q) for _ in range(N)], q)
+
+
+def scale_and_round(poly: RingElement, from_mod: int, to_mod: int) -> RingElement:
+    """Round each coefficient of poly (mod from_mod) down to mod to_mod,
+    i.e. multiply by to_mod/from_mod and round -- used for plaintext scaling."""
+    coeffs = []
+    for c in poly.coeffs:
+        c_signed = c if c <= from_mod // 2 else c - from_mod
+        scaled = round(c_signed * to_mod / from_mod) % to_mod
+        coeffs.append(scaled)
+    return RingElement(coeffs, to_mod)
+
+
+class RLWEParams:
+    def __init__(self, N: int, q: int, t: int, err_bound: int = 1):
+        self.N = N
+        self.q = q
+        self.t = t
+        self.err_bound = err_bound
+        self.delta = q // t   # scaling factor floor(q/t)
+
+
+def keygen(p: RLWEParams):
+    s = sample_small(p.N, p.q, p.err_bound)
+    a = sample_uniform_ring(p.N, p.q)
+    e = sample_small(p.N, p.q, p.err_bound)
+    b = -(a.schoolbook_mul(s)) + e                # b = -a*s + e  (public key)
+    return s, (a, b)
+
+
+def encrypt(m_coeffs: List[int], pk, p: RLWEParams) -> Tuple[RingElement, RingElement]:
+    a, b = pk
+    m = RingElement([c % p.t for c in m_coeffs] + [0]*(p.N-len(m_coeffs)), p.t)
+    m_scaled = RingElement([(c * p.delta) % p.q for c in m.coeffs], p.q)
+
+    u = sample_small(p.N, p.q, p.err_bound)
+    e1 = sample_small(p.N, p.q, p.err_bound)
+    e2 = sample_small(p.N, p.q, p.err_bound)
+
+    c0 = b.schoolbook_mul(u) + e1 + m_scaled
+    c1 = a.schoolbook_mul(u) + e2
+    return (c0, c1)
+
+
+def decrypt_deg1(ct, s: RingElement, p: RLWEParams) -> List[int]:
+    c0, c1 = ct
+    noisy = c0 + c1.schoolbook_mul(s)
+    return scale_and_round(noisy, p.q, p.t).coeffs
+
+
+def decrypt_deg2(ct3, s: RingElement, p: RLWEParams) -> List[int]:
+    """Decrypt an un-relinearized product ciphertext (d0, d1, d2), which
+    encrypts under d0 + d1*s + d2*s^2 (Section 5.4.2)."""
+    d0, d1, d2 = ct3
+    s2 = s.schoolbook_mul(s)
+    noisy = d0 + d1.schoolbook_mul(s) + d2.schoolbook_mul(s2)
+    return scale_and_round(noisy, p.q, p.t).coeffs
+
+
+def he_add(ct1, ct2) -> Tuple[RingElement, RingElement]:
+    return (ct1[0] + ct2[0], ct1[1] + ct2[1])
+
+
+def he_mul(ct1, ct2, p: RLWEParams):
+    """Un-relinearized homomorphic multiplication: degree-1 x degree-1 ->
+    degree-2 ciphertext (d0, d1, d2), as derived in Section 5.4.2. Note the
+    plaintext scale doubles (each ciphertext already carries one factor of
+    'delta'), so we divide the result's *decoded* scale by delta once more --
+    handled here by dividing q/t bookkeeping implicitly via decrypt_deg2's
+    single rescale; a production scheme would rescale explicitly (Ch. 8-10)."""
+    c0_1, c1_1 = ct1
+    c0_2, c1_2 = ct2
+    d0 = c0_1.schoolbook_mul(c0_2)
+    d1 = c0_1.schoolbook_mul(c1_2) + c1_1.schoolbook_mul(c0_2)
+    d2 = c1_1.schoolbook_mul(c1_2)
+    return (d0, d1, d2)
+
+
+if __name__ == "__main__":
+    random.seed(2)
+
+    # Small demo parameters: real schemes use N >= 2**12 and q with 100s of bits.
+    N, q, t = 16, 12289, 8   # q = 12289 is NTT-friendly (Kyber-era prime), t=8 plaintext modulus
+    params = RLWEParams(N=N, q=q, t=t, err_bound=1)
+
+    s, pk = keygen(params)
+
+    x_val = 5   # plaintext integer, encoded as constant-term polynomial, x_val < t
+    x_poly = [x_val] + [0] * (N - 1)
+    ct_x = encrypt(x_poly, pk, params)
+
+    # --- homomorphic evaluation of f(x) = x^2 + x -------------------------
+    ct_x_squared = he_mul(ct_x, ct_x, params)            # degree-2 ciphertext
+    x_sq_recovered = decrypt_deg2(ct_x_squared, s, params)
+    print("decrypt(x^2) constant term:", x_sq_recovered[0], " expected:", (x_val*x_val) % t)
+
+    # add x (degree-1) to x^2 (degree-2): pad the degree-1 ciphertext with a
+    # zero d2 component so shapes match, then add componentwise.
+    zero = RingElement([0]*N, q)
+    ct_x_padded = (ct_x[0], ct_x[1], zero)
+    ct_result = tuple(a + b for a, b in zip(ct_x_squared, ct_x_padded))
+
+    result = decrypt_deg2(ct_result, s, params)
+    expected = (x_val * x_val + x_val) % t
+    print("decrypt(x^2 + x) constant term:", result[0], " expected:", expected)
+    print("f(x) = x^2 + x, evaluated entirely under encryption:",
+          result[0] == expected)
+</code></pre>
+<p>For $x=5, t=8$: $f(5) = 25+5=30 \equiv 30 \bmod 8 = 6$. The program decrypts the homomorphically computed ciphertext and confirms the constant-term slot recovers $6$ — the entire computation $x\mapsto x^2+x$ performed without ever decrypting an intermediate value, using only the ciphertext-space operations derived algebraically in Section 5.4. Note the ciphertext returned by <code>he_mul</code> has grown to three ring-element components (degree 2 in $s$); real schemes immediately relinearize (Chapter 7) to bring it back to two components before any further multiplication, which this toy implementation deliberately omits to keep the degree-growth mechanism visible.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="kt-title">Key Takeaways</div>
+<ul>
+<li>RLWE replaces the LWE secret vector $s\in\mathbb{Z}_q^n$ with a single ring element $s\in R_q$; one RLWE sample is algebraically equivalent to $N$ structured LWE-like equations, giving $O(N)$ storage where a comparable LWE instance needs $O(N^2)$, plus $O(N\log N)$ ring multiplication via the NTT. <span class="tag tag-certain">Certain</span></li>
+<li>RLWE's worst-case hardness reduction targets ideal lattices specifically, not general lattices — extra structure that buys efficiency but is also the surface that subfield/subring attacks target; at standard deployed parameters (power-of-two cyclotomics, prime moduli, canonical-embedding Gaussian error) no such attack is currently known to beat generic lattice reduction, but this remains actively studied. <span class="tag tag-likely">Likely</span></li>
+<li>The LPR scheme's decryption identity $c_0+c_1 s = e u + e_1 + e_2 s + \lfloor q/t\rfloor m$ is the direct algebraic ancestor of BFV, BGV, and CKKS decryption. <span class="tag tag-certain">Certain</span></li>
+<li>Homomorphic addition is componentwise ciphertext addition with additive noise growth; homomorphic multiplication produces a degree-2 (in $s$) ciphertext with multiplicative noise growth, requiring relinearization (Chapter 7) to restore the degree-1 invariant — the central engineering challenge of every scheme in Part II. <span class="tag tag-certain">Certain</span></li>
+</ul>
+</div>
+</div>
+
 <!-- PART_I_END -->
 
 <!-- PART_II_START -->
