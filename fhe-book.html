@@ -1,0 +1,685 @@
+<title>Foundations of Fully Homomorphic Encryption and Privacy-Preserving Machine Learning</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="author" content="Parth Nagar">
+<meta name="description" content="A comprehensive treatment of FHE theory, engineering, and applications to privacy-preserving machine learning.">
+
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true
+  },
+  options: {
+    skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<style>
+:root {
+  --bg: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #1c2128;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent: #58a6ff;
+  --accent-secondary: #7ee787;
+  --accent-warm: #d2a8ff;
+  --border: #30363d;
+  --border-light: #21262d;
+  --code-bg: #161b22;
+  --highlight: #1f6feb33;
+  --warning: #d29922;
+  --error: #f85149;
+  --success: #3fb950;
+  --chapter-num: #58a6ff;
+  --part-bg: linear-gradient(135deg, #1f6feb22, #23863622);
+  --theorem-bg: #1c2128;
+  --theorem-border: #58a6ff;
+  --definition-border: #7ee787;
+  --example-border: #d2a8ff;
+  --warning-border: #d29922;
+  --artifact-bg: #0d1117;
+  --artifact-border: #3fb950;
+  --font-serif: 'Georgia', 'Times New Roman', serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  font-size: 17px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-serif);
+  line-height: 1.8;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.book-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 2rem 6rem;
+}
+
+/* Title page */
+.title-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 4rem 2rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4rem;
+}
+
+.title-page h1 {
+  font-family: var(--font-sans);
+  font-size: 2.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.title-page .subtitle {
+  font-size: 1.3rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-bottom: 2.5rem;
+}
+
+.title-page .author {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.title-page .affiliation {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+.title-page .epigraph {
+  max-width: 600px;
+  font-style: italic;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--border);
+  padding-left: 1.5rem;
+  margin: 2rem 0;
+  text-align: left;
+  font-size: 1rem;
+}
+
+.title-page .epigraph .attribution {
+  display: block;
+  margin-top: 0.5rem;
+  font-style: normal;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Table of contents */
+.toc {
+  margin-bottom: 4rem;
+  padding-bottom: 3rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.toc h2 {
+  font-family: var(--font-sans);
+  font-size: 1.8rem;
+  color: var(--text);
+  margin-bottom: 2rem;
+  letter-spacing: -0.01em;
+}
+
+.toc-part {
+  margin-bottom: 1.5rem;
+}
+
+.toc-part-title {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--highlight);
+  border-radius: 6px;
+}
+
+.toc-chapter {
+  display: block;
+  padding: 0.35rem 0.75rem 0.35rem 2rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  transition: color 0.15s, background 0.15s;
+  border-radius: 4px;
+}
+
+.toc-chapter:hover {
+  color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.toc-chapter .ch-num {
+  display: inline-block;
+  width: 2.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Parts */
+.part-header {
+  text-align: center;
+  padding: 4rem 2rem;
+  margin: 4rem 0 3rem;
+  background: var(--part-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.part-header .part-label {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.part-header h2 {
+  font-family: var(--font-sans);
+  font-size: 2rem;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.part-header .part-desc {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Chapters */
+.chapter {
+  margin-bottom: 4rem;
+  padding-bottom: 3rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.chapter-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.chapter-header .ch-label {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chapter-num);
+  margin-bottom: 0.25rem;
+}
+
+.chapter-header h3 {
+  font-family: var(--font-sans);
+  font-size: 1.7rem;
+  color: var(--text);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* Learning objectives */
+.learning-objectives {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.learning-objectives .lo-title {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.learning-objectives ul {
+  list-style: none;
+  padding: 0;
+}
+
+.learning-objectives li {
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  position: relative;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+}
+
+.learning-objectives li::before {
+  content: '\25B8';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+/* Section headings within chapters */
+.chapter h4 {
+  font-family: var(--font-sans);
+  font-size: 1.3rem;
+  color: var(--text);
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.chapter h5 {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  color: var(--text);
+  margin: 2rem 0 0.75rem;
+}
+
+/* Paragraphs */
+.chapter p {
+  margin-bottom: 1.2rem;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* Theorem/Definition/Example boxes */
+.theorem, .definition, .example, .warning-box, .artifact-box {
+  margin: 1.5rem 0;
+  padding: 1.25rem 1.5rem;
+  border-radius: 8px;
+  background: var(--theorem-bg);
+}
+
+.theorem {
+  border-left: 4px solid var(--theorem-border);
+}
+
+.definition {
+  border-left: 4px solid var(--definition-border);
+}
+
+.example {
+  border-left: 4px solid var(--example-border);
+}
+
+.warning-box {
+  border-left: 4px solid var(--warning-border);
+}
+
+.artifact-box {
+  border: 1px solid var(--artifact-border);
+  border-left: 4px solid var(--artifact-border);
+  background: var(--artifact-bg);
+}
+
+.box-title {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.theorem .box-title { color: var(--theorem-border); }
+.definition .box-title { color: var(--definition-border); }
+.example .box-title { color: var(--example-border); }
+.warning-box .box-title { color: var(--warning-border); }
+.artifact-box .box-title { color: var(--artifact-border); }
+
+/* Code blocks */
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--bg-tertiary);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: var(--accent);
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+}
+
+/* Syntax highlighting */
+.kw { color: #ff7b72; }
+.fn { color: #d2a8ff; }
+.str { color: #a5d6ff; }
+.num { color: #79c0ff; }
+.cm { color: #8b949e; font-style: italic; }
+.tp { color: #7ee787; }
+.op { color: #ff7b72; }
+.pp { color: #ffa657; }
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  overflow-x: auto;
+  display: block;
+}
+
+th, td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border: 1px solid var(--border);
+}
+
+th {
+  background: var(--bg-secondary);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+td { color: var(--text-secondary); }
+
+tr:nth-child(even) { background: var(--bg-secondary); }
+
+/* Lists */
+.chapter ul, .chapter ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.chapter li {
+  margin-bottom: 0.4rem;
+}
+
+/* Key takeaways */
+.key-takeaways {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-top: 2rem;
+}
+
+.key-takeaways .kt-title {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-secondary);
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.key-takeaways ul {
+  list-style: none;
+  padding: 0;
+}
+
+.key-takeaways li {
+  padding: 0.3rem 0 0.3rem 1.25rem;
+  position: relative;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+}
+
+.key-takeaways li::before {
+  content: '\2713';
+  position: absolute;
+  left: 0;
+  color: var(--accent-secondary);
+  font-weight: 700;
+}
+
+/* Confidence tags */
+.tag {
+  display: inline;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  padding: 0.1em 0.45em;
+  border-radius: 3px;
+  font-weight: 600;
+  vertical-align: super;
+}
+
+.tag-certain { background: #238636; color: #fff; }
+.tag-likely { background: #1f6feb; color: #fff; }
+.tag-verify { background: #d29922; color: #000; }
+
+/* Blockquotes */
+blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1.25rem;
+  margin: 1.5rem 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Footnotes */
+.footnote {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-light);
+  padding-top: 1rem;
+  margin-top: 2rem;
+}
+
+sup a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.8em;
+}
+
+/* Navigation */
+.back-to-top {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-size: 1.2rem;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 100;
+  cursor: pointer;
+}
+
+.back-to-top.visible { opacity: 1; }
+
+/* Print styles */
+@media print {
+  body { background: #fff; color: #000; font-size: 11pt; }
+  .back-to-top { display: none; }
+  pre { border: 1px solid #ccc; background: #f5f5f5; }
+  .part-header { break-before: page; }
+  .chapter { break-inside: avoid; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  html { font-size: 15px; }
+  .book-container { padding: 1rem 1rem 4rem; }
+  .title-page h1 { font-size: 2rem; }
+  .title-page { padding: 2rem 1rem; min-height: auto; }
+  .part-header { padding: 2rem 1rem; }
+  table { font-size: 0.8rem; }
+}
+</style>
+
+<div class="book-container">
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TITLE PAGE -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="title-page" id="top">
+<h1>Foundations of Fully Homomorphic Encryption and Privacy-Preserving Machine Learning</h1>
+<div class="subtitle">From Lattice Hardness to Encrypted Neural Networks</div>
+<div class="author">Parth Nagar</div>
+<div class="affiliation">Junior Research Fellow &middot; Sri Sathya Sai Institute of Higher Learning<br>Mathematics &amp; Computer Science</div>
+<div class="epigraph">
+"Privacy is the power to selectively reveal oneself to the world."
+<span class="attribution">&mdash; Eric Hughes, <em>A Cypherpunk's Manifesto</em> (1993)</span>
+</div>
+<div class="epigraph">
+"Encryption works. Properly implemented strong crypto systems are one of the few things that you can rely on."
+<span class="attribution">&mdash; Edward Snowden (2013)</span>
+</div>
+<div style="margin-top:2rem;color:var(--text-muted);font-size:0.85rem;font-family:var(--font-sans);">
+August 2026 &middot; Comprehensive Reference
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TABLE OF CONTENTS -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="toc" id="toc">
+<h2>Table of Contents</h2>
+
+<div class="toc-part">
+<div class="toc-part-title">Part I &mdash; Mathematical Foundations</div>
+<a class="toc-chapter" href="#ch1"><span class="ch-num">Ch. 1</span> Modular Arithmetic and Algebraic Structures</a>
+<a class="toc-chapter" href="#ch2"><span class="ch-num">Ch. 2</span> Polynomial Rings and Cyclotomic Fields</a>
+<a class="toc-chapter" href="#ch3"><span class="ch-num">Ch. 3</span> Lattices and Hard Problems</a>
+<a class="toc-chapter" href="#ch4"><span class="ch-num">Ch. 4</span> Learning With Errors (LWE)</a>
+<a class="toc-chapter" href="#ch5"><span class="ch-num">Ch. 5</span> Ring-LWE and the Path to Practicality</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part II &mdash; Core FHE Theory</div>
+<a class="toc-chapter" href="#ch6"><span class="ch-num">Ch. 6</span> The Arc of Homomorphic Encryption</a>
+<a class="toc-chapter" href="#ch7"><span class="ch-num">Ch. 7</span> The Noise Barrier</a>
+<a class="toc-chapter" href="#ch8"><span class="ch-num">Ch. 8</span> BFV: Exact Arithmetic, Scale-Invariant</a>
+<a class="toc-chapter" href="#ch9"><span class="ch-num">Ch. 9</span> BGV: Exact Arithmetic, Modulus Switching</a>
+<a class="toc-chapter" href="#ch10"><span class="ch-num">Ch. 10</span> CKKS: Approximate Arithmetic, the ML Workhorse</a>
+<a class="toc-chapter" href="#ch11"><span class="ch-num">Ch. 11</span> TFHE and Programmable Bootstrapping</a>
+<a class="toc-chapter" href="#ch12"><span class="ch-num">Ch. 12</span> Bootstrapping</a>
+<a class="toc-chapter" href="#ch13"><span class="ch-num">Ch. 13</span> Packing, SIMD, Rotations, and Key Management</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part III &mdash; FHE Engineering</div>
+<a class="toc-chapter" href="#ch14"><span class="ch-num">Ch. 14</span> Parameter Selection and Security Standards</a>
+<a class="toc-chapter" href="#ch15"><span class="ch-num">Ch. 15</span> The Library Landscape</a>
+<a class="toc-chapter" href="#ch16"><span class="ch-num">Ch. 16</span> CKKS Scale and Level Management in Practice</a>
+<a class="toc-chapter" href="#ch17"><span class="ch-num">Ch. 17</span> Performance Profiling and Optimization</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part IV &mdash; Privacy-Preserving Machine Learning</div>
+<a class="toc-chapter" href="#ch18"><span class="ch-num">Ch. 18</span> The Non-Polynomial Barrier</a>
+<a class="toc-chapter" href="#ch19"><span class="ch-num">Ch. 19</span> Polynomial Activation Approximation</a>
+<a class="toc-chapter" href="#ch20"><span class="ch-num">Ch. 20</span> Encrypted Inference: Linear Models and Decision Trees</a>
+<a class="toc-chapter" href="#ch21"><span class="ch-num">Ch. 21</span> Encrypted Neural Network Inference</a>
+<a class="toc-chapter" href="#ch22"><span class="ch-num">Ch. 22</span> Quantization-Aware Training for FHE</a>
+<a class="toc-chapter" href="#ch23"><span class="ch-num">Ch. 23</span> Federated Learning and Homomorphic Encryption</a>
+<a class="toc-chapter" href="#ch24"><span class="ch-num">Ch. 24</span> Encrypted Training: The Frontier</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part V &mdash; Advanced Topics and the Frontier</div>
+<a class="toc-chapter" href="#ch25"><span class="ch-num">Ch. 25</span> Multi-Party Homomorphic Encryption</a>
+<a class="toc-chapter" href="#ch26"><span class="ch-num">Ch. 26</span> Scheme Switching and Hybrid Computation</a>
+<a class="toc-chapter" href="#ch27"><span class="ch-num">Ch. 27</span> FHE for Computer Vision, NLP, and Large Language Models</a>
+<a class="toc-chapter" href="#ch28"><span class="ch-num">Ch. 28</span> Hardware Acceleration, Standardization, and Open Problems</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Appendices</div>
+<a class="toc-chapter" href="#appendix-a"><span class="ch-num">A</span> Notation and Mathematical Prerequisites</a>
+<a class="toc-chapter" href="#appendix-b"><span class="ch-num">B</span> Installation and Environment Setup</a>
+<a class="toc-chapter" href="#appendix-c"><span class="ch-num">C</span> Complete Code for All Artifacts</a>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- CHAPTER CONTENT PLACEHOLDER - will be filled by agents -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<!-- PART_I_START -->
+<!-- PART_I_END -->
+
+<!-- PART_II_START -->
+<!-- PART_II_END -->
+
+<!-- PART_III_START -->
+<!-- PART_III_END -->
+
+<!-- PART_IV_START -->
+<!-- PART_IV_END -->
+
+<!-- PART_V_START -->
+<!-- PART_V_END -->
+
+<!-- APPENDICES_START -->
+<!-- APPENDICES_END -->
+
+</div><!-- .book-container -->
+
+<a href="#top" class="back-to-top" id="backToTop">&uarr;</a>
+
+<script>
+window.addEventListener('scroll', function() {
+  var btn = document.getElementById('backToTop');
+  if (window.scrollY > 500) {
+    btn.classList.add('visible');
+  } else {
+    btn.classList.remove('visible');
+  }
+});
+</script>
