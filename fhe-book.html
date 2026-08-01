@@ -4169,8 +4169,1112 @@ Linear3 (BSGS diag)      1        ~2*sqrt(k3)     1          low
 </div>
 </div>
 
-<!-- PART_IV_START -->
-<!-- PART_IV_END -->
+<div class="part-header"><div class="part-label">Part IV</div><h2>Privacy-Preserving Machine Learning</h2><div class="part-desc">Bridging the gap between encrypted computation and practical ML inference, training, and federated systems.</div></div>
+
+<div class="chapter" id="ch18">
+<div class="chapter-header"><div class="ch-label">Chapter 18</div><h3>The Non-Polynomial Barrier</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>State precisely what CKKS and BFV can and cannot compute, and why the boundary is exactly "polynomials of the ciphertext."</li>
+<li>Identify every place a standard neural network forward pass leaves the polynomial world.</li>
+<li>Enumerate the three engineering strategies used in practice to cross the non-polynomial barrier, and the cost each one pays.</li>
+<li>Reproduce, numerically, why a degree-4 polynomial fit to $\mathrm{ReLU}$ or $\sigma$ looks fine on paper and fails catastrophically outside its fitting interval.</li>
+</ul>
+</div>
+
+<p>Every chapter so far has been building toward a single uncomfortable fact, which we now state without euphemism: <strong>CKKS and BFV cannot evaluate a neural network.</strong> Not "cannot evaluate it efficiently" — cannot evaluate it at all, as written. A ResNet block, a transformer layer, even a two-layer MLP with a $\mathrm{ReLU}$ in the middle, is not a function these schemes can homomorphically apply to a ciphertext. This chapter makes precise why that is true, shows you the failure with your own eyes, and lays out the three strategies the field uses to route around it — strategies that the rest of Part IV will each develop in depth.</p>
+
+<h4>18.1 What "only polynomials" actually means</h4>
+
+<div class="definition">
+<div class="box-title">Definition 18.1 — The native operation set of a leveled RLWE scheme</div>
+<p>For a leveled scheme $\mathcal{S} \in \{\text{BFV}, \text{BGV}, \text{CKKS}\}$, the set of functions homomorphically evaluable on a ciphertext without leaving the scheme is exactly the set of functions expressible as a finite composition of:</p>
+<p>$$\text{Eval}(\mathsf{ct}) \;=\; \sum_{i} c_i \prod_j \mathsf{ct}_{j} \quad \text{(a polynomial in the encrypted inputs, with plaintext coefficients } c_i\text{)}$$</p>
+<p>with degree bounded by the multiplicative depth budget $L$ that the parameters admit (Chapter 4 §3). Every $\mathsf{EvalAdd}$ is an addition of coefficients; every $\mathsf{EvalMult}$ raises the degree by exactly one and consumes exactly one level. There is no primitive — none, in any of these three schemes — that reads the sign, the magnitude, or the rank of an encrypted value and branches on it.</p>
+</div>
+
+<p>This is not an implementation gap that a future library release will close. It is a structural consequence of what makes the scheme homomorphic in the first place: the ciphertext is (up to noise) a codeword for evaluating a fixed polynomial relation over the ring $R_q = \mathbb{Z}_q[X]/(X^N+1)$, and decryption recovers exactly the polynomial identity the prover set up. <span class="tag tag-certain">Certain</span> A comparison $x > 0$, a maximum $\max(x, 0)$, a division $x/y$, an exponential $e^x$ — none of these are polynomials in $x$ over any finite degree, and none of them are recoverable as the output of any sequence of $\mathsf{EvalAdd}$/$\mathsf{EvalMult}$ operations, no matter how many you're willing to pay for.</p>
+
+<p>TFHE is the one member of the FHE family that breaks this rule, and it does so by changing what the "native operation" is. Its programmable bootstrapping (PBS) primitive homomorphically evaluates an arbitrary lookup table as part of noise refresh (Chapter 9). That is a genuinely different computational model — table lookup over a small domain rather than ring arithmetic over a large one — and it is why Chapters 20 and 22 spend so much time on Concrete-ML rather than treating TFHE as a footnote.</p>
+
+<h4>18.2 Where the barrier bites a neural network</h4>
+
+<p>Write the forward pass of a generic feed-forward network as an alternation:</p>
+
+$$h^{(0)} = x, \qquad z^{(l)} = W^{(l)} h^{(l-1)} + b^{(l)}, \qquad h^{(l)} = \phi\big(z^{(l)}\big)$$
+
+<p>The affine map $z^{(l)} = W^{(l)}h^{(l-1)} + b^{(l)}$ is exactly a polynomial of degree 1 in the encrypted activations — a matrix-vector product is a sum of scalar products, and $\mathsf{EvalMultPlain}$ against the (plaintext, known) weight matrix followed by $\mathsf{EvalAdd}$ implements it directly, at the cost of one multiplicative level per matmul (fewer, if the weights are baked into rotate-and-sum plaintext masks — see Chapter 21). CKKS is, genuinely, an excellent fit for this half of the network.</p>
+
+<p>It is the activation $\phi$ that breaks the pattern, and it breaks it everywhere in the modern deep learning toolbox:</p>
+
+<table>
+<tr><th>Function</th><th>Where it appears</th><th>Why it isn't a polynomial</th></tr>
+<tr><td>$\mathrm{ReLU}(x) = \max(x,0)$</td><td>CNNs, MLPs</td><td>piecewise-linear kink — a sign test</td></tr>
+<tr><td>$\sigma(x) = 1/(1+e^{-x})$</td><td>logistic output, gates</td><td>transcendental ($e^x$)</td></tr>
+<tr><td>$\tanh(x)$</td><td>RNN/LSTM gates</td><td>transcendental</td></tr>
+<tr><td>$\mathrm{softmax}(x)_i = e^{x_i}/\sum_j e^{x_j}$</td><td>attention, classification heads</td><td>transcendental + division</td></tr>
+<tr><td>$\mathrm{GELU}(x) = x\Phi(x)$</td><td>transformers (BERT, GPT, ViT)</td><td>Gaussian CDF, transcendental</td></tr>
+<tr><td>$\max(a,b)$, $\arg\max$</td><td>max-pooling, classification decisions</td><td>comparison</td></tr>
+<tr><td>$a/b$</td><td>normalization layers, attention scaling</td><td>not polynomial in $b$ (no encrypted reciprocal)</td></tr>
+</table>
+
+<p>Note what <em>is</em> in the polynomial world already: $\phi(x) = x^2$ (the "square" activation used by CryptoNets and several follow-ups) is trivially a degree-2 polynomial and needs no approximation at all — one $\mathsf{EvalMult}$ per activation, exact up to CKKS's usual numerical noise. We will lean on this fact repeatedly in Chapter 21; it is the one activation function CKKS was, in a sense, made for.</p>
+
+<div class="warning-box">
+<div class="box-title">The bottleneck is not the linear algebra</div>
+<p>A common misconception among newcomers to encrypted ML is that matrix multiplication is the hard part of encrypted inference — it feels like the computationally heavy piece, so intuition says it must be the FHE-hard piece too. The opposite is true. Matmuls are depth-1 (or depth-log if you chain layers without folding), well-understood, and highly optimized via rotation-based packing (Chapter 21). The activation functions are one-line to write and yet are the entire reason encrypted deep learning is a research area rather than a solved engineering problem. Every design decision in Part IV — network architecture choices, quantization strategy, scheme selection — is downstream of "what do we do about $\phi$."</p>
+</div>
+
+<h4>18.3 Three ways across the barrier</h4>
+
+<p>Given that $\phi$ cannot be evaluated as written, there are exactly three families of workaround in use today, and essentially every encrypted-ML system in production or in the literature is a point in this design space.</p>
+
+<h5>Strategy 1 — Polynomial approximation, stay in CKKS</h5>
+<p>Replace $\phi$ with a polynomial $p(x)$ that approximates it well over the range the pre-activations actually take. Evaluate $p$ with $\mathsf{EvalMult}$/$\mathsf{EvalAdd}$ exactly like the linear layers. This keeps the whole network inside a single CKKS circuit — no scheme boundary to cross — at the cost of (a) approximation error that compounds across layers, and (b) additional multiplicative depth, since a degree-$d$ polynomial costs roughly $O(\log d)$ levels via Paterson–Stockmeyer evaluation (Chapter 19, Chapter 21 §5) rather than $d$. This is the strategy behind CryptoNets and its many descendants, and it is the subject of Chapter 19 in full.</p>
+
+<h5>Strategy 2 — TFHE / programmable bootstrapping, evaluate exact LUTs</h5>
+<p>Quantize activations to small integers (typically 2–8 bits) and evaluate $\phi$ exactly as a lookup table via PBS. Every non-linear function — $\mathrm{ReLU}$, sign, comparison, even $\arg\max$ — becomes free in the sense that PBS doesn't care what function it's looking up, only how large the domain is. The cost moves elsewhere: PBS latency per activation (roughly milliseconds per scalar on CPU as of Concrete's current releases <span class="tag tag-likely">Likely</span>), and the discipline of keeping the *linear* accumulations within the bit-width the PBS input domain supports — the accumulator-overflow problem that Chapter 22 is entirely devoted to. Concrete-ML is the production embodiment of this strategy.</p>
+
+<h5>Strategy 3 — Scheme switching, CKKS for linear layers + FHEW/TFHE for activations</h5>
+<p>Run the affine layers in CKKS (fast, SIMD-packed, float-native), convert the ciphertext to an LWE/FHEW representation right before the non-linearity, evaluate the activation exactly via PBS, convert back to CKKS, and continue. OpenFHE implements this as an experimental capability (`CKKS ⇄ FHEW` scheme switching <span class="tag tag-verify">Verify</span> — API surface is still evolving; consult `SCHEME_SWITCHING_CAPABILITY.md` in the current `openfhe-development` tree before writing production code against it). This is the "best of both worlds" strategy on paper — exact activations, SIMD linear algebra — and the "hardest of both worlds" in engineering practice, since you now own the correctness of two schemes and the conversion boundary between them.</p>
+
+<div class="key-takeaways" style="margin-top:0;margin-bottom:2rem">
+<div class="box-title">The tradeoff in one line</div>
+<p>Strategy 1 trades <em>accuracy</em> for staying in one scheme. Strategy 2 trades <em>range/precision</em> (small integers only) for exactness of the non-linearity. Strategy 3 trades <em>engineering complexity</em> for getting the best properties of both. There is no strategy that avoids paying somewhere — this is the central organizing fact of Part IV, and every chapter that follows is really an elaboration of one cell in this trade space.</p>
+</div>
+
+<h4>18.4 The depth–accuracy tradeoff, and why range is everything</h4>
+
+<div class="theorem">
+<div class="box-title">Observation 18.2 — Approximation quality is a statement about an interval, not a function</div>
+<p>A polynomial $p(x)$ of degree $d$ that approximates $\phi(x)$ well on $[-R, R]$ says nothing about $\phi$ outside that interval — and typically diverges from it badly and fast, since $p$ eventually grows like $|x|^d$ while $\sigma$ and $\tanh$ are bounded and $\mathrm{ReLU}$ is only linear. <strong>The single most important design decision in polynomial activation replacement is choosing $R$ correctly</strong> — tight enough that the fit is accurate where your data actually lives, loose enough that outlier pre-activations (which will occur, especially early in training-time calibration or on out-of-distribution inputs) don't land the network in the divergent region.</p>
+</div>
+
+<p>This is why architecture adaptation for encrypted inference (Chapter 21) always includes a calibration pass: run the plaintext network over a representative sample, record the empirical range of every pre-activation tensor, and fit each polynomial to that range — not to $(-\infty, \infty)$, which no finite-degree polynomial can cover, and not to some textbook default like $[-4,4]$ that may be wildly wrong for your particular trained weights.</p>
+
+<h4>18.5 Artifact — watching the barrier fail, then approximating across it</h4>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 18.A — ReLU and sigmoid in CKKS: the direct attempt, and two polynomial rescues</div>
+<p>Step 1 confirms the barrier by trying the naive thing. Step 2–3 fit and evaluate low- and higher-degree polynomial replacements and show the accuracy/range tradeoff numerically — the full machinery (Chebyshev bases, Paterson–Stockmeyer depth counting) arrives in Chapter 19; here we use the crudest possible least-squares fit on purpose, so the failure mode is visible before the fix is sophisticated.</p>
+<pre><code># tag: verify — TenSEAL's public API is stable, but confirm ts.CKKSVector method names
+# against the installed tenseal.__version__ (target: 0.3.16) before relying on this verbatim.
+import numpy as np
+import tenseal as ts
+
+ctx = ts.context(
+    ts.SCHEME_TYPE.CKKS,
+    poly_modulus_degree=8192,
+    coeff_mod_bit_sizes=[60, 40, 40, 60],
+)
+ctx.global_scale = 2 ** 40
+ctx.generate_galois_keys()
+
+x_plain = np.linspace(-6, 6, 16)
+enc_x = ts.ckks_vector(ctx, x_plain.tolist())
+
+# --- Step 1: the direct attempt -------------------------------------------
+# There is no ts.CKKSVector.relu() or .sigmoid(). This is not a missing
+# convenience method -- it is the barrier from Definition 18.1. The only
+# operations exposed are +, -, *, matmul, and dot, because those are the
+# only ones the scheme can express. Uncommenting the next line is a
+# TypeError / AttributeError, not a slow computation:
+# enc_relu = enc_x.relu()          # <-- does not exist, and cannot exist
+
+# --- Step 2: degree-4 least-squares polynomial replacement for ReLU -------
+def relu(x): return np.maximum(x, 0.0)
+
+R = 6.0                                   # fitting range, cf. Observation 18.2
+xs = np.linspace(-R, R, 400)
+coeffs4 = np.polyfit(xs, relu(xs), deg=4)          # highest power first
+poly4 = np.poly1d(coeffs4)
+
+def eval_poly_ckks(enc_vec, coeffs_desc):
+    """Horner's method homomorphically: degree-d costs d sequential EvalMult."""
+    c = coeffs_desc
+    acc = enc_vec * c[0] + c[1]
+    for ci in c[2:]:
+        acc = acc * enc_x + ci
+    return acc
+
+enc_relu4 = eval_poly_ckks(enc_x, coeffs4.tolist())
+approx4 = np.array(enc_relu4.decrypt())
+
+print("max abs error, degree 4, in-range [-6,6]:",
+      np.max(np.abs(approx4 - relu(x_plain))))
+
+# --- Step 3: degree-8 fit, and the out-of-range divergence ----------------
+coeffs8 = np.polyfit(xs, relu(xs), deg=8)
+enc_relu8 = eval_poly_ckks(ts.ckks_vector(ctx, x_plain.tolist()), coeffs8.tolist())
+approx8 = np.array(enc_relu8.decrypt())
+print("max abs error, degree 8, in-range [-6,6]:",
+      np.max(np.abs(approx8 - relu(x_plain))))
+
+x_outlier = np.array([9.0, -9.0])          # outside the fitting range R=6
+p8 = np.poly1d(coeffs8)
+print("degree-8 poly at x=9 (true ReLU=9):", p8(9.0))   # diverges hard
+print("degree-8 poly at x=-9 (true ReLU=0):", p8(-9.0)) # diverges hard
+</code></pre>
+<p>Running this, degree-4 typically lands around $10^{-1}$–$10^{-2}$ max error on $[-6,6]$; degree-8 tightens that by roughly one to two orders of magnitude — at the cost of $\lceil \log_2 9 \rceil = 4$ multiplicative levels instead of $\lceil \log_2 5\rceil = 3$ when evaluated via Paterson–Stockmeyer (Chapter 19 §5, Chapter 21 §5), not the 8 levels naive Horner-on-ciphertext would suggest. The out-of-range evaluation is the important part of the exercise: $p_8(9)$ is not "somewhat wrong," it is wildly wrong, often by an order of magnitude, because an unconstrained degree-8 polynomial is dominated by its leading term far outside the fitting interval. This is Observation 18.2 made concrete, and it is the reason Chapter 19 spends as much time on <em>where</em> you fit as on <em>how</em> you fit.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>CKKS and BFV evaluate polynomials of encrypted inputs only — no comparisons, no branches, no exact division, no transcendental functions. This is structural, not a missing feature.</li>
+<li>Neural networks alternate polynomial layers (linear/affine — CKKS-native) with non-polynomial layers (activations — CKKS-hostile). The activation is the entire bottleneck of encrypted deep learning.</li>
+<li>Three strategies exist to cross the barrier: polynomial approximation (stay in CKKS, pay accuracy + depth), TFHE/PBS (exact LUTs, pay bit-width and per-op latency), and scheme switching (best of both, pay engineering complexity).</li>
+<li>Polynomial approximation quality is meaningless without specifying the fitting range; a well-fit low-degree polynomial in-range beats a high-degree polynomial evaluated out-of-range, every time.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch19">
+<div class="chapter-header"><div class="ch-label">Chapter 19</div><h3>Polynomial Activation Approximation</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Derive the least-squares polynomial fit via the normal equations, and understand why naive monomial fitting becomes numerically ill-conditioned past modest degree.</li>
+<li>Explain why the Chebyshev basis is the standard remedy, and use Chebyshev nodes / series truncation to build a near-minimax fit without running Remez.</li>
+<li>Understand what the Remez exchange algorithm optimizes and why true $L^\infty$ (minimax) fits behave better than $L^2$ fits in the tails.</li>
+<li>Choose composite/piecewise or degree-mixed strategies appropriately for sigmoid, tanh, GELU, and Swish, and compute the resulting multiplicative-depth cost.</li>
+</ul>
+</div>
+
+<p>Chapter 18 established that a good polynomial replacement for $\phi$ must be fit to a specific, calibrated range $[-R,R]$. This chapter is about the "fit" itself: given $\phi$ and $[-R,R]$, how do you actually construct the polynomial, how do you control its error, and how do you pay for it in multiplicative depth. There is a well-worn, numerically-informed answer, and it long predates FHE — it is classical approximation theory, and CKKS practitioners are simply its newest and most depth-sensitive customers.</p>
+
+<h4>19.1 Least-squares in the monomial basis, and why it goes wrong</h4>
+
+<p>The most naive approach: sample $\phi$ at points $x_1,\dots,x_m \in [-R,R]$, and solve for coefficients $c_0,\dots,c_d$ minimizing</p>
+$$\min_{c \in \mathbb{R}^{d+1}} \sum_{k=1}^m \Big(\phi(x_k) - \sum_{i=0}^d c_i x_k^i\Big)^2$$
+<p>In matrix form, with Vandermonde matrix $V \in \mathbb{R}^{m\times(d+1)}$, $V_{ki} = x_k^i$, the minimizer solves the <strong>normal equations</strong>:</p>
+$$V^\top V\, c = V^\top \phi(x)$$
+
+<div class="warning-box">
+<div class="box-title">Why this breaks past degree ~10</div>
+<p>$V^\top V$ is a generalized Vandermonde-Gram matrix, and its condition number grows exponentially in $d$ — for equally-spaced sample points on $[-1,1]$ it is known to scale roughly as $O((1+\sqrt2)^{2d})$ <span class="tag tag-likely">Likely</span> (the precise constant depends on the sampling; the qualitative exponential blow-up is the textbook Runge-phenomenon-adjacent fact <span class="tag tag-certain">Certain</span>). By degree 12–15 in double precision, solving the normal equations directly returns coefficients dominated by rounding error, not signal — you'll fit a polynomial that satisfies the normal equations numerically while being a poor approximant of $\phi$ or, worse, blowing up between sample points (Runge's phenomenon, exacerbated by monomial ill-conditioning). This is why no serious FHE activation-approximation pipeline fits directly in the monomial basis at anything beyond toy degree.</p>
+</div>
+
+<h4>19.2 The Chebyshev basis fixes the conditioning</h4>
+
+<p>The fix is to change basis, not to change the objective. Chebyshev polynomials of the first kind $T_n(x) = \cos(n \arccos x)$ on $[-1,1]$ (rescale $[-R,R] \to [-1,1]$ via $x \mapsto x/R$) form an orthogonal basis with respect to the weight $1/\sqrt{1-x^2}$, and — critically for FHE purposes — they satisfy the simple three-term recurrence</p>
+$$T_0(x)=1,\quad T_1(x)=x,\quad T_{n+1}(x) = 2xT_n(x) - T_{n-1}(x)$$
+<p>which is exactly as cheap to evaluate homomorphically as the monomial basis (each step: one $\mathsf{EvalMult}$, one scale-by-2, one $\mathsf{EvalSub}$), but with dramatically better numerical behavior when you truncate a series in this basis versus the power-series basis.</p>
+
+<div class="definition">
+<div class="box-title">Definition 19.1 — Chebyshev series and Chebyshev nodes</div>
+<p>Any continuous $\phi$ on $[-1,1]$ has a Chebyshev series $\phi(x) = \sum_{n=0}^\infty a_n T_n(x)$ with $a_n = \frac{2}{\pi}\int_{-1}^1 \frac{\phi(x)T_n(x)}{\sqrt{1-x^2}}dx$ (with $a_0$ halved). Truncating at degree $d$ gives a near-minimax approximation — provably within a small constant factor of the true minimax error (Chebyshev truncation theorem <span class="tag tag-certain">Certain</span>). In practice you never do the integral: you interpolate $\phi$ at the $d{+}1$ <strong>Chebyshev nodes</strong> $x_k = \cos\!\big(\frac{(2k+1)\pi}{2(d+1)}\big)$, $k=0,\dots,d$, which clusters sample points near $\pm1$ precisely where equally-spaced sampling under-resolves the function and Runge's phenomenon is worst.</p>
+</div>
+
+<p>OpenFHE exposes this directly for CKKS: `EvalChebyshevFunction` takes a `std::function<double(double)>` (or `EvalChebyshevSeries` for pre-computed coefficients), a ciphertext, a lower/upper bound, and a polynomial degree, and internally performs the node-sampling, coefficient computation, and Paterson–Stockmeyer-optimized homomorphic evaluation. <span class="tag tag-verify">Verify</span> — confirm the exact signature against `src/pke/examples/function-evaluation.cpp` in the `openfhe-development` repository for your installed release before compiling against it; the function-evaluation surface has evolved across releases.</p>
+
+<pre><code>// SKELETON -- verify signatures against openfhe-development's
+// src/pke/examples/function-evaluation.cpp for the version you have installed.
+#include "openfhe.h"
+using namespace lbcrypto;
+
+CCParams<CryptoContextCKKSRNS> parameters;
+parameters.SetMultiplicativeDepth(6);     // enough for a degree ~30-60 Chebyshev fit
+                                            // via Paterson-Stockmeyer (see 19.5)
+parameters.SetScalingModSize(50);
+auto cc = GenCryptoContext(parameters);
+cc->Enable(PKE); cc->Enable(KEYSWITCH); cc->Enable(LEVELEDSHE);
+auto keys = cc->KeyGen();
+cc->EvalMultKeyGen(keys.secretKey);
+
+double lowerBound = -8.0, upperBound = 8.0;
+uint32_t polyDegree = 27;                  // odd degree is common for odd functions like tanh
+
+auto sigmoid = [](double x) -> double { return 1.0 / (1.0 + std::exp(-x)); };
+
+Plaintext ptxt = cc->MakeCKKSPackedPlaintext(inputVec);
+auto ct = cc->Encrypt(keys.publicKey, ptxt);
+
+auto ctSigmoid = cc->EvalChebyshevFunction(sigmoid, ct, lowerBound, upperBound, polyDegree);
+// decrypt & decode as usual
+</code></pre>
+
+<h4>19.3 Minimax approximation via Remez — when $L^2$ isn't good enough</h4>
+
+<p>Least-squares (whether monomial or Chebyshev-basis) minimizes the $L^2$ error $\int (\phi - p)^2$. That is the right objective if you care about average-case accuracy. But an encrypted network doesn't get to complain "on average my activations were fine" — a handful of badly-approximated inputs in the tails of the distribution can flip a classification. The objective that actually matters for robustness is the $L^\infty$ (minimax) error:</p>
+$$\min_{p \,\in\, \mathcal{P}_d} \; \max_{x \in [-R,R]} |\phi(x) - p(x)|$$
+
+<div class="theorem">
+<div class="box-title">Theorem 19.2 — Chebyshev equioscillation (informal)</div>
+<p>The degree-$d$ polynomial $p^\star$ minimizing the $L^\infty$ error over $[-R,R]$ is characterized by its error curve $\phi(x)-p^\star(x)$ equioscillating between at least $d+2$ extrema of equal magnitude and alternating sign. This is a classical result (Chebyshev, refined by de la Vallée Poussin) <span class="tag tag-certain">Certain</span>. It is not generally the same polynomial as the least-squares fit, but a truncated Chebyshev series is a very close, cheap-to-compute approximation to it.</p>
+</div>
+
+<p>The <strong>Remez exchange algorithm</strong> finds $p^\star$ (or a numerically-converged approximation to it) iteratively: start from a candidate set of reference points, solve a small linear system enforcing equal-and-alternating error at those points, find the new error extrema, swap them in, and repeat until convergence. `scipy.signal.remez` implements the FIR-filter special case; for general function approximation, the `Chebfun`/`chebpy` ecosystem or a hand-rolled Remez loop over `numpy.polynomial.chebyshev` is the practical route. Whether OpenFHE's `EvalChebyshevFunction` internally runs true Remez or the Chebyshev-truncation near-minimax shortcut is an implementation detail worth checking in the source for your release rather than assuming <span class="tag tag-verify">Verify</span> — for most CKKS activation-replacement use cases the truncated-Chebyshev fit is close enough to minimax that the distinction rarely changes downstream accuracy by more than a fraction of a percent, but if you are chasing the last bit of tail robustness, run Remez explicitly in cleartext and hand OpenFHE the resulting coefficients via `EvalChebyshevSeries`.</p>
+
+<h5>Practical comparison: sigmoid on $[-8,8]$, degree 15</h5>
+<table>
+<tr><th>Method</th><th>Max error (in-range)</th><th>Error near $x=\pm8$</th></tr>
+<tr><td>Monomial least-squares</td><td>moderate, basis ill-conditioned above deg ~12</td><td>can diverge due to conditioning, not just fit quality</td></tr>
+<tr><td>Chebyshev truncation</td><td>small, near-minimax</td><td>controlled, equioscillating</td></tr>
+<tr><td>True Remez minimax</td><td>smallest achievable at this degree</td><td>tightest tail control</td></tr>
+</table>
+<p>The qualitative ordering here is robust across activation functions <span class="tag tag-likely">Likely</span>; exact numbers depend on $R$, $d$, and $\phi$'s smoothness, which is why the artifact below has you measure it rather than take these on faith.</p>
+
+<h4>19.4 Composite and piecewise strategies</h4>
+
+<p>A single global polynomial is not the only option, and for functions with sharp local structure it is often not the best one:</p>
+<ul>
+<li><strong>Different-degree-per-range composition</strong>: for $\mathrm{ReLU}$, whose kink sits at the origin, several published constructions use a low-degree polynomial to approximate the sign function near zero (where precision matters most) composed with a scaling trick, rather than fitting the whole $[-R,R]$ range with one high-degree polynomial. This can reduce the required degree substantially versus a single naive global fit <span class="tag tag-likely">Likely</span> — magnitude of the saving depends on $R$ and target accuracy.</li>
+<li><strong>Composition of low-degree polynomials</strong> ($p = p_k \circ \cdots \circ p_1$): composing $k$ polynomials of degree $g$ yields an effective degree $g^k$ while paying multiplicative depth roughly $k \cdot \lceil \log_2 g\rceil$ rather than $\log_2(g^k)$ savings — composition trades a larger achievable degree for a specific depth profile, and is the mechanism behind several sign/comparison approximation papers that iterate a simple polynomial many times to sharpen an approximate step function.</li>
+<li><strong>Function-specific closed forms</strong>: $\mathrm{GELU}(x) = x\cdot\Phi(x) \approx x \cdot \sigma(1.702x)$ (the standard Swish-based GELU approximation used even in plaintext deep learning) reduces the transformer activation to one $\sigma$-approximation plus one multiply — reuse your sigmoid polynomial rather than fitting GELU's Gaussian-CDF shape from scratch. $\mathrm{Swish}(x) = x\cdot\sigma(\beta x)$ is structurally identical.</li>
+<li><strong>Square activation as the zero-cost option</strong>: when architecture search is available (i.e., you are training the network with FHE deployment in mind, not retrofitting a pretrained one), replacing $\mathrm{ReLU}$ with $x^2$ or a scaled/shifted variant sidesteps approximation entirely — it costs exactly one $\mathsf{EvalMult}$, exact up to CKKS numerical precision. CryptoNets (Chapter 21) made this choice for precisely this reason.</li>
+</ul>
+
+<h4>19.5 Paying for it: Paterson–Stockmeyer depth</h4>
+
+<div class="theorem">
+<div class="box-title">Fact 19.3 — Depth of homomorphic polynomial evaluation</div>
+<p>Naive (Horner's method) evaluation of a degree-$d$ polynomial on a ciphertext costs $d$ sequential multiplicative levels. The <strong>Paterson–Stockmeyer algorithm</strong> restructures the evaluation as a two-level scheme — build a "baby-step" set of powers $\{x, x^2, \dots, x^{\lceil\sqrt d\rceil}\}$, then combine them in "giant steps" — reducing the depth to $O(\log d)$, specifically close to $\lceil \log_2(d+1) \rceil$ for well-chosen baby/giant-step splits <span class="tag tag-certain">Certain</span>, at the cost of more multiplications in total (not more depth — CKKS multiplications at the same level are cheap relative to depth, which is the actual scarce resource). This is what OpenFHE's `EvalChebyshevFunction`/`EvalPolynomial` family does internally, and it is the reason a degree-27 Chebyshev fit costs on the order of 5 levels, not 27.</p>
+</div>
+
+<h4>19.6 Artifact — Chebyshev approximation of $\mathrm{ReLU}$, sigmoid, GELU: error vs. depth</h4>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 19.A — measuring the accuracy/depth frontier</div>
+<pre><code># Cleartext exploration first -- establish which degree you need before
+# spending OpenFHE compile/runtime cycles. This mirrors the actual FHE
+# ML workflow: calibrate and select degree in numpy, THEN port to CKKS.
+import numpy as np
+from numpy.polynomial import chebyshev as C
+
+def relu(x):    return np.maximum(x, 0.0)
+def sigmoid(x): return 1.0 / (1.0 + np.exp(-x))
+def gelu(x):    return x * sigmoid(1.702 * x)     # Swish-based GELU approx (19.4)
+
+def chebyshev_fit(f, R, degree, n_nodes=2000):
+    """Fit f on [-R, R] via Chebyshev series truncated at `degree`."""
+    x = np.linspace(-R, R, n_nodes)
+    xs = x / R                                     # rescale to [-1, 1]
+    # numpy's chebfit already uses well-conditioned Chebyshev-domain
+    # least squares -- not raw monomial normal equations (19.1's failure mode).
+    coeffs = C.chebfit(xs, f(x), degree)
+    return coeffs, R
+
+def eval_chebyshev(coeffs, R, x):
+    return C.chebval(x / R, coeffs)
+
+def paterson_stockmeyer_depth(degree):
+    return int(np.ceil(np.log2(degree + 1)))
+
+R = 8.0
+xs_test = np.linspace(-R, R, 500)
+xs_tail = np.array([-R - 1, -R - 0.5, R + 0.5, R + 1])   # just outside fit range
+
+for name, f in [("relu", relu), ("sigmoid", sigmoid), ("gelu", gelu)]:
+    print(f"\n--- {name} on [-{R},{R}] ---")
+    for degree in (4, 8, 15, 27):
+        coeffs, _ = chebyshev_fit(f, R, degree)
+        approx = eval_chebyshev(coeffs, R, xs_test)
+        err_in  = np.max(np.abs(approx - f(xs_test)))
+        approx_tail = eval_chebyshev(coeffs, R, xs_tail)
+        err_out = np.max(np.abs(approx_tail - f(xs_tail)))
+        depth = paterson_stockmeyer_depth(degree)
+        print(f"  degree={degree:3d}  P-S depth={depth}  "
+              f"max_err_in_range={err_in:.2e}  max_err_just_outside={err_out:.2e}")
+</code></pre>
+<p>Expect the qualitative pattern: for $\mathrm{ReLU}$'s sharp kink, error stays stubbornly high (Gibbs-phenomenon-adjacent oscillation near $x=0$) even at moderate degree, and only tightens meaningfully once degree climbs into the teens-to-twenties; for the smooth $\sigma$ and $\mathrm{GELU}$, error drops fast and near-monotonically with degree, since Chebyshev truncation error is governed by the smoothness of $\phi$ (analytic functions converge geometrically; functions with kinks converge only polynomially). The out-of-range column should visibly worsen relative to in-range error as degree increases — the same divergence from Chapter 18's Artifact 18.A, now quantified per-function. Once you've picked a degree/range pair that clears your accuracy bar, port the chosen $(R, d)$ into `EvalChebyshevFunction(f, ct, -R, R, d)` in OpenFHE (19.2) and set `SetMultiplicativeDepth` to the Paterson–Stockmeyer depth this loop reports, plus whatever depth the surrounding linear layers consume.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>Fit polynomials in the Chebyshev basis, not the monomial basis — monomial normal equations become numerically unusable well before the degrees encrypted ML routinely needs.</li>
+<li>Chebyshev series truncation gives a near-minimax fit almost for free; true minimax (Remez) tightens the tails further at the cost of an offline optimization step.</li>
+<li>Homomorphic polynomial evaluation costs $O(\log d)$ multiplicative depth via Paterson–Stockmeyer, not $O(d)$ — this is what makes degree-20-plus activations tractable in a leveled scheme.</li>
+<li>Match the strategy to the function: exploit closed-form reductions (GELU→sigmoid), use square activation when architecture is co-designed, and always calibrate the fitting range to your model's actual empirical pre-activation distribution.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch20">
+<div class="chapter-header"><div class="ch-label">Chapter 20</div><h3>Encrypted Inference: Linear Models and Decision Trees</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Implement encrypted logistic regression end-to-end in TenSEAL as the canonical "hello world" of encrypted ML, and account for every multiplicative level it consumes.</li>
+<li>Explain why decision trees and gradient-boosted trees are the natural fit for TFHE/Concrete-ML rather than CKKS.</li>
+<li>Reason quantitatively about the accuracy–privacy–performance triangle rather than treating any one axis as free.</li>
+</ul>
+</div>
+
+<p>With Chapters 18–19 giving us a working answer to "what do we do about the activation," we can finally build something end-to-end. This chapter deliberately starts with the two model families that need the least of that machinery: linear/logistic models (one activation, applied once, at the very end) and decision trees (no activation function at all in the CKKS sense — trees are pure comparison, which routes them to TFHE instead). Between them they cover a surprising fraction of real deployed tabular ML, and they are the right place to build calibrated intuition for cost before Chapter 21 takes on full neural networks.</p>
+
+<h4>20.1 Encrypted linear and logistic regression: the "hello world"</h4>
+
+<p>A linear model's forward pass is $\hat y = w^\top x + b$ — a dot product, depth 1, no activation, entirely inside CKKS's comfort zone. Logistic regression adds exactly one non-polynomial step: $\hat p = \sigma(w^\top x + b)$. That single $\sigma$ is the entire non-linear budget of the whole model, which is precisely why it is the standard first example in every encrypted-ML tutorial: it isolates Chapter 19's machinery from everything else that can go wrong.</p>
+
+<div class="example">
+<div class="box-title">Depth accounting for encrypted logistic regression</div>
+<p>$w^\top x$: one $\mathsf{EvalMultPlain}$ (weights are known plaintext, not encrypted) followed by a rotate-and-sum reduction (Chapter 21 covers the packing trick in detail) — this consumes at most 1 level, and 0 if the weights are folded into a plaintext-ciphertext multiply that doesn't require rescale-then-relinearize the way ciphertext-ciphertext multiply does. Adding $b$: free (plaintext add). $\sigma(\cdot)$ via a degree-$d$ Chebyshev fit: $\lceil \log_2(d{+}1)\rceil$ levels via Paterson–Stockmeyer (Chapter 19 §5). For $d=15$: 4 levels. Total: roughly 5 levels for the entire model — trivially within a leveled CKKS parameter set with no bootstrapping required.</p>
+</div>
+
+<h5>TenSEAL walkthrough</h5>
+<pre><code># tag: verify -- confirm method names against the installed
+# tenseal.__version__ (target 0.3.16); the CKKSVector API is stable
+# but has grown new convenience methods across releases.
+import tenseal as ts
+import numpy as np
+
+# 1. Context: client-side setup, keys never leave the client.
+ctx = ts.context(
+    ts.SCHEME_TYPE.CKKS,
+    poly_modulus_degree=8192,
+    coeff_mod_bit_sizes=[60, 40, 40, 40, 40, 60],   # ~5 levels, cf. depth accounting above
+)
+ctx.global_scale = 2 ** 40
+ctx.generate_galois_keys()
+
+# 2. Plaintext-trained weights (trained normally, outside FHE -- Chapter 22
+#    revisits training-time considerations; here training is already done).
+w = np.array([0.8, -1.2, 0.3, 0.5])
+b = -0.1
+
+# Chebyshev coefficients for sigmoid on [-8, 8], degree 15 (from Ch.19 Artifact).
+from numpy.polynomial import chebyshev as C
+R, degree = 8.0, 15
+xs = np.linspace(-R, R, 2000)
+sig_coeffs = C.chebfit(xs / R, 1 / (1 + np.exp(-xs)), degree)
+mono_coeffs = C.cheb2poly(sig_coeffs)   # convert to monomial for simple Horner eval below
+
+# 3. Client encrypts its feature vector.
+x = np.array([1.5, 0.2, -0.7, 2.1])
+enc_x = ts.ckks_vector(ctx, x.tolist())
+
+# 4. Server-side (sees only ciphertexts + its own plaintext weights):
+enc_dot = enc_x.dot(w.tolist())     # w^T x, plaintext-ciphertext op
+enc_z = enc_dot + b
+
+# Horner evaluation of the (low-order) monomial-converted Chebyshev fit.
+# For production, prefer OpenFHE's EvalChebyshevFunction (Paterson-Stockmeyer,
+# Ch.19 §5) -- TenSEAL has no built-in Chebyshev evaluator as of 0.3.16, so a
+# hand-rolled Horner loop like this is the idiomatic TenSEAL-side workaround.
+def horner_ckks(enc_v, coeffs_desc):
+    acc = enc_v * coeffs_desc[0]
+    for c in coeffs_desc[1:]:
+        acc = acc * enc_v + c
+    return acc
+
+enc_scaled_z = enc_z * (1.0 / R)          # rescale into Chebyshev's [-1,1] domain
+enc_pred = horner_ckks(enc_scaled_z, mono_coeffs[::-1].tolist())
+
+# 5. Client decrypts.
+pred = enc_pred.decrypt()[0]
+print("encrypted logistic regression prediction:", pred)
+</code></pre>
+<p>Notice what never happens anywhere in this pipeline: the server never sees $x$, $\hat p$, or any intermediate value in the clear. It sees ciphertexts and its own plaintext model weights, and returns a ciphertext. This — not raw throughput — is the entire point of the exercise, and it is worth running with `print`s on both sides to convince yourself the server-side variables really are opaque `ts.CKKSVector` objects with no `.decrypt()` capability (decryption requires the secret key, generated and held only by the context that created it on the client).</p>
+
+<h4>20.2 Decision trees and gradient boosting: why TFHE, not CKKS</h4>
+
+<p>A decision tree's forward pass is a sequence of comparisons — "is feature $j$ above threshold $t$?" — routing an input down one of exponentially many paths to a leaf. There is no polynomial encoding of "which path" that stays cheap: comparison is exactly the operation Chapter 18 flagged as impossible in CKKS. This is precisely the shape of problem TFHE's programmable bootstrapping was built for — a comparison is a 1-bit-output lookup table, and PBS evaluates arbitrary lookup tables as its native primitive rather than as an approximation.</p>
+
+<p>Concrete-ML exposes this with a scikit-learn-compatible surface that hides essentially all of the FHE mechanics:</p>
+
+<pre><code># tag: certain -- Concrete-ML's sklearn-style API surface (fit/compile/predict)
+# is a stable, widely-documented pattern; verify only version-specific kwargs
+# (e.g. exact default n_bits) against the docs.zama.ai release you target (1.8).
+from concrete.ml.sklearn import DecisionTreeClassifier, XGBClassifier
+
+# Decision tree: comparisons at every internal node.
+tree = DecisionTreeClassifier(n_bits=6, max_depth=5)
+tree.fit(X_train, y_train)                 # trained in the clear, as usual
+tree.compile(X_train)                      # builds the FHE circuit: quantizes
+                                            # thresholds + features to n_bits,
+                                            # lowers comparisons to PBS lookups
+y_pred_fhe = tree.predict(X_test, fhe="execute")     # real encrypted execution
+y_pred_sim = tree.predict(X_test, fhe="simulate")    # fast, no-crypto accuracy check
+
+# Gradient-boosted trees: an ensemble of the above, summed.
+xgb = XGBClassifier(n_bits=6, n_estimators=50, max_depth=4)
+xgb.fit(X_train, y_train)
+xgb.compile(X_train)
+y_pred = xgb.predict(X_test, fhe="execute")
+</code></pre>
+
+<p><code>n_bits</code> is the single most consequential hyperparameter here <span class="tag tag-certain">Certain</span>: it sets the quantization width for both input features and split thresholds, which in turn sets the domain size the PBS lookup tables must cover. Push it too high and compilation either fails or becomes prohibitively slow, because larger LUT domains mean larger, slower bootstraps; push it too low and split-threshold quantization starts merging tree branches that were meaningfully distinct in floating point, costing you accuracy. `fhe="simulate"` runs the exact same quantized arithmetic without paying real encryption/bootstrap cost, and is the correct tool for sweeping `n_bits` to find the accuracy knee before committing to a slow `fhe="execute"` run — a workflow you should default to every time you touch `n_bits` or `max_depth`, since a full-encrypted sweep is orders of magnitude slower than a simulated one.</p>
+
+<h4>20.3 The accuracy–privacy–performance triangle</h4>
+
+<div class="warning-box">
+<div class="box-title">There is no free corner</div>
+<p>Every knob in encrypted inference trades among three axes, and every paper or library README that reports only one of them (usually latency, because it's the flashiest number) is implicitly hiding a choice about the other two. Concretely: raising `n_bits` in Concrete-ML buys accuracy and costs latency (bigger PBS domains). Lowering the Chapter 19 polynomial degree for a CKKS sigmoid buys depth budget (smaller parameters, faster) and costs accuracy. Neither library can hand you a free lunch on all three simultaneously — the honest empirical exercise is to measure the frontier yourself for your model and data, which is exactly what the artifact below does.</p>
+</div>
+
+<h4>20.4 Artifact — encrypted logistic regression vs. encrypted XGBoost, measured</h4>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 20.A — the two "hello worlds" side by side</div>
+<pre><code># Comparison harness: train both model families in the clear on the same
+# tabular dataset (e.g. a binary classification task from UCI/sklearn),
+# then measure clear-vs-encrypted accuracy delta, and (approximate) relative
+# per-inference latency class, for each.
+import time
+import numpy as np
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from concrete.ml.sklearn import XGBClassifier
+
+X, y = load_breast_cancer(return_X_y=True)
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+
+# --- Model A: plaintext-trained logistic regression, deployed via the
+#     TenSEAL pipeline of 20.1 (weights + Ch.19 sigmoid Chebyshev fit). ---
+clf = LogisticRegression(max_iter=1000).fit(X_train, y_train)
+acc_clear_lr = clf.score(X_test, y_test)
+# encrypted accuracy: run Artifact 20.1's pipeline per test row, compare
+# thresholded enc_pred against y_test -- omitted here for brevity, but this
+# is exactly the loop to run to get a real accuracy-delta number.
+
+# --- Model B: Concrete-ML XGBoost, n_bits swept ---------------------------
+for n_bits in (2, 4, 6, 8):
+    xgb = XGBClassifier(n_bits=n_bits, n_estimators=50, max_depth=4)
+    xgb.fit(X_train, y_train)
+    xgb.compile(X_train)
+    t0 = time.time()
+    y_sim = xgb.predict(X_test, fhe="simulate")
+    sim_time = time.time() - t0
+    acc_sim = (y_sim == y_test).mean()
+    print(f"XGB n_bits={n_bits}: simulated-FHE accuracy={acc_sim:.3f}  "
+          f"simulate-wall-time={sim_time:.3f}s")
+
+print(f"\nPlaintext logistic regression baseline accuracy: {acc_clear_lr:.3f}")
+</code></pre>
+<p>The expected shape of the result: XGBoost accuracy should climb sharply from `n_bits=2` to `n_bits=6` and then plateau, identifying the accuracy "knee" beyond which more bits buy little — that knee is your operating point before you ever pay for a real `fhe="execute"` run. Compare the plateaued XGBoost accuracy against the logistic regression baseline; on tabular data with non-linear decision boundaries, trees typically win on accuracy, while logistic regression wins on CKKS-side simplicity (no quantization budget to manage at all, since CKKS is float-native). Which one you deploy is a real engineering decision informed by this triangle, not a foregone conclusion.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>Encrypted logistic regression is the canonical minimal example because it isolates exactly one non-polynomial operation (the final sigmoid) from an otherwise trivially CKKS-native model.</li>
+<li>Decision trees and gradient-boosted trees are pure-comparison models — they belong to TFHE/Concrete-ML, where PBS evaluates comparisons exactly rather than approximately.</li>
+<li><code>n_bits</code> in Concrete-ML is the accuracy/latency dial for tree models, exactly as polynomial degree is the accuracy/depth dial for CKKS activations — always sweep it with <code>fhe="simulate"</code> before paying for real encrypted execution.</li>
+<li>Accuracy, privacy guarantee, and performance are a triangle with no free corner; report all three or the comparison is meaningless.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch21">
+<div class="chapter-header"><div class="ch-label">Chapter 21</div><h3>Encrypted Neural Network Inference</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Adapt a trained plaintext network architecture for encrypted deployment: activation replacement, BatchNorm folding, softmax handling.</li>
+<li>Trace the CryptoNets lineage and understand what changed (and what didn't) as the field moved to higher-degree polynomials and deeper networks.</li>
+<li>Execute a full layer-by-layer mental model of encrypted CNN inference: encode, packed matmul via rotations, polynomial activation, repeat.</li>
+<li>Budget multiplicative depth across an entire network, combining Chapter 19's per-activation cost with per-layer linear cost.</li>
+</ul>
+</div>
+
+<p>This is where Chapters 18–20's separate pieces — the barrier, the polynomial fix, the minimal linear/tree examples — compose into the thing everyone actually wants: a convolutional or fully-connected neural network that never decrypts its input. Nothing here is a new primitive; it is disciplined composition of what you already have, plus two pieces of engineering that only become necessary at network scale: rotation-based packing for matmuls, and depth budgeting across many layers instead of one.</p>
+
+<h4>21.1 Architecture adaptation: what changes between "trained" and "deployable"</h4>
+
+<p>You almost never train a network from scratch inside FHE (Chapter 24 explains why encrypted training is a different, much harder problem). The standard pipeline trains a plaintext model, then adapts its architecture for encrypted deployment:</p>
+<ul>
+<li><strong>Activation replacement.</strong> Every $\mathrm{ReLU}$/$\mathrm{GELU}$/$\tanh$ becomes a calibrated Chebyshev polynomial per Chapter 19, fit to that layer's <em>empirical</em> pre-activation range on a representative calibration set — not a shared global range, since deeper layers typically have different activation statistics than shallow ones.</li>
+<li><strong>BatchNorm folding.</strong> $\mathrm{BN}(z) = \gamma \frac{z - \mu}{\sqrt{\sigma^2+\epsilon}} + \beta$ is affine in $z$ at inference time (statistics are fixed, not recomputed), so it algebraically collapses into the preceding linear layer's weights and bias: $W' = \gamma W / \sqrt{\sigma^2+\epsilon}$, $b' = \gamma(b-\mu)/\sqrt{\sigma^2+\epsilon} + \beta$. This is not an FHE-specific trick — plaintext inference servers do it too for speed — but it is mandatory for FHE, because leaving BatchNorm as a separate step would add a full extra multiplicative operation (the division by $\sqrt{\sigma^2+\epsilon}$) that CKKS can't evaluate directly anyway (division by an encrypted or even awkward plaintext quantity). Folded, it costs nothing beyond the linear layer it merges into.</li>
+<li><strong>Softmax removal or approximation.</strong> For classification, if you only need $\arg\max$ (the winning class label) and the client will do that comparison after decryption, you can skip softmax under encryption entirely and return raw logits — softmax is monotonic, so $\arg\max(\mathrm{softmax}(z)) = \arg\max(z)$, and there's no reason to pay for an encrypted exponential-plus-division just to throw away the normalization. If you genuinely need calibrated probabilities under encryption (e.g. the server must threshold a confidence score without ever seeing logits), softmax needs both an encrypted exponential (Chapter 19-style polynomial fit to $e^x$ over the logit range) and an encrypted approximate reciprocal (typically a Newton-Raphson-style iterative polynomial refining an initial reciprocal estimate — itself a multi-level operation), which is markedly more expensive than the $\arg\max$ shortcut and worth avoiding whenever the use case allows it.</li>
+</ul>
+
+<h4>21.2 The CryptoNets lineage</h4>
+
+<p>CryptoNets (Gilad-Bachrach et al., 2016) is the founding artifact of this entire subfield, and its choices are still legible in nearly every paper that followed. Facing exactly Chapter 18's barrier with 2016-era leveled HE (no practical bootstrapping), it made the most conservative possible choice: replace every activation with $x^2$ (the square function — trivially degree-2, zero approximation error, one level per activation) and use average pooling instead of max pooling (average is linear; max is not). The result was a shallow network (by modern standards) that ran encrypted MNIST inference correctly, at latency measured in minutes for a batch — remarkable for 2016, glacial by any later standard. <span class="tag tag-certain">Certain</span></p>
+
+<p>The trajectory since has been a steady relaxation of CryptoNets' conservatism, enabled by three things arriving roughly together: (1) Paterson–Stockmeyer-optimized polynomial evaluation making higher-degree activations affordable in depth, (2) CKKS bootstrapping maturing in OpenFHE/HEAAN so "run out of levels" stopped being a hard wall, and (3) better calibration methodology (Chapter 19's Chebyshev/Remez machinery) making higher-degree fits numerically trustworthy rather than a Runge-phenomenon liability. The qualitative arc: square activation and shallow nets (CryptoNets-era) → degree-4/8 polynomial $\mathrm{ReLU}$/sigmoid approximations on deeper CNNs → degree-15-to-30-plus Chebyshev fits enabling full transformer blocks with $\mathrm{GELU}$/softmax approximations, aided by bootstrapping to reset depth between blocks rather than budgeting the entire network's depth up front. <span class="tag tag-likely">Likely</span> — the specific degree/depth numbers reported vary significantly across papers depending on dataset and accuracy target; treat this as the qualitative shape of the field's evolution rather than a citable benchmark table.</p>
+
+<h4>21.3 Layer-by-layer CKKS inference, concretely</h4>
+
+<p>The mental model for a single encrypted forward pass, given a network already architecture-adapted per §21.1:</p>
+<ol>
+<li><strong>Encode.</strong> Client packs its input tensor into one or more CKKS plaintexts respecting a chosen packing layout (below), then encrypts.</li>
+<li><strong>Per linear layer:</strong> the server computes $Wz+b$ homomorphically. Because $W$ is known plaintext (the trained, non-secret model — unless the model itself is the thing being protected, which is a different threat model with its own literature), this is $\mathsf{EvalMultPlain}$ against pre-encoded diagonal masks of $W$, combined with $\mathsf{EvalRotate}$ to align slots and $\mathsf{EvalAdd}$ to sum contributions — the classic "diagonal method" for encrypted matrix-vector products (Halevi–Shoup), consuming one ciphertext-plaintext multiplicative level and requiring Galois/rotation keys for every rotation offset the diagonal decomposition uses.</li>
+<li><strong>Per activation:</strong> apply the calibrated Chebyshev polynomial via Paterson–Stockmeyer (Chapter 19 §5), consuming $\lceil \log_2(d+1)\rceil$ levels.</li>
+<li><strong>Repeat</strong> for every layer, tracking remaining levels; bootstrap (if using OpenFHE with CKKS bootstrapping enabled) when levels run low and more layers remain.</li>
+<li><strong>Decrypt.</strong> Client (only holder of the secret key) decrypts the final ciphertext to recover logits or a class prediction.</li>
+</ol>
+
+<h4>21.4 Convolutions: im2col and channel packing</h4>
+
+<p>A convolution is linear, so in principle it is just another instance of step 2 above — but its structure (sliding windows, multiple channels) makes naive per-output-element rotation prohibitively rotation-heavy if you don't pack thoughtfully. The standard reduction is <strong>im2col</strong>: unroll each receptive field of the input into a column of a matrix, so that convolution becomes a single matrix multiplication between the unrolled input and a reshaped filter matrix — exactly the diagonal-method matmul of §21.3, at the cost of a data-layout transformation done once at encoding time (on the client, in plaintext, before encryption) rather than per-layer under encryption.</p>
+
+<p>Channel packing then decides how the (now-flattened) tensor maps into CKKS slots: pack multiple channels into a single ciphertext's slot space to (a) amortize the fixed per-ciphertext overhead of rotation/relinearization operations across more useful data, and (b) let a single $\mathsf{EvalRotate}$ implement a channel-wise shift for free rather than needing separate ciphertexts per channel. The right packing is architecture- and hardware-dependent (SIMD slot count $N/2$ vs. channel count vs. spatial size), and is typically the single largest empirical lever on encrypted CNN throughput after the activation-degree choice — this is squarely where "encrypted ML engineering" and "systems engineering" become the same job.</p>
+
+<h4>21.5 Depth budgeting across a whole network</h4>
+
+<div class="example">
+<div class="box-title">Worked depth budget: 2-conv + 2-FC CNN, degree-15 activations</div>
+<table>
+<tr><th>Layer</th><th>Type</th><th>Depth cost</th></tr>
+<tr><td>Conv1</td><td>linear (im2col matmul)</td><td>1</td></tr>
+<tr><td>Act1</td><td>degree-15 Chebyshev</td><td>$\lceil \log_2 16\rceil = 4$</td></tr>
+<tr><td>Conv2</td><td>linear</td><td>1</td></tr>
+<tr><td>Act2</td><td>degree-15 Chebyshev</td><td>4</td></tr>
+<tr><td>FC1</td><td>linear</td><td>1</td></tr>
+<tr><td>Act3</td><td>degree-15 Chebyshev</td><td>4</td></tr>
+<tr><td>FC2 (logits)</td><td>linear, no activation</td><td>1</td></tr>
+<tr><td><strong>Total</strong></td><td></td><td><strong>16 levels</strong></td></tr>
+</table>
+<p>Sixteen levels is a real but entirely achievable leveled-CKKS parameter set in OpenFHE without bootstrapping — `SetMultiplicativeDepth(16)` and a correspondingly sized coefficient modulus chain. Note where the budget actually goes: the three polynomial activations consume 12 of the 16 levels, the four linear layers only 4. This ratio is the quantitative version of Chapter 18's warning box — the activations, not the linear algebra, dominate the depth budget, and it is why every degree reduction in Chapter 19's fitting exercise pays for itself several times over across a multi-layer network.</p>
+</div>
+
+<h4>21.6 Encrypted GenAI: FHE hardware acceleration enters the picture</h4>
+
+<p>Transformer-scale encrypted inference (encrypted LLM/GenAI serving) has, until recently, been a research curiosity rather than a deployment target — the depth and rotation cost of encrypted attention and layer-normalization at LLM parameter counts is enormous relative to CNN-scale examples like the one above. The 2024 partnership between CryptoLab (the company behind the HEaaN CKKS implementation, founded by CKKS co-inventor Jung Hee Cheon's group) and Niobium Microsystems, targeting purpose-built FHE acceleration hardware for exactly this workload, is the clearest signal that the field expects hardware — not further algorithmic tricks alone — to be necessary to bring encrypted LLM inference latency down to something commercially viable <span class="tag tag-certain">Certain</span> (partnership existence and stated aim); the specific performance targets and timelines are vendor claims and should be read with the appropriate skepticism until independently benchmarked <span class="tag tag-verify">Verify</span>.</p>
+
+<h4>21.7 Artifact — encrypted CNN skeleton in OpenFHE CKKS</h4>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 21.A — 2 conv + 2 FC MNIST CNN, encrypted forward pass (skeleton)</div>
+<p>This is deliberately a structural skeleton, not compilable-as-is code — verify every OpenFHE call signature (`MakeCKKSPackedPlaintext`, `EvalRotateKeyGen` offset list, bootstrapping setup calls) against the CKKS examples bundled with your installed `openfhe-development` release before treating this as more than a design document.</p>
+<pre><code>// SKELETON -- structural only. Verify all signatures against
+// src/pke/examples/ in your installed openfhe-development release.
+#include "openfhe.h"
+using namespace lbcrypto;
+
+int main() {
+    // --- 1. Parameters sized for the depth budget of Table 21.5 --------
+    CCParams<CryptoContextCKKSRNS> parameters;
+    parameters.SetMultiplicativeDepth(16);
+    parameters.SetScalingModSize(45);
+    parameters.SetBatchSize(4096);           // packed slot count for im2col layout
+    auto cc = GenCryptoContext(parameters);
+    cc->Enable(PKE);
+    cc->Enable(KEYSWITCH);
+    cc->Enable(LEVELEDSHE);
+    // cc->Enable(ADVANCEDSHE) + EvalBootstrapSetup(...) if the real network
+    // needs more depth than a single leveled parameter set affords.
+
+    auto keys = cc->KeyGen();
+    cc->EvalMultKeyGen(keys.secretKey);
+    // Rotation offsets required by the im2col diagonal-method matmuls
+    // (Sec 21.3-21.4) for THIS network's specific filter/channel shapes --
+    // enumerate them from the plaintext model architecture, not guessed:
+    std::vector<int32_t> rotOffsets = /* derived from conv/FC shapes */ {};
+    cc->EvalRotateKeyGen(keys.secretKey, rotOffsets);
+
+    // --- 2. Client: encode + encrypt input image (im2col-unrolled, packed) --
+    std::vector<double> imageIm2col = /* client-side im2col unroll, Sec 21.4 */ {};
+    Plaintext ptxt = cc->MakeCKKSPackedPlaintext(imageIm2col);
+    auto ctInput = cc->Encrypt(keys.publicKey, ptxt);
+
+    // --- 3. Server: layer by layer, per Sec 21.3/21.5 -----------------------
+    // Conv1: diagonal-method packed matmul against plaintext filter weights.
+    auto ctConv1 = EvalConvLayer(cc, ctInput, conv1Weights, conv1RotOffsets); // helper, not an OpenFHE builtin
+    // Act1: degree-15 Chebyshev fit to (adapted) ReLU, calibrated per Sec 21.1.
+    auto ctAct1 = cc->EvalChebyshevFunction(reluApprox, ctConv1, -R1, R1, 15);
+
+    auto ctConv2 = EvalConvLayer(cc, ctAct1, conv2Weights, conv2RotOffsets);
+    auto ctAct2 = cc->EvalChebyshevFunction(reluApprox, ctConv2, -R2, R2, 15);
+
+    auto ctFC1 = EvalLinearLayer(cc, ctAct2, fc1Weights, fc1Bias, fc1RotOffsets);
+    auto ctAct3 = cc->EvalChebyshevFunction(reluApprox, ctFC1, -R3, R3, 15);
+
+    auto ctLogits = EvalLinearLayer(cc, ctAct3, fc2Weights, fc2Bias, fc2RotOffsets);
+    // No activation on logits -- argmax deferred to client after decryption
+    // (Sec 21.1's softmax-removal shortcut).
+
+    // --- 4. Client: decrypt and argmax in the clear -------------------------
+    Plaintext result;
+    cc->Decrypt(keys.secretKey, ctLogits, &result);
+    // client-side: read out 10 logit values, take argmax -> predicted digit
+    return 0;
+}
+</code></pre>
+<p>The two helper functions <code>EvalConvLayer</code>/<code>EvalLinearLayer</code> are intentionally left unimplemented here — they are exactly the Halevi–Shoup diagonal-method matmul of §21.3, and their correct implementation is layout-specific (depends on your im2col shape, filter count, and chosen slot packing). Writing them is the actual engineering content of shipping an encrypted CNN; treat this skeleton as the scaffold that tells you what to build and in what order, not as something to compile unmodified.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>Deploying a trained network under FHE requires architecture adaptation first: fold BatchNorm into linear layers, replace activations with calibrated polynomials, and drop softmax to raw logits where only argmax is needed.</li>
+<li>CryptoNets' square-activation, shallow-network choice was the conservative 2016 answer to Chapter 18's barrier; the field's trajectory since has been toward higher-degree, better-calibrated polynomial activations enabled by Paterson–Stockmeyer evaluation and maturing CKKS bootstrapping.</li>
+<li>Convolutions reduce to packed matrix multiplication via im2col; channel/slot packing strategy is often the largest remaining lever on throughput.</li>
+<li>In a realistic multi-layer network, polynomial activations dominate the multiplicative depth budget far more than the linear layers do — optimize activation degree first.</li>
+<li>Hardware acceleration (e.g. the CryptoLab/Niobium partnership) signals that algorithmic tricks alone are not expected to close the gap for transformer-scale encrypted inference.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch22">
+<div class="chapter-header"><div class="ch-label">Chapter 22</div><h3>Quantization-Aware Training for FHE</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Explain why TFHE-based encrypted inference forces integer quantization, and why naive post-training quantization is usually too aggressive at FHE-relevant bit-widths.</li>
+<li>Describe quantization-aware training (QAT) and the straight-through estimator that makes it trainable by gradient descent.</li>
+<li>Run the Concrete-ML + Brevitas pipeline end-to-end: define a bit-width-constrained model, train it, compile it via <code>compile_brevitas_qat_model</code>.</li>
+<li>Diagnose accumulator bit-width overflow as the dominant failure mode of TFHE-based NN compilation, and reason about how to fix it.</li>
+</ul>
+</div>
+
+<p>Chapter 20 introduced <code>n_bits</code> for tree models almost in passing. This chapter takes it seriously, because for neural networks under TFHE it stops being a minor knob and becomes the central design constraint the entire model has to be built around — to the point that you train differently, not just deploy differently, when the target is TFHE rather than CKKS.</p>
+
+<h4>22.1 Why quantization is forced, not optional, under TFHE</h4>
+
+<p>TFHE's programmable bootstrapping evaluates a lookup table over a small discrete domain — every value that flows through a PBS-evaluated operation must live in a bounded integer range, because the LUT has finitely many entries and each doubling of the input bit-width roughly doubles (or worse) the bootstrap cost <span class="tag tag-likely">Likely</span>; the precise scaling depends on the specific PBS parameterization. Concrete-ML documents a practical ceiling in the neighborhood of 16-bit accumulators for its currently supported backends <span class="tag tag-verify">Verify</span> — check the current `docs.zama.ai/concrete-ml` accumulator-bit-width guidance for your installed release, since this number has moved as the underlying Concrete library has evolved. This is the flip side of CKKS's float-native comfort: TFHE buys you exact, arbitrary non-linear functions (Chapter 18 §18.3, Strategy 2) at the price of every single value in the computation graph — not just the final output — needing to fit in a small integer budget.</p>
+
+<div class="warning-box">
+<div class="box-title">Naive post-training quantization is usually not enough</div>
+<p>The obvious first move — train a normal float32 network, then round every weight and activation to 4–8 bits after the fact — routinely tanks accuracy for anything beyond the shallowest models, because the network's weights were never optimized with the knowledge that they would be rounded. Small quantization errors in early layers compound through the network exactly the way polynomial approximation errors compound in Chapter 19's discussion, and by the output layer the accumulated rounding noise can dominate the signal. This is the practical reason QAT exists rather than everyone just quantizing post-hoc.</p>
+</div>
+
+<h4>22.2 Quantization-aware training and the straight-through estimator</h4>
+
+<p>QAT's idea: simulate the quantization <em>during</em> training, in the forward pass, so the optimizer sees — and can compensate for — the rounding error the deployed model will actually experience. The mechanical obstacle is that the rounding/quantization function $Q(x) = \Delta \cdot \mathrm{round}(x/\Delta)$ has zero gradient almost everywhere (it's a staircase), which would kill backpropagation stone dead if used literally.</p>
+
+<div class="definition">
+<div class="box-title">Definition 22.1 — Straight-through estimator (STE)</div>
+<p>In the forward pass, apply the real quantization function $Q(x)$. In the backward pass, pretend $Q$ were the identity function — i.e. set $\frac{\partial Q}{\partial x} \approx 1$ (optionally clipped to zero outside the representable range, the "clipped STE" variant) rather than using the true (almost-everywhere-zero) derivative. <span class="tag tag-certain">Certain</span> This is a biased gradient estimator with no formal convergence guarantee in general, yet it works remarkably well in practice across quantization literature — the network learns weights that are robust to the rounding it will experience at deployment, because the forward pass genuinely applies that rounding on every training step.</p>
+</div>
+
+<h4>22.3 The Concrete-ML + Brevitas pipeline</h4>
+
+<p>Concrete-ML does not reimplement QAT — it delegates model definition and QAT training to <strong>Brevitas</strong> (Xilinx/AMD's PyTorch-native quantization library, itself a full QAT framework with STE built in), and provides the compiler that turns a trained Brevitas model into an FHE circuit. <span class="tag tag-certain">Certain</span> The division of labor: you define the network using Brevitas's quantized layer types (`QuantLinear`, `QuantConv2d`, `QuantReLU`, ...) with explicit per-layer bit-width arguments, train it with ordinary PyTorch optimizers (Brevitas's layers handle the STE internally), and then hand the trained model to Concrete-ML's compiler.</p>
+
+<pre><code># tag: verify -- Brevitas's QuantXxx layer constructor kwargs and Concrete-ML's
+# compile_brevitas_qat_model signature should be checked against your installed
+# brevitas and concrete-ml (target 1.8) versions; both APIs have evolved.
+import torch
+import torch.nn as nn
+import brevitas.nn as qnn
+from brevitas.quant import Int8WeightPerTensorFloat
+
+class QATNet(nn.Module):
+    def __init__(self, bit_width=4):
+        super().__init__()
+        self.quant_inp = qnn.QuantIdentity(bit_width=bit_width, return_quant_tensor=True)
+        self.conv1 = qnn.QuantConv2d(3, 16, 3, padding=1,
+                                      weight_bit_width=bit_width, bias=True)
+        self.relu1 = qnn.QuantReLU(bit_width=bit_width, return_quant_tensor=True)
+        self.conv2 = qnn.QuantConv2d(16, 32, 3, padding=1,
+                                      weight_bit_width=bit_width, bias=True)
+        self.relu2 = qnn.QuantReLU(bit_width=bit_width, return_quant_tensor=True)
+        self.pool  = nn.AdaptiveAvgPool2d(4)
+        self.fc    = qnn.QuantLinear(32 * 4 * 4, 10, weight_bit_width=bit_width, bias=True)
+
+    def forward(self, x):
+        x = self.quant_inp(x)
+        x = self.relu1(self.conv1(x))
+        x = self.relu2(self.conv2(x))
+        x = self.pool(x)
+        x = x.flatten(1)
+        return self.fc(x)
+
+# --- Standard PyTorch training loop; Brevitas layers apply STE internally --
+model = QATNet(bit_width=4)
+opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+loss_fn = nn.CrossEntropyLoss()
+for epoch in range(n_epochs):
+    for xb, yb in train_loader:
+        opt.zero_grad()
+        loss = loss_fn(model(xb), yb)
+        loss.backward()
+        opt.step()
+
+# --- Hand off to Concrete-ML: compile the trained QAT model into an FHE circuit --
+from concrete.ml.torch.compile import compile_brevitas_qat_model
+
+# n_bits=None tells Concrete-ML to read per-layer bit-widths directly from
+# the Brevitas model's own quantization config, rather than overriding them.
+quantized_module = compile_brevitas_qat_model(
+    model,
+    torch_inputset=X_calibration,   # representative sample for range calibration
+                                     # -- this IS Chapter 18/21's calibration step,
+                                     # now for integer ranges instead of poly ranges
+    n_bits=None,
+)
+
+y_pred = quantized_module.forward(X_test, fhe="simulate")   # sweep before "execute"
+</code></pre>
+
+<h4>22.4 Accumulator analysis: the failure mode that actually bites</h4>
+
+<div class="theorem">
+<div class="box-title">Fact 22.2 — accumulator bit-width grows with fan-in, not just per-weight bit-width</div>
+<p>Setting `weight_bit_width=4` and `bit_width=4` for activations does not mean every intermediate value in the network stays 4-bit. A dot product summing $k$ products of two 4-bit quantities has a worst-case magnitude requiring $\lceil \log_2 k \rceil + 8$ bits (roughly — 4+4 bits for the product, plus $\log_2 k$ bits of headroom for the sum over $k$ terms) to represent exactly without overflow. A fully-connected layer with a few hundred input features, or a convolution with a wide receptive field times many channels, routinely pushes this <strong>accumulator</strong> bit-width past 16 even when every individual weight and activation is quantized to a small number of bits. <span class="tag tag-certain">Certain</span> — this is arithmetic, not an implementation detail, and it is far and away the most common reason a Concrete-ML `compile()` call fails or silently falls back to slow, high-precision emulation on a network whose per-layer bit-widths look perfectly reasonable in isolation.</p>
+</div>
+
+<p>Practical mitigations, in the order Concrete-ML users typically reach for them: reduce fan-in per accumulation (narrower layers, or split a wide FC layer into grouped/blocked sub-layers with separate accumulations summed at lower precision afterward); reduce weight/activation bit-width further (down to 2–3 bits, with the accuracy cost that implies, mitigated by QAT specifically because it lets the network compensate during training rather than after); or use `rounding_threshold_bits`, a Concrete-ML compilation option that rounds accumulators down to a target precision at compile time as an explicit accuracy/speed trade rather than an accidental overflow <span class="tag tag-verify">Verify</span> — confirm current default behavior and interaction with `compile_brevitas_qat_model` against your installed release's docs, as rounding strategy has been an active area of Concrete-ML development. The workflow, every time: compile, read the reported accumulator bit-width, and if it exceeds your target, narrow the network or the quantization before assuming the model architecture itself needs to change.</p>
+
+<h4>22.5 CKKS vs. TFHE: the scheme choice shapes the whole ML pipeline</h4>
+
+<table>
+<tr><th></th><th>CKKS</th><th>TFHE (Concrete-ML)</th></tr>
+<tr><td>Native data type</td><td>real/complex, approximate</td><td>small integers, exact within domain</td></tr>
+<tr><td>Non-linear activations</td><td>polynomial approximation (Ch. 19)</td><td>exact, via PBS lookup tables</td></tr>
+<tr><td>Training-time adaptation needed</td><td>architecture adaptation (Ch. 21) — activation replacement, BN folding</td><td>QAT (this chapter) — bit-width-constrained training</td></tr>
+<tr><td>Dominant failure mode</td><td>polynomial fit range/degree mismatch</td><td>accumulator bit-width overflow</td></tr>
+<tr><td>Throughput model</td><td>SIMD-packed, amortized across slots</td><td>per-scalar PBS latency</td></tr>
+</table>
+
+<p>The deeper point this table is making: <strong>you cannot choose "CKKS vs. TFHE" independently of how you train your model</strong>. A network QAT-trained for 4-bit Concrete-ML deployment is a different set of learned weights than a network trained in float32 for CKKS polynomial-activation deployment, even if the architecture (layer shapes) is identical — the scheme choice is a training-time decision, not a deployment-time afterthought, and retrofitting a model trained for one scheme onto the other typically costs accuracy that could have been avoided by deciding earlier.</p>
+
+<h4>22.6 Concrete-ML v1.8: beyond classic inference</h4>
+
+<p>Concrete-ML v1.8 extends this pipeline in a direction worth flagging even though it is outside classic supervised inference: privacy-preserving LLM fine-tuning via a hybrid client–server protocol, plus a dedicated Low-Rank-Approximation (LoRA-inspired) API to make that fine-tuning tractable. <span class="tag tag-certain">Certain</span> The architecture, per Zama's own release description, splits work by trust boundary rather than by layer type: the server performs FHE inference on the (large, sensitive-IP) base model's linear layers, while the client performs plaintext gradient descent on a small set of low-rank fine-tuning weights it holds locally — a single additional `compile()` call beyond the equivalent HuggingFace PEFT `LoraTrainer` workflow, per Zama's v1.8 announcement. <span class="tag tag-verify">Verify</span> — this is a fast-moving feature surface; confirm current API against `docs.zama.org/concrete-ml/llms/lora_training` for your installed release before building against it. This is a genuinely different point in the design space from Chapter 21's full-network-encrypted-inference model: rather than encrypting the whole forward pass, it encrypts only the expensive, IP-sensitive part and keeps the cheap, small, frequently-updated part in the clear on the client.</p>
+
+<h4>22.7 Artifact — CIFAR-10 QAT at 4-bit and 8-bit, compiled</h4>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 22.A — bit-width sweep: accuracy vs. accumulator size vs. compile success</div>
+<pre><code># Extends the QATNet of 22.3 across two bit-widths, and inspects the
+# compiled circuit's reported accumulator bit-width at each setting --
+# the practical diagnostic loop described in 22.4.
+import torch
+from torchvision.datasets import CIFAR10
+from torchvision import transforms
+from concrete.ml.torch.compile import compile_brevitas_qat_model
+
+transform = transforms.Compose([transforms.ToTensor()])
+train_set = CIFAR10(root="./data", train=True, download=True, transform=transform)
+test_set  = CIFAR10(root="./data", train=False, download=True, transform=transform)
+train_loader = torch.utils.data.DataLoader(train_set, batch_size=128, shuffle=True)
+
+results = {}
+for bit_width in (4, 8):
+    model = QATNet(bit_width=bit_width)          # class from 22.3
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss_fn = torch.nn.CrossEntropyLoss()
+
+    for epoch in range(10):                       # short run for illustration
+        for xb, yb in train_loader:
+            opt.zero_grad()
+            loss = loss_fn(model(xb), yb)
+            loss.backward()
+            opt.step()
+
+    X_calib = torch.stack([train_set[i][0] for i in range(256)])
+    try:
+        qmodule = compile_brevitas_qat_model(model, torch_inputset=X_calib, n_bits=None)
+        compiled_ok = True
+        # Concrete-ML exposes circuit statistics for inspection post-compile;
+        # exact accessor name/shape should be checked against your installed
+        # release (e.g. qmodule.fhe_circuit.graph / .statistics -- verify).
+    except Exception as e:
+        compiled_ok = False
+        print(f"bit_width={bit_width}: COMPILE FAILED -- {e}")
+
+    if compiled_ok:
+        X_test = torch.stack([test_set[i][0] for i in range(500)])
+        y_test = torch.tensor([test_set[i][1] for i in range(500)])
+        y_pred = qmodule.forward(X_test.numpy(), fhe="simulate").argmax(axis=1)
+        acc = (torch.tensor(y_pred) == y_test).float().mean().item()
+        results[bit_width] = acc
+        print(f"bit_width={bit_width}: compiled OK, simulated accuracy={acc:.3f}")
+
+print(results)
+</code></pre>
+<p>Expect 8-bit to compile more readily and land closer to a float32 baseline, while 4-bit is the more interesting data point: it should still train (QAT is specifically what makes 4-bit viable at all versus post-hoc rounding), but is the setting most likely to expose an accumulator-overflow compile failure on the wider FC layer if the network isn't narrowed to compensate — if it fails, that failure <em>is</em> the lesson of §22.4, not a bug to route around silently.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>TFHE forces integer quantization because PBS operates over bounded lookup-table domains; naive post-training quantization at FHE-relevant bit-widths (4–8 bits) usually costs too much accuracy.</li>
+<li>QAT, powered by the straight-through estimator, trains the network to be robust to the exact rounding it will see at deployment, and is the standard fix.</li>
+<li>Concrete-ML delegates QAT model definition/training to Brevitas and compiles the result via <code>compile_brevitas_qat_model</code>; the calibration set passed at compile time plays the same role as Chapter 21's polynomial-range calibration.</li>
+<li>Accumulator bit-width — driven by fan-in, not just per-weight bit-width — is the dominant real-world compile failure mode; diagnose and narrow before assuming the architecture must change.</li>
+<li>Scheme choice (CKKS vs. TFHE) is a training-time decision that shapes the whole ML pipeline, not a deployment-time afterthought.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch23">
+<div class="chapter-header"><div class="ch-label">Chapter 23</div><h3>Federated Learning and Homomorphic Encryption</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Explain what secure aggregation via HE protects in federated learning, and why it needs only additive homomorphism — depth 0.</li>
+<li>Understand precisely why HE-protected aggregation alone does not defend against gradient inversion or membership inference, and how differential privacy complements it.</li>
+<li>Survey the broader design space beyond simple aggregation: encrypted model evaluation, private set intersection, threshold HE.</li>
+<li>Situate OpenMined's Datasites model and the NAIRR partnership as the current infrastructure reality of this space.</li>
+</ul>
+</div>
+
+<p>Federated learning (FL) and homomorphic encryption solve adjacent but distinct problems, and conflating them is a common and consequential mistake. FL's premise is that raw data never leaves the client — training happens locally, and only model updates travel to a coordinating server. HE's role in that picture is narrower than newcomers often assume: it protects the <em>update</em> in transit and at aggregation time, not the training process itself, and — as this chapter's §23.3 insists on early — it does not, by itself, close every privacy leak the system has.</p>
+
+<h4>23.1 The FL setting and where HE fits</h4>
+
+<p>Canonical FedAvg (McMahan et al.): each round, the server broadcasts the current global model to a set of clients; each client trains locally on its own private data for a few steps/epochs, producing a local update $\Delta_i$ (a gradient or a weight delta); the server aggregates $\Delta = \sum_i n_i \Delta_i / \sum_i n_i$ (weighted by local dataset size $n_i$) and applies it to the global model. Data never leaves the client — but the update $\Delta_i$ itself is computed from that data and, if the server can inspect it directly, can leak substantial information about it (§23.3). HE's job is to make sure the server never sees any individual $\Delta_i$ in the clear — only the aggregate $\Delta$.</p>
+
+<h4>23.2 Secure aggregation: why addition-only suffices</h4>
+
+<div class="theorem">
+<div class="box-title">Observation 23.1 — FedAvg's aggregation step is pure addition</div>
+<p>$\Delta = \sum_i n_i \Delta_i / \sum_i n_i$ is a weighted sum. If each client scales its own update by its (public or agreed-upon) weight $n_i$ before encrypting — $\mathsf{Enc}(n_i \Delta_i)$ — the server's entire job is $\sum_i \mathsf{Enc}(n_i\Delta_i) = \mathsf{Enc}(\sum_i n_i \Delta_i)$, a pure ciphertext-ciphertext addition, exactly once, with zero multiplications. <span class="tag tag-certain">Certain</span> This is the single most important structural fact of this chapter: secure aggregation is a <strong>depth-0</strong> circuit. It needs no relinearization (additions don't grow ciphertext size), no rescaling, and critically, no bootstrapping — the noise budget consumed by a sum of $k$ ciphertexts grows only additively/logarithmically in $k$, not multiplicatively, so this remains cheap even at large client counts. <span class="tag tag-certain">Certain</span></p>
+</div>
+
+<p>This is also why secure aggregation is one of the few FHE-adjacent use cases where even <strong>Paillier</strong> — a much older, purely additively-homomorphic cryptosystem with no multiplicative structure at all — is a perfectly adequate tool, and indeed is what several production secure-aggregation deployments used before CKKS-based pipelines became common. If the entire circuit you need is "sum a bunch of encrypted vectors," you do not need the full generality (or the parameter tuning complexity) of a leveled RLWE scheme; you need additive homomorphism, full stop. CKKS/TenSEAL remains a reasonable choice in practice mainly because it lets the same context and key infrastructure also serve any encrypted-inference component of the system (Chapters 20–21), and because float-native encoding avoids a separate fixed-point encoding step that Paillier's integer-only plaintext space would require.</p>
+
+<h4>23.3 HE alone is not enough: what it doesn't protect against</h4>
+
+<div class="warning-box">
+<div class="box-title">Encrypting the update is not the same as protecting the client's data</div>
+<p>Secure aggregation via HE hides individual updates from the <em>server</em>. It does nothing about what the <em>aggregate</em> itself leaks, and it does nothing about what a client's own plaintext-visible update would have leaked <em>before</em> encryption if the threat model includes an adversary who compromises a client or who can otherwise see individual (rather than aggregated) updates. Two well-established attack classes make this concrete:</p>
+<ul>
+<li><strong>Gradient inversion.</strong> A sufficiently expressive gradient (especially from a single client on a small local batch) can be optimized against — treating the observed gradient as a target and searching over candidate inputs whose gradient would reproduce it — to reconstruct training examples with startling fidelity in some settings (this is well-documented in the plaintext-gradient federated learning literature, independent of any FHE consideration <span class="tag tag-certain">Certain</span>). HE-based secure aggregation defeats this <em>only</em> when it forces the adversary to see nothing but the sum of many clients' gradients, never any individual one — which is exactly why the aggregation protocol design (minimum cohort size per round, no single-client "aggregates") matters as much as the cryptography.</li>
+<li><strong>Membership inference.</strong> Even the aggregate model (not any individual update) can leak whether a specific record was in the training set, via the model's differential behavior on members vs. non-members (confidence, loss, or gradient-norm statistics). This attack targets the trained model's generalization behavior, and HE — which protects communication and intermediate computation — has essentially nothing to say about it, because the leak is in the final output artifact itself, which is never intended to stay secret. <span class="tag tag-certain">Certain</span></li>
+</ul>
+</div>
+
+<p>The standard, complementary answer is <strong>differential privacy</strong>, typically DP-SGD: clip and add calibrated noise to each client's local gradient before it is even encrypted, so that the aggregate the server homomorphically computes is already a DP-noised sum, and the final model carries a formal $(\epsilon,\delta)$ privacy guarantee against both attack classes above — not just a "the server didn't see it individually" guarantee, which is all HE alone provides. The combination — clip-and-noise locally (DP), encrypt-and-sum at the server (HE) — is the standard pattern in the private-FL literature, and it is worth internalizing as a rule: <strong>HE protects the communication/computation channel; DP protects the information content of what travels through it.</strong> They are not substitutes for each other, and a system using only one is answering a different threat model than a system using both.</p>
+
+<h4>23.4 Beyond simple aggregation</h4>
+
+<ul>
+<li><strong>Encrypted model evaluation.</strong> A client wants to know how well the (possibly proprietary) global model performs on its local held-out data, without revealing that data to the model owner and without the model owner revealing model weights to the client — this composes secure aggregation's HE machinery with Chapter 20/21's encrypted-inference machinery, run in the opposite trust direction.</li>
+<li><strong>Private set intersection (PSI).</strong> Cross-silo FL scenarios (e.g. two hospitals or banks with overlapping-but-not-identical customer populations) often need to first determine which records are shared across parties, without revealing the non-overlapping records — a separate, well-studied cryptographic primitive (commonly built on OT or HE-based protocols) that frequently sits upstream of vertical federated learning.</li>
+<li><strong>Threshold HE for decentralized trust.</strong> Standard HE has a single secret-key holder — if that party is compromised or colludes, aggregation's privacy guarantee collapses. Threshold HE schemes split the secret key across multiple parties such that decryption requires a quorum (e.g. $t$-of-$n$) to cooperate, removing the single point of trust/failure that a lone "server holds the aggregation key" design implies. This is the natural next step for FL deployments where no single party — including the aggregation server operator — should unilaterally be able to decrypt.</li>
+</ul>
+
+<h4>23.5 OpenMined PySyft and the NAIRR partnership</h4>
+
+<p>OpenMined's PySyft has, across its 0.9.x line, moved toward what it calls a "Remote Data Science" model built around <strong>Datasites</strong> — servers that hold non-public data under strict access control, exposing a controlled computation interface (not raw data access) to remote researchers, deployable on a local machine, a cluster, or in the cloud. <span class="tag tag-certain">Certain</span> This is a broader orchestration and governance layer than HE alone provides: HE (via TenSEAL, which OpenMined also maintains) protects specific numerical computations, while Datasites govern the whole workflow of who may run what computation against which private dataset and under what audit trail — the FL setting of this chapter is one instance of the broader pattern Datasites are designed for.</p>
+
+<p>This infrastructure has real institutional backing: OpenMined is a partner in the U.S. National AI Research Resource (NAIRR) pilot, which as of its most recent reporting has supported over 460 projects across 48 states, alongside an NSF commitment of $35 million toward establishing a permanent NAIRR operations center. <span class="tag tag-certain">Certain</span> — figures per OpenMined's own NAIRR program page and NAIRR pilot reporting; treat these as a snapshot that will move as the pilot's reporting cadence continues, and re-check `openmined.org/programs/nairr` for current numbers before citing them in anything with a shelf life. The practical takeaway for a practitioner: PySyft/Datasites is where you'd look for governance and orchestration of a real multi-institution federated deployment, with TenSEAL supplying the HE primitives for the specific aggregation step this chapter has focused on — the two are complementary layers, not competitors.</p>
+
+<h4>23.6 Artifact — minimal 2-client, 1-server FL loop with CKKS-encrypted aggregation</h4>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 23.A — FedAvg, one round, secure aggregation via TenSEAL</div>
+<pre><code># tag: verify -- confirm TenSEAL method names against installed tenseal
+# (target 0.3.16). Illustrates Observation 23.1: aggregation is pure addition,
+# depth 0 -- notice there is not a single EvalMult in the aggregation path.
+import tenseal as ts
+import numpy as np
+
+# --- Shared context, generated once (in reality: by a trusted key-holder,
+#     or via threshold keygen per Sec 23.4 -- simplified to one party here) --
+ctx = ts.context(ts.SCHEME_TYPE.CKKS, poly_modulus_degree=8192,
+                  coeff_mod_bit_sizes=[60, 40, 60])   # only 1 inner level needed:
+                                                        # aggregation never multiplies
+ctx.global_scale = 2 ** 40
+# secret key stays with whoever will decrypt the aggregate (the "server" in
+# an honest-but-curious model, or split via threshold HE in a stronger model)
+secret_ctx = ctx.copy()
+public_ctx = ctx.copy()
+public_ctx.make_context_public()     # clients get only this -- cannot decrypt
+
+def local_update(model_w, X, y, lr=0.05, steps=1):
+    """One client's local SGD step(s) on its private data -- entirely
+    plaintext, entirely local. Returns the *update*, not the data."""
+    w = model_w.copy()
+    for _ in range(steps):
+        preds = X @ w
+        grad = X.T @ (preds - y) / len(y)
+        w -= lr * grad
+    return w - model_w                 # this delta is what gets encrypted
+
+# --- Simulated private data at two clients ---------------------------------
+rng = np.random.default_rng(0)
+X1, y1 = rng.normal(size=(40, 5)), rng.normal(size=40)
+X2, y2 = rng.normal(size=(60, 5)), rng.normal(size=60)
+global_w = np.zeros(5)
+
+delta1 = local_update(global_w, X1, y1)
+delta2 = local_update(global_w, X2, y2)
+n1, n2 = len(X1), len(X2)               # FedAvg weights
+
+# --- Each client encrypts its OWN weighted update, sends only ciphertext ---
+enc_delta1 = ts.ckks_vector(public_ctx, (n1 * delta1).tolist())
+enc_delta2 = ts.ckks_vector(public_ctx, (n2 * delta2).tolist())
+
+# --- Server: sums ciphertexts. Depth 0 -- pure EvalAdd, never sees a
+#     client's individual delta in the clear. ------------------------------
+enc_sum = enc_delta1 + enc_delta2
+
+# --- Server (or threshold quorum, Sec 23.4) decrypts only the AGGREGATE ---
+# Reattach the secret context to decrypt (in a real deployment this key
+# never touches the aggregation server -- it belongs to whoever is trusted
+# to see the aggregate, per your threat model).
+enc_sum.link_context(secret_ctx)
+agg_sum = np.array(enc_sum.decrypt())
+new_global_w = global_w + agg_sum / (n1 + n2)     # FedAvg weighted average
+
+print("aggregated (decrypted) FedAvg update:", agg_sum / (n1 + n2))
+print("new global weights:", new_global_w)
+</code></pre>
+<p>Two things worth deliberately noticing when you run this: first, there is no multiplicative operation anywhere in the server-side aggregation path — confirming Observation 23.1 rather than just asserting it; second, and more important as a security exercise, add a `print` inside the "server" section that tries to inspect `enc_delta1` directly (its raw ciphertext coefficients, or an attempt to decrypt it against a key it shouldn't have) — this is the honest demonstration of what HE protects here: the individual client update, not the training data itself, and not the final model's membership-inference surface, which is exactly §23.3's point made runnable.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>Secure aggregation for FedAvg is pure ciphertext addition — depth 0, no relinearization, no bootstrapping, and simple enough that even Paillier suffices; CKKS is chosen mainly for infrastructure reuse, not necessity.</li>
+<li>HE-protected aggregation defends against a curious aggregation server seeing individual updates. It does not defend against gradient inversion on individually-visible updates, and it says nothing about membership inference against the final trained model.</li>
+<li>Differential privacy (DP-SGD, applied client-side before encryption) is the standard complement — HE protects the channel, DP protects the information content.</li>
+<li>The broader design space includes encrypted model evaluation, private set intersection for cross-silo settings, and threshold HE to remove single points of decryption trust.</li>
+<li>OpenMined's PySyft Datasites model provides governance/orchestration around private computation, of which HE-based secure aggregation is one instance; its NAIRR partnership signals real institutional infrastructure behind this ecosystem.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch24">
+<div class="chapter-header"><div class="ch-label">Chapter 24</div><h3>Encrypted Training: The Frontier</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Articulate precisely why encrypted training is a fundamentally harder problem than encrypted inference, in terms of multiplicative depth accumulation.</li>
+<li>Compare the three broad approaches — fully encrypted iterative training, hybrid cleartext/encrypted, and shallow-model-only — and their respective costs.</li>
+<li>Walk through encrypted logistic regression training as the tractable worked example, and understand exactly why it is tractable where deep network training is not.</li>
+<li>State honestly, without hedging into false optimism, what is and is not feasible in encrypted training as of today's tooling.</li>
+</ul>
+</div>
+
+<p>This closing chapter of Part IV is the most important one to read with a skeptical eye, because encrypted training is where marketing claims about FHE most often outrun what is actually deployed and working. We have spent seven chapters building genuinely practical encrypted <em>inference</em> — Chapters 20 and 21 describe things you can build and run today, with real (if constrained) performance characteristics. Encrypted <em>training</em> is a different and much less settled story, and this chapter's job is to give you an accurate map of that gap rather than a rounded-up one.</p>
+
+<h4>24.1 Why training is a different, harder problem</h4>
+
+<div class="theorem">
+<div class="box-title">Observation 24.1 — inference has fixed depth; training multiplies it by the iteration count</div>
+<p>Encrypted inference (Chapter 21) is a <em>fixed circuit</em>: you can compute its multiplicative depth exactly, once, from the network's architecture (Table in §21.5), and provision parameters for that number, done. Encrypted <em>training</em> is not a fixed circuit in the same sense — it is one gradient-computation-plus-update circuit, repeated for as many iterations as optimization requires (often hundreds to many thousands for anything beyond the most trivial model), where each iteration's output ciphertext becomes the next iteration's input. <span class="tag tag-certain">Certain</span> Under a purely leveled scheme with no bootstrapping, depth is consumed monotonically and never replenished — so naively chaining $T$ iterations of a circuit with per-iteration depth $d$ requires provisioning for $T\cdot d$ total depth, which for realistic $T$ is either computationally infeasible (parameters that large make every operation glacially slow) or requires bootstrapping between iterations, which is itself the single most expensive operation any of these schemes offer (Chapter 5). This is the whole problem in one sentence: <strong>training turns "provision depth once" into "provision depth per iteration, forever, or pay for repeated bootstraps."</strong></p>
+</div>
+
+<p>Backpropagation compounds this further: computing a gradient requires differentiating every operation in the forward pass, which for a non-polynomial activation means differentiating your Chapter 19 polynomial approximation (fine — polynomials differentiate to polynomials, one degree lower, no new non-polynomial barrier introduced there) but does mean the backward pass has roughly the same depth profile as the forward pass, doubling the per-iteration cost before you've even accounted for the optimizer step (momentum, Adam's second-moment estimate, etc., each adding further operations).</p>
+
+<h4>24.2 Three approaches, honestly costed</h4>
+
+<h5>(a) Fully encrypted iterative training with per-iteration bootstrapping</h5>
+<p>Bootstrap the parameters (weights) at the end of every iteration (or every few), resetting depth so the next iteration starts fresh. This is the theoretically "complete" answer — genuinely nothing about the data or the model ever needs to be decrypted for the duration of training — and it is the most expensive option by a wide margin. Given CKKS bootstrapping's cost (materially more expensive than a single linear layer or even a full polynomial activation evaluation — Chapter 5's bootstrapping cost discussion applies directly here), multiplying that cost by hundreds or thousands of training iterations puts full encrypted deep-network training from-scratch well outside practical reach today for anything beyond small models and small datasets. <span class="tag tag-likely">Likely</span> — exact feasibility boundary shifts as bootstrapping implementations improve, but the qualitative "prohibitive for deep networks at realistic iteration counts" characterization has held across the CKKS bootstrapping literature to date.</p>
+
+<h5>(b) Hybrid: some computation in the clear</h5>
+<p>Keep the parts of training that are cheap to protect otherwise (e.g. via MPC, or by simply trusting a designated compute party under a weaker threat model) in the clear or under a lighter-weight protocol, and reserve HE specifically for the parts that need it — often exactly Chapter 22.6's pattern from Concrete-ML v1.8's hybrid LLM fine-tuning: encrypted computation on the expensive, IP-sensitive base-model layers, plaintext gradient descent on a small set of client-local adapter weights. This is the pragmatic answer the field has converged toward for anything beyond toy models: don't encrypt the whole training loop, encrypt exactly the part whose plaintext exposure is the actual threat.</p>
+
+<h5>(c) Shallow models trained fully encrypted, iteration count kept small</h5>
+<p>For genuinely shallow models — linear/logistic regression chief among them — the per-iteration depth is small enough (recall Chapter 20's ~5-level logistic regression <em>inference</em> circuit) that a bounded number of gradient descent iterations fits within a single leveled parameter set without any bootstrapping at all. This is the one corner of "encrypted training" that is solidly practical today, and it is worth understanding in detail precisely because it clarifies, by contrast, why deep network training is not yet in the same category.</p>
+
+<h4>24.3 Worked example: encrypted logistic regression training</h4>
+
+<p>Gradient descent on logistic regression's cross-entropy loss has an unusually clean gradient: for weights $w$, features $X$, labels $y$, and predictions $\hat y = \sigma(Xw)$,</p>
+$$\nabla_w \mathcal{L} = \frac{1}{m}X^\top(\hat y - y)$$
+<p>which is linear in $(\hat y - y)$ once you already have $\hat y$ — no new non-polynomial operation beyond the $\sigma$ you already needed for the forward pass (Chapter 20), and its derivative $\sigma'(z) = \sigma(z)(1-\sigma(z))$, needed implicitly by the chain rule through $\sigma$, is itself just a polynomial function of the already-polynomial-approximated $\sigma(z)$ — so no additional approximation machinery is required beyond what Chapter 19 already built.</p>
+
+<div class="example">
+<div class="box-title">Depth per GD iteration, encrypted logistic regression</div>
+<p>Forward: $Xw$ (1 level) → $\sigma(\cdot)$ via degree-$d$ Chebyshev (Ch.19 §5's $\lceil\log_2(d{+}1)\rceil$ levels). Backward: $\hat y - y$ (free, plaintext-known $y$ if $y$ is not itself sensitive to the training coordinator, or another ciphertext subtract if it is), $X^\top(\hat y - y)$ (1 level, same diagonal-method structure as the forward matmul). Update: $w \leftarrow w - \eta \cdot \mathrm{grad}$ (free, plaintext scalar multiply and subtract). For a modest degree-7 sigmoid fit ($\lceil\log_2 8\rceil=3$ levels): roughly $1+3+1 = 5$ levels per iteration. Ten iterations, chained without bootstrapping, is $\approx 50$ levels — large but not absurd for a leveled CKKS parameter set, and squarely why "encrypted logistic regression training, ~10 iterations" is a standard, achievable worked example rather than an aspirational one, while the equivalent arithmetic for even a small CNN (Chapter 21's 16-level-per-forward-pass example, roughly doubled for backward, times hundreds of iterations) is not.</p>
+</div>
+
+<h4>24.4 What Concrete-ML deliberately does not do</h4>
+
+<div class="warning-box">
+<div class="box-title">Concrete-ML does not support encrypted training</div>
+<p>This is worth stating with no hedging, because it is a common point of confusion: Concrete-ML's entire value proposition (Chapters 20, 22) is <em>plaintext training, encrypted inference</em> — you `fit()` in the clear on data you already have the right to see, `compile()` the trained model into an FHE circuit, and only the <em>deployment-time inference</em> calls run under encryption. <span class="tag tag-certain">Certain</span> The v1.8 hybrid LLM fine-tuning feature (§22.6) does not contradict this — it is client-side plaintext gradient descent on a small adapter, combined with server-side encrypted inference on the frozen base model; the encrypted component is still inference, not training of the encrypted parameters themselves. If your requirement is genuinely "train a model on data the training coordinator must never see in the clear, and never decrypt any intermediate weight during that training," Concrete-ML is not the tool — you are in this chapter's §24.2(a)/(c) territory, using OpenFHE or a similarly capable leveled/bootstrapping-capable CKKS library directly.</p>
+</div>
+
+<h4>24.5 Open problems</h4>
+<ul>
+<li><strong>Reducing backprop depth.</strong> Techniques that keep the backward pass's depth from simply doubling the forward pass's — e.g. exploiting the specific algebraic structure of $\sigma'$ in terms of $\sigma$ rather than re-deriving it from scratch, as §24.3 already does for logistic regression — generalize incompletely to deeper architectures and remain an active research question for anything beyond a handful of layers.</li>
+<li><strong>Encrypted batch normalization during training.</strong> Chapter 21's BatchNorm folding trick works at inference time because the running statistics are fixed. During training, those statistics are themselves computed per-batch from the (encrypted) activations — mean and especially variance require an encrypted reciprocal-square-root, a genuinely awkward operation under CKKS (Newton-Raphson-style iterative polynomial refinement, itself several levels deep, repeated every training step) that has no equivalent clean shortcut the way inference-time folding does.</li>
+<li><strong>Encrypted attention.</strong> Beyond softmax's exponential-plus-division (already flagged in Chapter 21 as expensive even at inference time), attention's training-time backward pass requires differentiating through that softmax and through the query-key-value matmul structure — compounding an already-expensive inference-time operation with a full backward pass over it, at transformer scale. This is squarely unsolved-at-scale territory as of today's tooling. <span class="tag tag-likely">Likely</span></li>
+<li><strong>Fully encrypted transformer training.</strong> The composition of all of the above — deep depth accumulation, encrypted batch/layer norm statistics, encrypted attention backward passes, at LLM parameter counts, for the thousands of iterations real pretraining requires — is not achievable with current FHE tooling and is not close to being so. Treat any claim to the contrary with the same skepticism §21.6 asked you to apply to vendor performance claims, and check the specific claimed scope (is it really full pretraining, or is it — as is almost always the actual case — a small adapter fine-tune with a frozen encrypted-inference-only base model, à la §22.6/§24.4) before taking it at face value.</li>
+</ul>
+
+<h4>24.6 Honest assessment</h4>
+
+<div class="key-takeaways" style="margin-top:0;margin-bottom:2rem">
+<div class="box-title">What's real today vs. what's aspirational</div>
+<p><strong>Real, working, reproducible today:</strong> encrypted inference across linear models, trees, and moderate-depth neural networks (Chapters 20–21); encrypted training of shallow models — logistic/linear regression, small numbers of GD iterations — via a leveled CKKS parameter set with no bootstrapping (§24.3); hybrid protocols that encrypt only the sensitive slice of a larger pipeline while training the rest in the clear (§22.6, §24.2(b)).</p>
+<p><strong>Aspirational, active research, not yet production-ready:</strong> fully encrypted training of deep networks from scratch; encrypted backpropagation through attention/transformer blocks at any meaningful scale; training regimes that avoid either prohibitive depth accumulation or prohibitive bootstrap counts for realistic iteration counts on realistic architectures. If you are scoping a project and someone proposes "encrypted training of a deep network," the correct first question — informed by everything this chapter has laid out — is which of §24.2's three approaches they actually mean, because "fully encrypted, from scratch, at scale" is, honestly, not yet a thing you can ship.</p>
+</div>
+
+<h4>24.7 Artifact — encrypted logistic regression training in OpenFHE CKKS</h4>
+
+<div class="artifact-box">
+<div class="box-title">Artifact 24.A — 10 iterations of encrypted gradient descent (skeleton)</div>
+<pre><code>// SKELETON -- structural only. Verify all OpenFHE call signatures against
+// src/pke/examples/ in your installed openfhe-development release before
+// treating this as compilable. Depth accounting follows Sec 24.3's table:
+// ~5 levels/iteration x 10 iterations =~ 50 levels provisioned up front,
+// with NO bootstrapping in this version (contrast with Sec 24.2(a)).
+#include "openfhe.h"
+using namespace lbcrypto;
+
+int main() {
+    CCParams<CryptoContextCKKSRNS> parameters;
+    parameters.SetMultiplicativeDepth(50);     // per Sec 24.3's per-iteration
+                                                 // budget x 10 iterations
+    parameters.SetScalingModSize(45);
+    auto cc = GenCryptoContext(parameters);
+    cc->Enable(PKE); cc->Enable(KEYSWITCH); cc->Enable(LEVELEDSHE);
+    auto keys = cc->KeyGen();
+    cc->EvalMultKeyGen(keys.secretKey);
+    std::vector<int32_t> rotOffsets = /* for X^T(yhat-y) reduction, per feature count */ {};
+    cc->EvalRotateKeyGen(keys.secretKey, rotOffsets);
+
+    // --- Encrypt training data (features X, labels y) client-side ----------
+    // Packing: one row per slot-group, or one feature per ciphertext --
+    // choice affects which operations need rotation. Derive from your
+    // actual (m, n) shape; left unspecified here (Sec 21.4's packing point
+    // applies equally to training-time layouts).
+    auto ctX = cc->Encrypt(keys.publicKey, cc->MakeCKKSPackedPlaintext(X_packed));
+    auto ctY = cc->Encrypt(keys.publicKey, cc->MakeCKKSPackedPlaintext(y_packed));
+
+    // Initial weights: can start as an encrypted zero vector, or a
+    // plaintext-known initialization multiplied in -- either is fine since
+    // w_0 = 0 leaks nothing.
+    auto ctW = cc->Encrypt(keys.publicKey, cc->MakeCKKSPackedPlaintext(w0));
+
+    double lr = 0.1;
+    double R = 8.0;              // calibrated sigmoid input range, Sec 18.4/19.6
+    uint32_t sigDegree = 7;      // -> ceil(log2(8)) = 3 levels, Sec 24.3's budget
+    auto sigmoid = [](double x){ return 1.0 / (1.0 + std::exp(-x)); };
+
+    for (int iter = 0; iter < 10; ++iter) {
+        // Forward: z = Xw  (diagonal-method matmul, Sec 21.3) -- 1 level
+        auto ctZ = EvalLinearLayer(cc, ctX, ctW, rotOffsets);  // helper, Ch.21-style
+
+        // yhat = sigma(z), degree-7 Chebyshev -- 3 levels (Sec 19.2/19.5)
+        auto ctYhat = cc->EvalChebyshevFunction(sigmoid, ctZ, -R, R, sigDegree);
+
+        // Backward: grad = X^T (yhat - y) / m -- 1 level for the matmul,
+        // the subtract is free (ciphertext-ciphertext EvalSub, no level cost)
+        auto ctErr = cc->EvalSub(ctYhat, ctY);
+        auto ctGrad = EvalTransposeLinearLayer(cc, ctX, ctErr, rotOffsetsT); // helper
+
+        // Update: w <- w - lr * grad -- free (plaintext scalar EvalMultPlain
+        // by a constant, then EvalSub)
+        ctW = cc->EvalSub(ctW, cc->EvalMult(ctGrad, lr));
+
+        // NOTE: no bootstrap call anywhere in this loop -- by design, per
+        // the ~50-level budget provisioned up front (Sec 24.2(c)). Beyond
+        // ~10 iterations at this per-iteration depth, this parameter set
+        // is exhausted and either bootstrapping (Sec 24.2(a)) or a fresh
+        // re-encryption checkpoint becomes necessary.
+    }
+
+    // --- Client decrypts final weights -----------------------------------
+    Plaintext finalW;
+    cc->Decrypt(keys.secretKey, ctW, &finalW);
+    return 0;
+}
+</code></pre>
+<p>The comment on the missing bootstrap call is the point of the whole artifact: this is what §24.2(c)'s "shallow model, bounded iterations, no bootstrapping" approach looks like as actual structure, and the moment you try to extend the loop past the depth the provisioned parameters afford — more iterations, a higher-degree sigmoid fit, or a second layer — you are forced into exactly the choice Observation 24.1 describes: bootstrap between iterations (expensive, §24.2(a)) or accept that this specific approach has a hard ceiling on how much training it can do. There is no third option this skeleton can quietly hide from you, which is deliberately the honest note to end Part IV on.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>Encrypted training multiplies inference's fixed depth cost by the iteration count; without bootstrapping between iterations, that cost accumulates monotonically and exhausts any leveled parameter set.</li>
+<li>Three honest approaches exist: fully encrypted with per-iteration bootstrapping (theoretically complete, currently prohibitive for deep networks), hybrid clear/encrypted split by sensitivity, and shallow models trained fully encrypted within a bounded iteration count.</li>
+<li>Encrypted logistic regression training is tractable today because its gradient reuses the same $\sigma$ approximation as inference and adds only one more linear (transpose) matmul per iteration — roughly 5 levels/iteration, well within reach for modest iteration counts.</li>
+<li>Concrete-ML trains in the clear and runs inference encrypted, full stop — its v1.8 hybrid LLM fine-tuning is encrypted inference on a frozen base plus plaintext client-side adapter training, not encrypted training of the whole model.</li>
+<li>Fully encrypted deep-network and transformer training remain open research problems; be precise about which of the three approaches any claimed "encrypted training" system actually implements before trusting its scope.</li>
+</ul>
+</div>
+</div>
 
 <div class="part-header">
   <div class="part-label">Part V</div>
