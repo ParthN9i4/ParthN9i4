@@ -3670,8 +3670,504 @@ cc-&gt;Decrypt(keys.secretKey, result, &amp;resultPt);
   </div>
 </div>
 
-<!-- PART_III_START -->
-<!-- PART_III_END -->
+<div class="part-header"><div class="part-label">Part III</div><h2>FHE Engineering</h2><div class="part-desc">From theory to production: parameter selection, library mastery, and performance optimization.</div></div>
+
+<div class="chapter" id="ch14">
+<div class="chapter-header"><div class="ch-label">Chapter 14</div><h3>Parameter Selection and Security Standards</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Read and apply the HomomorphicEncryption.org Security Standard v1.1 table to map $(N, \log_2 q)$ to a security level.</li>
+<li>Reason explicitly about the security–performance–functionality tradeoff triangle instead of copy-pasting a tutorial's parameters.</li>
+<li>Derive a concrete CKKS parameter set — ring dimension, coefficient modulus chain, scale — for a circuit of known multiplicative depth.</li>
+<li>Understand RNS/CRT decomposition well enough to explain why every FHE library's parameter API takes a <em>list</em> of prime bit-sizes, not a single modulus size.</li>
+<li>Use the lattice-estimator to validate parameters that fall outside the standard table (non-uniform secrets, custom noise distributions, novel schemes).</li>
+</ul>
+</div>
+
+<h4>14.1 Parameters are a security decision wearing a performance costume</h4>
+<p>Every FHE tutorial you have read hands you a parameter block — <code>poly_modulus_degree = 8192</code>, <code>coeff_mod_bit_sizes = [60, 40, 40, 60]</code> — and moves on to the interesting cryptography. This is backwards. The parameter block <em>is</em> the cryptography. Every other chapter in this book has treated $N$ (the ring dimension) and $q$ (the ciphertext modulus) as fixed background; this chapter is about how those numbers get chosen, and why choosing them wrong is a silent failure mode — your code compiles, your ciphertexts decrypt, your demo works, and your deployment is insecure. <span class="tag tag-certain">Certain</span></p>
+<p>The reason this is subtle is that RLWE hardness is a function of the <em>ratio</em> between $N$ and $\log_2 q$, not either one in isolation. A larger ring dimension $N$ makes the lattice problem harder (good for security) at fixed $q$. A larger modulus $q$ makes it easier (bad for security) at fixed $N$, because it shrinks the "distinguishing gap" the LWE noise has to hide inside. Every other design constraint you care about pulls one of these two knobs: multiplicative depth wants a bigger $q$ (more primes in the chain, more levels), and both latency and ciphertext size scale essentially linearly (well, $N\log N$ for the NTT-based ops) in $N$. Parameter selection is the simultaneous solution of a security inequality and a functionality equation, and the entire discipline of "concrete FHE parameters" is a decision procedure for that joint solve.</p>
+
+<h4>14.2 The HomomorphicEncryption.org Security Standard v1.1</h4>
+<p>Since 2017, a series of open community workshops — organized initially by Microsoft, Duality, and a rotating cast of academic and industrial co-hosts — has maintained a public reference table mapping RLWE/LWE parameters to security levels. The document, commonly called "the HomomorphicEncryption.org standard" or informally "the HES table," is what every production library defaults to when you don't specify raw parameters yourself: SEAL's <code>CoeffModulus::BFVDefault</code>, OpenFHE's automatic parameter selection in <code>GenCryptoContext</code>, and TenSEAL's context presets all consult a version of this table under the hood. <span class="tag tag-certain">Certain</span></p>
+
+<div class="definition">
+<div class="box-title">Definition — What the standard actually specifies</div>
+<p>For a ring dimension $N$ (a power of two), a ciphertext modulus $q$, a secret-key distribution (the standard's reference setting is <em>uniform ternary</em>, coefficients in $\{-1,0,1\}$), and an error distribution (discrete Gaussian with a fixed standard deviation, conventionally $\sigma \approx 3.2$), the table gives the maximum $\log_2 q$ for which the best known attacks (primal/dual lattice reduction via BKZ, and its refinements) require at least $2^{\lambda}$ operations, for $\lambda \in \{128, 192, 256\}$.</p>
+</div>
+
+<p>The commonly cited (and, since the standard's 2018 publication, remarkably stable) reference values for uniform-ternary-secret RLWE at 128-bit classical security are approximately:</p>
+
+<pre><code>N       max log2(q)  for 128-bit security
+2^10       27
+2^11       54
+2^12      109
+2^13      218
+2^14      438
+2^15      881</code></pre>
+<p><span class="tag tag-verify">Verify</span> — treat this table as the shape of the relationship (roughly linear in $N$ on a log-log plot, doubling $\log_2 q$'s budget each time $N$ doubles) and pull the exact current numbers from the standard's published PDF or from your library's built-in table before shipping; the community has discussed refinements to the secret-distribution assumptions (sparse and Hamming-weight-bounded secrets used by some CKKS bootstrapping configurations shift the safe $\log_2 q$ budget down) at recent workshops without yet displacing this table as the default reference.</p>
+
+<p>The standard is a <em>living</em> document, kept current through periodic community meetings that track the state of lattice cryptanalysis (each incremental improvement to BKZ sieving, or to the accounting of the "hybrid" primal/dual attacks, can in principle move the safe boundary). Recent meetings in this series: the 7th Workshop on the HE Security Standard (Salt Lake City, October 2024), the 8th (Istanbul, March 2025), and the 9th (Seoul, March 2026). <span class="tag tag-likely">Likely</span> — confirm exact dates/venues against the homomorphicencryption.org meeting archive if citing them, since workshop scheduling is announced incrementally. The applied side of the field runs on a parallel track: WAHC (the Workshop on Encrypted Computing & Applied Homomorphic Cryptography) is co-located with ACM CCS 2026 in The Hague on November 19, 2026, and remains the primary applied-FHE venue for parameter-selection and implementation papers that feed back into the standard. <span class="tag tag-likely">Likely</span></p>
+
+<div class="warning-box">
+<div class="box-title">Warning — the standard bounds a specific attack model, not "security" in the abstract</div>
+<p>The table assumes the reference secret/error distributions above. If your library or your own code deviates — a sparse secret for faster bootstrapping, a smaller-than-reference error standard deviation to save a few bits of $\log q$, a non-power-of-two cyclotomic ring — the table no longer applies and you must re-derive the security level with a dedicated estimator (§14.5). "I used the standard table" is only a valid security argument if your actual parameters match its assumptions exactly. <span class="tag tag-certain">Certain</span></p>
+</div>
+
+<h4>14.3 The tradeoff triangle</h4>
+<p>Every concrete parameter decision is a point inside a triangle whose three vertices pull in mutually incompatible directions:</p>
+<ul>
+<li><strong>Security</strong> wants large $N$, small $\log_2 q$ — more lattice dimensions per bit of modulus.</li>
+<li><strong>Performance</strong> wants small $N$, small $\log_2 q$ — every homomorphic operation is $O(N \log N)$ per prime in the RNS chain, so both factors independently drive latency and memory.</li>
+<li><strong>Functionality</strong> (multiplicative depth, i.e. how many sequential multiplies your circuit needs before decryption) wants large $\log_2 q$ — more primes in the chain means more levels to spend.</li>
+</ul>
+<p>Performance and security agree on wanting small $q$; functionality is the odd vertex out, demanding a bigger $q$ to buy depth. Security and functionality together force $N$ upward: once your circuit's depth fixes a minimum $\log_2 q$, the security table forces a minimum $N$ to match it, and that $N$ is usually far larger than what raw throughput would have chosen on its own. This is the mechanism by which "I need a deeper circuit" silently becomes "my ring dimension quadrupled and my ciphertexts are now megabytes." <span class="tag tag-certain">Certain</span></p>
+
+<div class="theorem">
+<div class="box-title">The parameter-selection algorithm, stated as a fixed point</div>
+<p>Given a circuit of multiplicative depth $D$: (1) choose a coefficient modulus chain with $D{+}1$ or more primes, summing to $\log_2 q$ bits, sized to give the numerical precision you need; (2) look up (or estimate) the minimum $N$ that keeps $(N, \log_2 q)$ at your target security level; (3) check that $N$ is large enough to provide the SIMD slot count ($N/2$ for CKKS) your workload wants; (4) if $N$ from step 2 is larger than needed for step 3, you have slack — use it, or shrink $q$ back down. This is rarely a single pass: adding levels for numerical safety margin can push $N$ into the next power-of-two bracket, which then gives you free extra slots, which changes your batching strategy.</p>
+</div>
+
+<h4>14.4 Concrete CKKS parameter derivation: given depth $D$, choose $N$, the modulus chain, and $\Delta$</h4>
+<p>The recipe, worked through explicitly:</p>
+<ol>
+<li><strong>Fix the scale $\Delta$.</strong> $\Delta$ sets the fixed-point precision: encoding error is roughly $O(1/\Delta)$ relative to the message. A common choice is $\Delta = 2^{40}$, giving roughly 40 bits of precision per coordinate before any error accumulation — enough headroom for most ML inference workloads whose final answer only needs single-precision-float accuracy. Higher-precision applications (financial computation, iterative algorithms that compound error) push toward $2^{45}$–$2^{50}$.</li>
+<li><strong>Build the modulus chain.</strong> The standard structure is $q = q_0 \cdot q_1 \cdots q_{D-1} \cdot q_L$, where: $q_0$ (the "first" or "special" prime) is sized larger than $\Delta$ — typically 55–60 bits — to hold the initial encoding precision before any rescale; each $q_i$ for $i = 1 \ldots D-1$ is sized to match $\Delta$ (so rescaling by that prime removes almost exactly one factor of $\Delta$ and keeps the scale stable across levels); and $q_L$, the final modulus, is again oversized (55–60 bits) to leave clean headroom for the last rescale and for any auxiliary modulus needed by key-switching. For a depth-$D$ circuit you need $D$ scale-sized primes plus the two bookend primes: $D + 2$ primes total, though many libraries let the last "level" be consumed implicitly and you'll see $D+1$ in practice depending on convention.</li>
+<li><strong>Sum the bit-sizes</strong> to get the required $\log_2 q$.</li>
+<li><strong>Look up the minimum $N$</strong> at your target security level (§14.2) that supports that $\log_2 q$; round up to the next available ring dimension (always a power of two).</li>
+<li><strong>Check the slot budget.</strong> $N/2$ complex slots must be $\geq$ your largest batching requirement. If not, you cannot shrink $N$ below the security floor — but you also cannot get more slots than $N/2$ without going to a larger $N$, so a slot deficit forces the next $N$ up regardless of what security demanded.</li>
+</ol>
+
+<div class="example">
+<div class="box-title">Example — depth-5 circuit, target 128-bit security</div>
+<p>Suppose a circuit needs 5 sequential multiplies. Chain: $q_0 = 60$ bits, five scale primes at 40 bits each ($\Delta = 2^{40}$), $q_L = 60$ bits. Total: $60 + 5{\times}40 + 60 = 320$ bits. From the §14.2 table, $N=2^{13}$ (8192) supports up to 218 bits at 128-bit security — not enough. $N=2^{14}$ (16384) supports up to 438 bits — sufficient, with 118 bits of unused headroom you could spend on a deeper circuit or a larger scale. Final parameters: $N = 16384$, 7-prime chain $[60,40,40,40,40,40,60]$, $\Delta = 2^{40}$, 8192 usable complex slots.</p>
+</div>
+
+<h4>14.5 RNS representation and why <code>coeff_mod_bit_sizes</code> is a list</h4>
+<p>Every production CKKS/BFV/BGV implementation represents the single large modulus $q$ not as one giant multi-precision integer but as a product of small, machine-word-sized primes: $q = q_0 \cdot q_1 \cdots q_L$, each $q_i$ typically 30–60 bits so it fits in a 64-bit word with room for intermediate products. By the Chinese Remainder Theorem, arithmetic mod $q$ decomposes into independent, parallel arithmetic mod each $q_i$ — this is the Residue Number System (RNS) representation, and it is the single most important implementation technique that makes FHE practical on commodity CPUs. Without it, every ciphertext coefficient would be a multi-precision integer with hundreds of bits, and every multiplication would require slow big-integer arithmetic; with it, each "limb" is a native machine word amenable to fast modular multiplication and, critically, the Number Theoretic Transform (NTT) for $O(N \log N)$ polynomial multiplication. <span class="tag tag-certain">Certain</span></p>
+<p>This is precisely why <code>coeff_mod_bit_sizes</code> (SEAL, TenSEAL) or the internal prime chain construction (OpenFHE's <code>SetScalingModSize</code> + depth, which builds the chain for you) is a <em>list</em> of bit-sizes rather than one integer: you are specifying the RNS decomposition directly, prime by prime. This list does triple duty: it fixes $\log_2 q$ (hence security, via §14.2), it fixes the number of levels $D+1$ (hence functionality), and — because rescaling operates by dropping the top prime off the chain — the <em>order and size</em> of primes in the list determines the scale trajectory through the computation (this becomes the central topic of Chapter 16). Each prime must additionally satisfy $q_i \equiv 1 \pmod {2N}$ so that the NTT of the required size exists in $\mathbb{Z}_{q_i}$ — libraries search for suitable primes near your requested bit-size automatically; you rarely pick the exact prime values yourself. <span class="tag tag-certain">Certain</span></p>
+
+<div class="warning-box">
+<div class="box-title">Warning — depth budget vs. numerical budget are the same list, easy to conflate</div>
+<p>Adding a prime to the chain buys you one more multiplicative level <em>and</em> changes where precision sits. Beginners often "fix" a precision problem by bumping every prime's bit-size uniformly, which silently pushes $\log_2 q$ past the security boundary for the current $N$ without any error — the library will happily encrypt, compute, and decrypt with an insecure parameter set unless you re-check §14.2 after every change to the chain. <span class="tag tag-certain">Certain</span></p>
+</div>
+
+<h4>14.6 The lattice-estimator</h4>
+<p>When your parameters deviate from the standard table's reference assumptions — sparse or Hamming-weight-bounded secrets (common in bootstrapping-oriented CKKS configurations to keep bootstrapping cheap), non-standard error distributions, hybrid key-switching structures, or ring dimensions/moduli the published table doesn't tabulate — the correct move is not to guess but to run the <strong>lattice-estimator</strong>, the Sage-based tool maintained by Martin Albrecht and collaborators (successor to the earlier "LWE Estimator"), which implements cost models for the full menu of known lattice attacks: primal and dual uSVP attacks, the BKZ cost models (core-SVP, and refined sieving-based estimates), the "hybrid" combinatorial-lattice attacks relevant to sparse/small secrets, and more. <span class="tag tag-certain">Certain</span> — this is the tool the standard itself is calibrated against, and it is the reference implementation the community cites when proposing table revisions at the workshop meetings in §14.2.</p>
+<p>Practically: you feed it $(n, q, \sigma)$ (or an LWE/RLWE instance description) and a choice of attack cost model, and it returns an estimated bit-security level. For RLWE parameters you map the ring dimension $N$ to the LWE dimension $n=N$ under the standard reduction. Running it is a Sage/Python invocation against the estimator's public GitHub repository; treat exact function names as <span class="tag tag-verify">Verify</span> against the current repo before scripting against it, since the API has evolved across the estimator's revisions (the maintainers periodically restructure the cost-model interface as new attacks are added).</p>
+
+<div class="artifact-box">
+<div class="box-title">Artifact — Parameters for 3-layer NN inference, verified at 128-bit security</div>
+<p><strong>Task.</strong> Encrypted inference through a 3-layer feedforward network: $\text{Linear}_1 \to \text{Act} \to \text{Linear}_2 \to \text{Act} \to \text{Linear}_3$, with each activation a degree-3 polynomial approximation (e.g. a least-squares fit to GELU/ReLU over the expected pre-activation range).</p>
+<p><strong>Step 1 — depth accounting.</strong> Each Linear layer, evaluated via ciphertext–plaintext multiplication against diagonal-encoded weight matrices (Chapter 17's BSGS diagonal method), consumes one level per matrix (plaintext multiplication still triggers a rescale, though it needs no relinearization since one operand is unencrypted). Each degree-3 polynomial activation, evaluated as $a x^3 + bx$ via $x^2$ (1 mult) then $x^3 = x^2\!\cdot\! x$ (1 mult), consumes 2 levels. Total: $1 + 2 + 1 + 2 + 1 = 7$.</p>
+<p><strong>Step 2 — modulus chain.</strong> $\Delta = 2^{40}$. Chain: <code>[60, 40, 40, 40, 40, 40, 40, 40, 60]</code> — one 60-bit bookend prime, 7 forty-bit scale primes (one per level), one 60-bit closing prime. $\log_2 q = 60 + 7{\times}40 + 60 = 400$ bits.</p>
+<p><strong>Step 3 — security lookup.</strong> At 128-bit security, $N=2^{13}$ supports up to 218 bits (insufficient); $N=2^{14}$ supports up to 438 bits (sufficient, 38 bits of margin). Choose $N = 16384$.</p>
+<p><strong>Step 4 — slot check.</strong> $N/2 = 8192$ slots — ample for hidden-layer widths in the low thousands; batch multiple inference requests per ciphertext to use the remaining slots if the network is narrower.</p>
+<p><strong>Step 5 — validate.</strong> Confirm $(N=16384, \log_2 q = 400)$ against the current lattice-estimator run (not just the static table) if the secret-key distribution used by your library build differs from uniform-ternary — OpenFHE and SEAL both default to uniform ternary secrets for CKKS, so the static table check above is normally sufficient, but always re-run the estimator after changing any non-default security setting (secret distribution, custom $\sigma$, ring type).</p>
+<p><strong>Result:</strong> $N=16384$, chain <code>[60,40,40,40,40,40,40,40,60]</code>, $\Delta=2^{40}$, 128-bit security, 7 usable multiplicative levels, 8192 slots. This is the parameter set carried forward into Chapter 16's worked implementation.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>Parameters are a joint solution to a security inequality (the HomomorphicEncryption.org table, a function of $N$ and $\log_2 q$) and a functionality equation (depth $D$ fixes a minimum number of chain primes).</li>
+<li>The tradeoff triangle — security, performance, functionality — means deeper circuits don't just cost more levels; they force $N$ upward, which multiplies every other cost.</li>
+<li>RNS/CRT decomposition is why every library's modulus API is a list of prime bit-sizes: that list simultaneously encodes $\log_2 q$, the level count, and (via chapter 16) the scale trajectory.</li>
+<li>Deviate from the standard table's reference assumptions (secret distribution, error std-dev) only with a lattice-estimator run in hand, not by inspection.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch15">
+<div class="chapter-header"><div class="ch-label">Chapter 15</div><h3>The Library Landscape</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Place the major FHE libraries — OpenFHE, Microsoft SEAL, TenSEAL, HEaaN, Concrete ML, Lattigo, Apple's swift-homomorphic-encryption, Google HEIR, HElib — correctly on the scheme/language/maturity map.</li>
+<li>Know which library to reach for given a task's scheme requirement, bootstrapping need, language, and production-readiness constraints.</li>
+<li>Recognize each library's characteristic gotcha before it costs you a debugging session.</li>
+<li>Compare implementation verbosity and mental-model overhead across the three tiers: high-level Python wrapper, mid-level C++ with explicit maintenance, and full leveled/bootstrapped C++.</li>
+</ul>
+</div>
+
+<h4>15.1 The map, at a glance</h4>
+<p>The FHE library ecosystem in 2026 has consolidated around a small number of serious production/research options, each occupying a distinct niche. This is a healthier state than five years ago, when nearly every research group shipped its own bespoke implementation of BFV or CKKS; today the field has converged on OpenFHE as the de facto general-purpose C++ engine, with a ring of language-specific wrappers, scheme-specialist libraries, and ML-ergonomic frameworks built either on top of it or alongside it. <span class="tag tag-likely">Likely</span></p>
+
+<table>
+<tr><th>Library</th><th>Language</th><th>Schemes</th><th>Bootstrapping</th><th>Niche</th></tr>
+<tr><td>OpenFHE v1.5.1</td><td>C++ (Python bindings)</td><td>BGV, BFV, CKKS, FHEW, TFHE</td><td>Yes (incl. CKKS) + scheme switching</td><td>Production, research, most feature-complete</td></tr>
+<tr><td>Microsoft SEAL v4.1.2</td><td>C++ (.NET/Python wrappers)</td><td>BFV, BGV, CKKS</td><td>No</td><td>Leveled-only learning &amp; embedded use</td></tr>
+<tr><td>TenSEAL v0.3.16</td><td>Python (wraps SEAL)</td><td>CKKS, BFV</td><td>No</td><td>Fast tensor-level CKKS prototyping</td></tr>
+<tr><td>HEaaN</td><td>C++</td><td>CKKS only</td><td>Yes</td><td>Reference CKKS from the scheme's authors</td></tr>
+<tr><td>Concrete ML v1.8</td><td>Python (on TFHE)</td><td>TFHE (CGGI)</td><td>Yes (programmable)</td><td>Sklearn/XGBoost/QAT-NN with zero crypto code</td></tr>
+<tr><td>Lattigo v6</td><td>Go</td><td>BFV, BGV, CKKS, RGSW + multiparty</td><td>Scheme-dependent</td><td>Go-native, WASM-deployable, multiparty/MPC-in-the-head</td></tr>
+<tr><td>swift-homomorphic-encryption</td><td>Swift</td><td>BFV</td><td>No</td><td>On-device PIR, Apple platform integration</td></tr>
+<tr><td>HEIR</td><td>MLIR/C++, Python frontend</td><td>Multi-scheme (compiler)</td><td>Backend-dependent</td><td>FHE compiler infrastructure, not an end-user runtime</td></tr>
+<tr><td>HElib v2.3.0</td><td>C++</td><td>BGV, CKKS</td><td>Yes (BGV)</td><td>Historical/legacy — superseded by OpenFHE</td></tr>
+</table>
+
+<h4>15.2 OpenFHE — the production default</h4>
+<p>OpenFHE (current release v1.5.1, April 2026) is the direct successor to PALISADE and is built by many of the same researchers behind HElib, HEAAN, and FHEW — it is, credibly, the single most feature-complete open-source FHE library in existence: BGV, BFV, and CKKS with full leveled operation, bootstrapping for all three (including CKKS bootstrapping, which SEAL entirely lacks), plus the discretized-LWE FHEW and CGGI-style TFHE schemes for bit-level gate bootstrapping, and — distinctively — <strong>scheme switching</strong>, the ability to move a ciphertext between CKKS and FHEW/TFHE representations mid-computation so that a circuit can use CKKS for its linear-algebra-heavy segments and TFHE-style bootstrapped LUTs for its non-polynomial segments (comparisons, ReLU, argmax) without a round-trip through the client. <span class="tag tag-certain">Certain</span></p>
+<p>Duality Technologies — co-founded by Vinod Vaikuntanathan, one of BGV's co-inventors — is OpenFHE's commercial steward, funding and directing much of its ongoing development. The project has also been a beneficiary of DARPA's DPRIVE program (the TREBUCHET effort, $14.5M) aimed at hardware acceleration of FHE, and Duality has announced a partnership with Oracle targeting government and defense deployments. Python bindings are distributed via <code>pip install openfhe</code>, lowering the barrier for the C++ core considerably. <span class="tag tag-certain">Certain</span></p>
+
+<div class="warning-box">
+<div class="box-title">Gotcha — the <code>Enable(...)</code> capability model</div>
+<p>OpenFHE's <code>CryptoContext</code> requires you to explicitly <code>Enable()</code> each capability layer you intend to use (<code>PKE</code>, <code>KEYSWITCH</code>, <code>LEVELEDSHE</code>, <code>ADVANCEDSHE</code> for bootstrapping, <code>SCHEMESWITCH</code>) before generating keys or calling the corresponding operations — forgetting the right <code>Enable</code> call is the single most common first-hour stumbling block, producing a runtime error that reads like a missing feature rather than a missing flag. The bundled <code>src/pke/examples/</code> directory in the current release is the canonical, living API reference; treat any code sample (including the skeletons in this book) as needing a cross-check there before it goes into production. <span class="tag tag-likely">Likely</span></p>
+</div>
+
+<h4>15.3 Microsoft SEAL — the leveled-only workhorse</h4>
+<p>SEAL (current: v4.1.2, July 2024) implements BFV, BGV, and CKKS with no bootstrapping in any scheme — depth is a hard ceiling set entirely by your parameter choice at context creation. It is MIT-licensed, extremely well-tested, and for years was the field's default teaching implementation because its API makes every maintenance operation (relinearize, rescale, mod-switch) an explicit call rather than something hidden inside a wrapper. Release cadence has slowed markedly since the 4.1 line; treat the bundled <code>native/examples/</code> as the living reference and check the repository's actual recent commit activity before assuming a feature is current. <span class="tag tag-certain">Certain</span></p>
+
+<h4>15.4 TenSEAL — CKKS at tensor granularity</h4>
+<p>TenSEAL (v0.3.16, February 2025), maintained by OpenMined, wraps SEAL behind a NumPy-flavored Python API (<code>CKKSVector</code>, <code>CKKSTensor</code>, <code>BFVVector</code>) that hides relinearization and rescaling entirely — arithmetic operators trigger the correct maintenance calls internally. This makes it the fastest path to a working encrypted dot-product or matrix-vector multiply, and the worst path to actually learning scale/level management, since the mechanism Chapter 16 is entirely about is invisible here by design. <span class="tag tag-certain">Certain</span></p>
+
+<h4>15.5 HEaaN — CKKS from its inventors</h4>
+<p>HEaaN, developed by CryptoLab (South Korea), is a C++ CKKS-only library built by Jung Hee Cheon and collaborators — the original authors of the CKKS scheme itself — and is consequently the reference implementation researchers turn to when validating a CKKS technique's numerical behavior against the scheme's originating team's own engineering choices. It supports bootstrapping, and CryptoLab ships it as part of a small product family: HEaaN Library (the core SDK), HEaaN Private AI (an inference-oriented stack), and HEaaN PQC (post-quantum cryptography tooling). CryptoLab has partnered with Macrogen on genomics workloads and with Niobium on encrypted LLM inference, has an integration path with IBM's HElayers, and has raised on the order of $16M in funding. <span class="tag tag-certain">Certain</span> Documentation is comparatively sparse relative to OpenFHE's — read HEaaN to understand CKKS internals from the source, not as a first production choice unless you're already inside CryptoLab's ecosystem.</p>
+
+<h4>15.6 Concrete ML — TFHE without writing cryptography</h4>
+<p>Concrete ML (v1.8, January 2025), from Zama, sits on top of Zama's Rust-based Concrete TFHE compiler and exposes a scikit-learn-shaped API: linear models, tree ensembles (including XGBoost), and quantization-aware-trained neural networks all compile to an FHE circuit via a single <code>.compile()</code> call, with <code>fhe="simulate"</code> available for fast accuracy dry-runs before paying for real encrypted execution. The binding constraint throughout is TFHE's small accumulator width — roughly a 16-bit integer ceiling on accumulator size — so quantization bit-width (<code>n_bits</code>) is the primary lever engineers tune, and deep or wide networks require careful quantization-aware training (Zama's Brevitas-based QAT tooling) to avoid accumulator overflow at compile time. Recent releases have added a hybrid fine-tuning path for LLMs — running most of the model in the clear and only sensitive layers under FHE — together with a Low Rank Approximation API to keep the encrypted portion's compute tractable. Zama itself has become the field's clearest commercial signal: an FHE-focused unicorn valued above $1B, having raised on the order of $73M plus a further $57M, with a developer community reported above 5,000. <span class="tag tag-certain">Certain</span></p>
+
+<div class="warning-box">
+<div class="box-title">Gotcha — accumulator overflow is a compile-time wall, not a runtime warning</div>
+<p>If your network's intermediate sums exceed the supported accumulator bit-width, <code>model.compile()</code> fails outright rather than degrading gracefully. Diagnosing this means inspecting per-layer accumulator size estimates before compiling, and it's the reason tree ensembles (bounded, shallow accumulation) are Concrete ML's sweet spot while deep custom architectures need deliberate QAT design. <span class="tag tag-certain">Certain</span></p>
+</div>
+
+<h4>15.7 Lattigo — Go-native, multiparty-first</h4>
+<p>Lattigo v6 (August 2024), maintained by Tune Insight SA, implements BFV, BGV, CKKS, and RGSW along with dedicated multiparty variants of each — a distinguishing feature, since most other libraries treat multiparty/threshold FHE as an afterthought. Being pure Go, it compiles to WebAssembly, making it the natural choice when the deployment target is a browser or a Go-native backend service rather than a C++ toolchain. <span class="tag tag-certain">Certain</span></p>
+
+<h4>15.8 Apple swift-homomorphic-encryption — BFV for on-device PIR</h4>
+<p>Apple's swift-homomorphic-encryption (August 2024) implements BFV in Swift and is purpose-built for Private Information Retrieval — the specific, narrow application of looking up a value in a server-held database without revealing the query index. It ships as the mechanism behind iOS 18's Live Caller ID Lookup, where the phone needs to check a number against Apple's directory without Apple learning which number was queried. It is a strong example of FHE deployed at genuine consumer scale, but its scope is intentionally narrow (single-scheme, single-application-pattern) rather than a general leveled-computation toolkit. <span class="tag tag-certain">Certain</span></p>
+
+<h4>15.9 Google HEIR — compiler infrastructure, not a runtime</h4>
+<p>HEIR is an MLIR-based compiler project (ongoing) aiming to do for FHE what LLVM-based ML compilers did for tensor programs: take a high-level, scheme-agnostic description of a computation and lower it through a sequence of FHE-aware dialects to scheme-specific, parameter-selected, optimized code targeting backends like OpenFHE. It exposes a Python frontend for authoring the source programs. Treat HEIR as compiler infrastructure you might target or contribute to, not a library you drop into an application today the way you would OpenFHE or TenSEAL. <span class="tag tag-certain">Certain</span></p>
+
+<h4>15.10 HElib — the historical BGV/CKKS reference, now superseded</h4>
+<p>HElib (last release v2.3.0, July 2023) was, for years, the reference BGV implementation and an early CKKS implementation; several of its core contributors moved on to build OpenFHE, which has functionally superseded it for new work. Worth reading for its BGV internals and its influence on the field's terminology, but not a first choice for a new project. <span class="tag tag-certain">Certain</span></p>
+
+<h4>15.11 OpenMined — the ecosystem around the libraries</h4>
+<p>OpenMined is not itself an FHE library but the nonprofit community that maintains TenSEAL alongside PySyft (current: v0.9.5, February 2025), a framework for "Remote Data Science" built around the concept of Datasites — governed remote endpoints that let a researcher run approved computations against data they never directly access, combining FHE with other privacy techniques (differential privacy, secure aggregation) as appropriate to the task. OpenMined is a partner in NAIRR (the National AI Research Resource), backed in part by $35M of NSF funding, positioning it as an access point for privacy-preserving-ML tooling in academic research contexts. <span class="tag tag-certain">Certain</span></p>
+
+<h4>15.12 Choosing among them</h4>
+<pre><code>Need exact CKKS bootstrapping / scheme switching / production C++?        -> OpenFHE
+Learning leveled CKKS/BFV by hand, no bootstrap needed, C++ fine?         -> Microsoft SEAL
+Fastest path to encrypted tensor ops, Python, prototyping?                -> TenSEAL
+Studying CKKS internals from the scheme's own authors?                    -> HEaaN
+ML engineer, want sklearn/XGBoost/NN with zero crypto code?               -> Concrete ML
+Go shop, need multiparty FHE or WASM deployment?                          -> Lattigo
+Building on-device PIR for an Apple platform?                             -> swift-homomorphic-encryption
+Building FHE compiler tooling / multi-backend lowering?                   -> HEIR
+Federated / remote-data-science orchestration around FHE?                 -> OpenMined (PySyft)</code></pre>
+
+<div class="artifact-box">
+<div class="box-title">Artifact — the same encrypted dot product, three libraries</div>
+<p><strong>Task:</strong> encrypt two length-4 vectors, compute their dot product homomorphically, decrypt. Compare what each library forces you to think about.</p>
+<h5>TenSEAL (Python, wraps SEAL) — runnable, stable API <span class="tag tag-certain">Certain</span></h5>
+<pre><code>import tenseal as ts
+
+ctx = ts.context(ts.SCHEME_TYPE.CKKS, poly_modulus_degree=8192,
+                  coeff_mod_bit_sizes=[60, 40, 40, 60])
+ctx.global_scale = 2 ** 40
+ctx.generate_galois_keys()   # needed internally for the sum-reduction in dot()
+
+a = ts.ckks_vector(ctx, [1.0, 2.0, 3.0, 4.0])
+b = ts.ckks_vector(ctx, [5.0, 6.0, 7.0, 8.0])
+result = a.dot(b)            # relin + rescale + rotate-and-add, all internal
+print(result.decrypt())      # ~ [70.0]
+</code></pre>
+<p>Five lines of actual homomorphic logic. No visible rescale, relinearize, or rotation call — TenSEAL's <code>dot()</code> does a multiply, a relinearize, a rescale, and a $\log_2 4 = 2$-step rotate-and-add tree internally. This is the fastest way to get a correct answer and the worst way to learn what a "level" costs you.</p>
+
+<h5>Microsoft SEAL (C++) — SKELETON, verify against <code>native/examples/4_ckks_basics.cpp</code></h5>
+<pre><code>// SKELETON — confirm exact signatures against the current SEAL release's examples.
+EncryptionParameters parms(scheme_type::ckks);
+parms.set_poly_modulus_degree(8192);
+parms.set_coeff_modulus(CoeffModulus::Create(8192, {60, 40, 40, 60}));
+SEALContext context(parms);
+
+KeyGenerator keygen(context);
+auto secret_key = keygen.secret_key();
+PublicKey public_key;    keygen.create_public_key(public_key);
+RelinKeys relin_keys;    keygen.create_relin_keys(relin_keys);
+GaloisKeys galois_keys;  keygen.create_galois_keys(galois_keys);
+
+Encryptor encryptor(context, public_key);
+Evaluator evaluator(context);
+Decryptor decryptor(context, secret_key);
+CKKSEncoder encoder(context);
+double scale = pow(2.0, 40);
+
+Plaintext pt_a, pt_b;
+encoder.encode(vector<double>{1.0,2.0,3.0,4.0}, scale, pt_a);
+encoder.encode(vector<double>{5.0,6.0,7.0,8.0}, scale, pt_b);
+Ciphertext ct_a, ct_b; encryptor.encrypt(pt_a, ct_a); encryptor.encrypt(pt_b, ct_b);
+
+Ciphertext ct_prod;
+evaluator.multiply(ct_a, ct_b, ct_prod);
+evaluator.relinearize_inplace(ct_prod, relin_keys);
+evaluator.rescale_to_next_inplace(ct_prod);
+
+// manual rotate-and-add tree to sum the 4 slots
+Ciphertext ct_sum = ct_prod;
+for (int step = 1; step < 4; step *= 2) {
+    Ciphertext rotated;
+    evaluator.rotate_vector(ct_sum, step, galois_keys, rotated);
+    evaluator.add_inplace(ct_sum, rotated);
+}
+Plaintext pt_result; decryptor.decrypt(ct_sum, pt_result);
+vector<double> result; encoder.decode(pt_result, result);   // result[0] ~ 70.0
+</code></pre>
+<p>Every maintenance step from TenSEAL's hidden <code>dot()</code> is now explicit: the relinearize, the rescale, and the manual rotate-and-add loop implementing the same tree-summation trick used in Chapter 17. This is the exact code TenSEAL runs for you — SEAL just makes you write it.</p>
+
+<h5>OpenFHE (C++) — SKELETON, verify against <code>src/pke/examples/</code> in the current release</h5>
+<pre><code>// SKELETON — confirm exact signatures against the current openfhe-development examples.
+CCParams<CryptoContextCKKSRNS> parameters;
+parameters.SetMultiplicativeDepth(1);
+parameters.SetScalingModSize(40);
+parameters.SetBatchSize(4);
+auto cc = GenCryptoContext(parameters);
+cc->Enable(PKE); cc->Enable(KEYSWITCH); cc->Enable(LEVELEDSHE);
+
+auto keys = cc->KeyGen();
+cc->EvalMultKeyGen(keys.secretKey);
+cc->EvalRotateKeyGen(keys.secretKey, {1, 2});   // offsets for the rotate-and-add tree
+
+auto pt_a = cc->MakeCKKSPackedPlaintext(std::vector<double>{1.0,2.0,3.0,4.0});
+auto pt_b = cc->MakeCKKSPackedPlaintext(std::vector<double>{5.0,6.0,7.0,8.0});
+auto ct_a = cc->Encrypt(keys.publicKey, pt_a);
+auto ct_b = cc->Encrypt(keys.publicKey, pt_b);
+
+auto ct_prod = cc->EvalMult(ct_a, ct_b);        // relinearize handled internally
+ct_prod = cc->EvalRotateSum(ct_prod, 4);        // [Guessing on exact helper name] — verify;
+                                                 // otherwise compose EvalRotate + EvalAdd manually as in SEAL above
+
+Plaintext result; cc->Decrypt(keys.secretKey, ct_prod, &result);
+result->SetLength(1);   // ~ 70.0
+</code></pre>
+<p>OpenFHE lands in between: <code>EvalMult</code> auto-relinearizes (unlike SEAL's explicit call), but rotation keys must still be generated per-offset up front, and whether a single "rotate-sum" convenience call exists for your installed version is exactly the kind of API detail this book keeps flagging as <span class="tag tag-verify">Verify</span> rather than asserting — check the current <code>src/pke/examples/</code> directory before shipping.</p>
+<p><strong>Comparison:</strong> TenSEAL: ~5 lines, hides everything, best for building intuition and fastest iteration. SEAL: ~25 lines, every maintenance operation explicit, best for learning the mechanism. OpenFHE: ~20 lines, partially automated (relinearization) and partially manual (rotation keys, chain construction), and the only one of the three with bootstrapping and scheme-switching available if the circuit later needs to go deeper than the leveled budget allows. Runtime performance for a single small dot product is dominated by fixed costs (context setup, key generation) in all three; the differences that matter appear at scale, in Chapter 17.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>OpenFHE is the closest thing the field has to a default production choice: broadest scheme coverage, only major library with CKKS bootstrapping and scheme switching, actively funded (DARPA DPRIVE/TREBUCHET, Duality/Oracle).</li>
+<li>SEAL remains the best teaching implementation for explicit leveled-CKKS mechanics precisely because it automates nothing, but its depth ceiling is hard — no bootstrapping, ever.</li>
+<li>TenSEAL trades away the scale/level lesson for speed of iteration; use it to build intuition, then graduate to SEAL or OpenFHE to actually manage depth by hand.</li>
+<li>Concrete ML and TFHE solve a different problem (arbitrary non-polynomial functions via programmable bootstrapping) at a different cost (small integer accumulators) — it is not a CKKS competitor so much as a complementary tool for exactly the non-polynomial ops CKKS can't do natively.</li>
+<li>Lattigo, Apple's library, and HEIR are not interchangeable with the above — they solve narrower problems (multiparty/Go/WASM, on-device PIR, compiler infrastructure) extremely well within their scope.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch16">
+<div class="chapter-header"><div class="ch-label">Chapter 16</div><h3>CKKS Scale and Level Management in Practice</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Internalize and apply the three governing rules of CKKS scale/level bookkeeping.</li>
+<li>Diagnose the three most common CKKS bugs from their symptoms: forgotten rescale, level mismatch across computation-graph branches, precision loss from an undersized scale.</li>
+<li>Draw and read a level diagram for a computation graph to verify convergence before writing code.</li>
+<li>Distinguish OpenFHE's four scaling techniques — <code>FIXEDMANUAL</code>, <code>FIXEDAUTO</code>, <code>FLEXIBLEAUTO</code>, <code>FLEXIBLEAUTOEXT</code> — and know which to reach for.</li>
+</ul>
+</div>
+
+<h4>16.1 The three rules</h4>
+<p>Chapter 14's theory reference already stated the core fact: multiplying two CKKS ciphertexts at scale $\Delta$ produces a result at scale $\Delta^2$, and combining (adding, subtracting, comparing levels for) two ciphertexts requires them to agree on both scale and level. Everything in this chapter is the practice of keeping that invariant true across an entire computation graph, not just a single operation. It compresses into three rules that, if you obey them mechanically, eliminate essentially all CKKS correctness bugs that aren't algorithmic (i.e., not counting "your polynomial approximation is bad outside its fit range" — that's a different failure mode).</p>
+
+<div class="theorem">
+<div class="box-title">Rule 1 — Rescale after every multiply</div>
+<p>Immediately after any ciphertext–ciphertext or ciphertext–plaintext multiplication, rescale. This divides the scale back down by (approximately) the last chain prime and drops one level. Skip it and the scale compounds multiplicatively across subsequent multiplies — $\Delta \to \Delta^2 \to \Delta^4 \to \ldots$ — quickly exceeding the numeric range the modulus chain can represent, corrupting the ciphertext irrecoverably (not a graceful error; garbage on decrypt). <span class="tag tag-certain">Certain</span></p>
+</div>
+
+<div class="theorem">
+<div class="box-title">Rule 2 — Match scale and level before combining</div>
+<p>Before any <code>add</code>/<code>sub</code>/comparison-of-ciphertexts operation, both operands must sit at the identical scale <em>and</em> the identical level (i.e., the same remaining chain prime, at the same position). Two branches of a computation graph that took different numbers of multiplies to reach the combination point will, in general, disagree on level even if their nominal scale looks the same — you must explicitly bring the shallower branch down to match, via a level-drop-only rescale (multiply by an encoded plaintext $1$ at the target level, in libraries that expose this) or, in OpenFHE, via <code>EvalMultConst</code>/<code>Compress</code>-style level-adjustment calls, or by restructuring the graph so both branches multiply the same number of times. <span class="tag tag-certain">Certain</span></p>
+</div>
+
+<div class="theorem">
+<div class="box-title">Rule 3 — Know the circuit's depth before choosing parameters</div>
+<p>This is Chapter 14's derivation turned into a discipline: draw the computation graph, count the longest chain of sequential multiplies (Rule 2 means you must count the <em>longest</em> branch, not the average), and only then pick the modulus chain length. Picking parameters first and discovering the circuit is one level too deep midway through implementation is the single most common cause of late-stage FHE rewrites. <span class="tag tag-certain">Certain</span></p>
+</div>
+
+<h4>16.2 Bugs, from symptom back to cause</h4>
+
+<div class="warning-box">
+<div class="box-title">Bug 1 — Forgotten rescale</div>
+<p><strong>Symptom:</strong> results are wildly, non-deterministically wrong — not "slightly off," but garbage of an entirely different magnitude — typically appearing a couple of operations after the offending multiply, not at the multiply itself (the corrupted ciphertext still "works" for a step or two before the scale mismatch trips an internal check or the modulus is fully consumed). <strong>Cause:</strong> a multiply with no following rescale call. <strong>Fix:</strong> audit every <code>EvalMult</code>/<code>multiply</code> call site for a paired rescale; in libraries with automatic scaling modes (§16.4) this class of bug is structurally eliminated at some cost in manual control.</p>
+</div>
+
+<div class="warning-box">
+<div class="box-title">Bug 2 — Level mismatch from divergent computation-graph branches</div>
+<p><strong>Symptom:</strong> a specific <code>add</code> or <code>sub</code> call throws (in libraries that check) or silently produces nonsense (in libraries that don't), and the two operands, when inspected, are one or more levels apart. <strong>Cause:</strong> one branch of the graph — commonly a "skip connection" or a residual path in a neural-network-shaped circuit, or a bias term added after fewer multiplies than the main path — reaches the combination point having consumed fewer levels than the other branch. <strong>Fix:</strong> insert an explicit level-drop (a no-op rescale against the shallow branch, sometimes literally implemented as multiplying by an encoded constant $1.0$ at the deeper branch's level) so both operands arrive at the same level before combining. This is exactly the class of bug residual/skip connections introduce in encrypted neural network inference, and it is worth drawing the level diagram (§16.3) specifically at every point your graph has more than one incoming edge.</p>
+</div>
+
+<div class="warning-box">
+<div class="box-title">Bug 3 — Precision loss from an undersized scale</div>
+<p><strong>Symptom:</strong> the circuit runs to completion, decrypts without error, and produces numbers in the right ballpark but wrong in the third or fourth significant figure — often not caught until downstream accuracy metrics degrade, because nothing in the pipeline raised an exception. <strong>Cause:</strong> $\Delta$ set too small for the required precision, or a modulus chain where the scale primes don't closely match $\Delta$ (so each rescale doesn't cleanly divide out a full factor of $\Delta$, and rounding error accumulates level over level). <strong>Fix:</strong> raise $\Delta$ (at a cost of one more bit of $\log_2 q$ per level, feeding back into Chapter 14's security/performance tradeoff), and make sure each scale-tier prime in the chain is sized to match $\Delta$ almost exactly, not just "close enough." This bug is the reason a correct-looking decrypted output is not sufficient evidence of a correct implementation — always check against a plaintext reference computation, not just "did it run."</p>
+</div>
+
+<h4>16.3 Level diagrams</h4>
+<p>Before writing a nontrivial CKKS circuit, draw it as a DAG annotated with the level each edge sits at, starting from level $L$ (the top of the chain, freshly encrypted) and counting down by one at every multiply. This single diagram catches both Bug 2 (any node with incoming edges at different levels is a bug, visible by inspection) and gives you the number in Rule 3 directly (the diagram's minimum level reached is the depth $D$ your parameters must support).</p>
+
+<pre><code>Level (remaining primes)
+  7  x  (fresh input, batch-encoded)
+  6  Linear1(x)                         <- 1 mult (plaintext weights)
+  4  Act1 = a*h^3 + b*h                 <- 2 mults (h^2, then h^2*h), level 6->4
+  3  Linear2(Act1)                      <- 1 mult
+  1  Act2 = a*h2^3 + b*h2                <- 2 mults, level 3->1
+  0  Linear3(Act2)                      <- 1 mult, final output at level 0
+
+  Longest path: 7 -> 0, depth D = 7.  Matches the Chapter 14 artifact's
+  7-prime scale chain exactly -- the diagram IS the parameter derivation,
+  read the other direction.</code></pre>
+<p>If any two edges feeding the same node land on different rows of this diagram, that is Bug 2 waiting to happen — resolve it on paper before it happens in a debugger.</p>
+
+<h4>16.4 OpenFHE's scaling techniques</h4>
+<p>OpenFHE exposes the scale-management discipline itself as a configurable strategy, via <code>CCParams::SetScalingTechnique</code>, with four (five, counting the degenerate no-op) selectable modes. <span class="tag tag-verify">Verify</span> exact enum names and default behavior against the current <code>openfhe-development</code> headers (<code>ScalingTechnique</code> in the scheme parameter sources) before relying on the specifics below in production code — this is precisely the volatile-API territory the fhe-coach discipline flags for verification, though the conceptual distinctions between the modes are stable and worth understanding regardless of exact naming.</p>
+
+<table>
+<tr><th>Mode</th><th>Rescale behavior</th><th>Who tracks scale</th><th>When to use</th></tr>
+<tr><td><code>FIXEDMANUAL</code></td><td>You call rescale explicitly at each point you choose</td><td>You, by hand</td><td>Maximum control; learning; matching a hand-drawn level diagram exactly</td></tr>
+<tr><td><code>FIXEDAUTO</code></td><td>Rescale triggered automatically after each multiply</td><td>Library, using a uniform per-level scale factor</td><td>Removes Bug 1 structurally; simplest automatic mode</td></tr>
+<tr><td><code>FLEXIBLEAUTO</code></td><td>Automatic, with per-level scale correction</td><td>Library, adaptively adjusting the effective scale at each level to reduce drift</td><td>Recommended default for most CKKS work — better numerical stability than <code>FIXEDAUTO</code> at comparable cost</td></tr>
+<tr><td><code>FLEXIBLEAUTOEXT</code></td><td>Automatic, with an additional extended precision correction</td><td>Library, using auxiliary modulus/scale bookkeeping for further precision retention</td><td>Very deep circuits or bootstrapping-adjacent workloads where <code>FLEXIBLEAUTO</code>'s drift still costs too much precision</td></tr>
+</table>
+
+<p>The through-line: as you move down this table, the library takes over more of Rules 1 and 2 for you, at the cost of less visibility into exactly when and how rescales happen — useful once you trust the mechanism, actively harmful while you're still building intuition for it (which is why this chapter's artifact below uses <code>FIXEDMANUAL</code>-style explicit calls even though a real deployment would likely choose <code>FLEXIBLEAUTO</code>). <span class="tag tag-likely">Likely</span></p>
+
+<div class="artifact-box">
+<div class="box-title">Artifact — 3-layer NN inference in OpenFHE with explicit scale/level management, and a deliberate bug</div>
+<p>Building directly on Chapter 14's derived parameters ($N=16384$, chain <code>[60,40,40,40,40,40,40,40,60]$</code>, $\Delta=2^{40}$, depth 7) and the level diagram in §16.3.</p>
+
+<h5>Correct version (SKELETON — verify signatures)</h5>
+<pre><code>// SKELETON -- verify against current openfhe-development CKKS examples.
+CCParams<CryptoContextCKKSRNS> parameters;
+parameters.SetMultiplicativeDepth(7);
+parameters.SetScalingModSize(40);
+parameters.SetScalingTechnique(FIXEDMANUAL);   // explicit control for this walkthrough
+auto cc = GenCryptoContext(parameters);
+cc->Enable(PKE); cc->Enable(KEYSWITCH); cc->Enable(LEVELEDSHE);
+auto keys = cc->KeyGen();
+cc->EvalMultKeyGen(keys.secretKey);
+
+// Linear1: plaintext-matrix x ciphertext-vector via diagonal method (Ch.17)
+auto h1 = EvalLinear(cc, keys, x_ct, W1_diag);      // 1 mult
+h1 = cc->Rescale(h1);                               // RULE 1 -- level 7 -> 6
+
+// Act1: degree-3 poly, a*h^3 + b*h
+auto h1_sq = cc->EvalMult(h1, h1);  h1_sq = cc->Rescale(h1_sq);   // level 6 -> 5
+auto h1_cu = cc->EvalMult(h1_sq, h1); h1_cu = cc->Rescale(h1_cu); // level 5 -> 4
+// NOTE: h1 (level 6) and h1_cu (level 4) are now at DIFFERENT levels --
+// combining a*h1_cu + b*h1 directly would hit Bug 2. Drop h1 to level 4:
+auto h1_matched = cc->LevelReduce(h1, nullptr, 2);   // [Verify exact API] drop 2 levels to match
+auto act1 = cc->EvalAdd(cc->EvalMult(h1_cu, coeff_a), cc->EvalMult(h1_matched, coeff_b));
+// act1 now correctly at level 4, matching the diagram
+
+// Linear2, Act2, Linear3 follow the identical pattern -- omitted for brevity,
+// terminating at level 0 exactly as the §16.3 diagram predicts.
+</code></pre>
+
+<h5>Deliberately buggy version — forgotten rescale (Bug 1)</h5>
+<pre><code>// BUGGY -- the missing Rescale after h1_sq is the injected bug.
+auto h1_sq = cc->EvalMult(h1, h1);
+// <-- missing: h1_sq = cc->Rescale(h1_sq);
+auto h1_cu = cc->EvalMult(h1_sq, h1);    // multiplies a Delta^2-scale ciphertext
+                                          // by a Delta-scale one -> result at Delta^3,
+                                          // NOT Delta as every other level assumes.
+h1_cu = cc->Rescale(h1_cu);              // divides out only one Delta -- residual Delta^2
+                                          // scale corruption propagates from here on.
+// Symptom: act1 decrypts to values off by roughly a factor of Delta (~10^12),
+// or the run aborts inside a later rescale once the scale drifts outside the
+// chain's remaining primes -- exactly Bug 1's signature from §16.2.
+</code></pre>
+<p>The fix is a one-line insertion (the commented-out <code>Rescale</code> call) — the diagnostic value of this exercise is in recognizing the symptom (values off by a power of $\Delta$, or a hard failure a level or two downstream) and tracing it back to a missing rescale rather than assuming the polynomial approximation or the parameters are at fault.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>Three rules cover essentially all CKKS correctness bugs: rescale after every multiply, match scale and level before combining, know your depth before choosing parameters.</li>
+<li>Skip connections and multi-branch computation graphs are the most common source of level mismatches in practice — draw the level diagram at every merge point.</li>
+<li>A decrypted result that "looks reasonable" is not proof of correctness — precision-loss bugs from an undersized $\Delta$ pass silently and only show up as downstream accuracy degradation.</li>
+<li>OpenFHE's <code>FIXEDMANUAL</code> → <code>FIXEDAUTO</code> → <code>FLEXIBLEAUTO</code> → <code>FLEXIBLEAUTOEXT</code> progression trades explicit control for automatic (and increasingly numerically careful) scale bookkeeping; learn on manual, deploy on flexible-auto.</li>
+</ul>
+</div>
+</div>
+
+<div class="chapter" id="ch17">
+<div class="chapter-header"><div class="ch-label">Chapter 17</div><h3>Performance Profiling and Optimization</h3></div>
+
+<div class="learning-objectives">
+<div class="box-title">Learning Objectives</div>
+<ul>
+<li>Know where time and memory actually go in a CKKS pipeline, in relative order of magnitude.</li>
+<li>Apply the three standard depth/operation-count reduction techniques: Paterson–Stockmeyer for polynomial evaluation, baby-step giant-step (BSGS) for linear transforms, and tree reduction for slot summation.</li>
+<li>Reason about ciphertext and key memory footprints across ring dimensions, and generate only the rotation keys you actually need.</li>
+<li>Understand what Intel HEXL contributes and where to find it in the major libraries.</li>
+<li>Know FHERMA as a venue for community-optimized FHE components.</li>
+</ul>
+</div>
+
+<h4>17.1 Where the time goes</h4>
+<p>Profile any nontrivial CKKS pipeline and the cost breaks down, in rough descending order, as: <strong>homomorphic multiplication</strong> (ciphertext–ciphertext, dominant — each one is a polynomial multiply plus a relinearization, both $O(N\log N)$ per RNS prime, repeated across the whole modulus chain), <strong>rotation</strong> (a key-switch operation, comparable in cost to a multiply, and the second-largest line item in any circuit that does linear algebra or cross-slot reduction), <strong>encryption</strong> and <strong>decryption</strong> (cheap relative to the above — single-digit operations, not accumulated across a deep circuit), and <strong>key generation</strong> (a one-time setup cost, potentially the single most expensive operation you run in a session if you generate a full rotation-key set, but amortized across every subsequent operation in that session). Bootstrapping, where used, dwarfs everything else per call — commonly one to two orders of magnitude more expensive than a single multiply, which is precisely why leveled-circuit design (Chapter 16) is preferred whenever the depth budget allows avoiding it. <span class="tag tag-likely">Likely</span> — exact latencies are hardware-, parameter-, and library-version-dependent; treat any specific millisecond figure as an order-of-magnitude guide to be re-measured on your own target hardware, not a portable constant.</p>
+
+<h4>17.2 Depth and operation-count reduction</h4>
+
+<h5>Paterson–Stockmeyer for polynomial evaluation</h5>
+<p>Evaluating a degree-$d$ polynomial by naive Horner's method costs $d$ sequential multiplies — and, worse for CKKS, $d$ sequential levels, since each multiply-then-rescale consumes one. The Paterson–Stockmeyer algorithm restructures the evaluation using a baby-step/giant-step decomposition of the polynomial itself: write the degree-$d$ polynomial as a sum of $\sqrt{d}$-sized blocks, precompute the "baby step" powers $x, x^2, \ldots, x^{\lceil\sqrt{d}\rceil}$ (needed once, in parallel, at low depth via repeated squaring — itself only $O(\log \sqrt d)$ levels), and combine them against precomputed "giant step" coefficient groups. The result is $O(\sqrt{d})$ total multiplications and, more importantly for CKKS, a multiplicative <em>depth</em> of roughly $O(\log d)$ rather than $O(d)$ — an exponential-to-logarithmic improvement in the resource that directly determines your parameter chain length. <span class="tag tag-certain">Certain</span> This is the standard technique behind every production library's "evaluate this Chebyshev/minimax polynomial approximation of sigmoid/GELU/etc." routine (e.g. OpenFHE's Chebyshev polynomial evaluation utilities use exactly this decomposition internally).</p>
+
+<h5>Baby-step giant-step (BSGS) for rotations</h5>
+<p>Encrypted matrix-vector multiplication via the diagonal method (encode each diagonal of the weight matrix as a plaintext, multiply against rotated copies of the input vector, sum) naively needs one rotation per diagonal — $O(N)$ rotations for an $N \times N$ matrix, each rotation itself a full key-switch. The BSGS restructuring of the diagonal method — grouping diagonals into $\sqrt{N}$ "giant step" blocks each requiring one rotation, with $\sqrt{N}$ "baby step" rotations shared across all blocks — reduces the total rotation count from $O(N)$ to $O(\sqrt{N})$, at the cost of needing both the baby-step and giant-step rotation offsets available as Galois keys. This is the single highest-leverage optimization for any encrypted linear-algebra-heavy circuit (which is to say, essentially every encrypted neural network layer) and is exactly the technique implicitly assumed by the <code>EvalLinear</code> call in Chapter 16's artifact. <span class="tag tag-certain">Certain</span></p>
+
+<h5>Tree reduction for summation</h5>
+<p>Summing all $n$ slots of a packed ciphertext (needed, e.g., to finish a dot product, or to reduce across a Linear layer's output before an activation) via $n-1$ sequential rotate-and-add steps is the naive approach; the tree (doubling) reduction instead rotates by $1, 2, 4, 8, \ldots$ and adds at each step, fully summing $n$ slots in $\lceil \log_2 n \rceil$ rotations. This is exactly the loop shown explicitly in Chapter 15's SEAL dot-product artifact, and it generalizes directly: any "reduce across slots" operation in a CKKS pipeline should default to the doubling pattern unless a specific packing layout makes a different reduction cheaper. <span class="tag tag-certain">Certain</span></p>
+
+<h4>17.3 Memory: ciphertexts and keys</h4>
+<p>A CKKS ciphertext at RNS level with $k$ remaining primes consists of two ring elements (the standard $(c_0, c_1)$ pair), each a length-$N$ vector of $k$ machine words (one word per RNS prime, since each coefficient is CRT-represented). Concretely: at $N=2^{13}$ with a modest chain, a ciphertext runs on the order of a few hundred kilobytes; by $N=2^{16}$ with a long chain (deep circuits, or bootstrapping-capable parameter sets that need many primes), individual ciphertexts can reach the tens of megabytes. <span class="tag tag-likely">Likely</span> — the exact multiplier depends on your library's storage format (some store both the "extended" and "base" RNS bases during certain operations) and should be measured directly with your chosen parameter set rather than assumed.</p>
+<p>Keys are the more dangerous line item because they're easy to under-budget: a relinearization key is stored as a gadget-decomposed set of ciphertext-sized components (the decomposition needed for numerically stable key-switching multiplies its raw size by the decomposition's digit count), and a <strong>Galois (rotation) key is the same size as a relinearization key, generated separately for every distinct rotation offset your circuit uses</strong>. A circuit that naively generates rotation keys for every offset from $1$ to $N/2$ "just in case" can produce a rotation-key set in the gigabytes, dwarfing every ciphertext in the pipeline combined. <span class="tag tag-certain">Certain</span></p>
+
+<div class="warning-box">
+<div class="box-title">Practical rule — generate only the rotation offsets you actually use</div>
+<p>Enumerate every distinct rotation offset your circuit calls (including the offsets implied by BSGS's baby-step/giant-step decomposition, §17.2) and pass exactly that set to your library's Galois/rotation-key generation call — in OpenFHE, the explicit offset list argument to <code>EvalRotateKeyGen</code>. Generating "all rotations" or a broad power-of-two superset when only a handful of BSGS-derived offsets are needed is the most common source of unexpectedly large key material and slow startup in an otherwise well-optimized pipeline. <span class="tag tag-certain">Certain</span></p>
+</div>
+
+<h4>17.4 Intel HEXL: hardware acceleration underneath the libraries</h4>
+<p>Intel HEXL is a hardware-optimized backend library implementing the core RNS-CKKS/BFV/BGV number-theoretic primitives — the NTT and modular multiplication that dominate an FHE library's inner loop — accelerated with AVX-512, exploiting the IFMA and VBMI2 instruction set extensions available on recent server-class Intel silicon. It is not a standalone FHE library; it is a drop-in acceleration layer, integrated as an optional backend into OpenFHE, Microsoft SEAL, and HElib, typically enabled via a CMake build flag that links HEXL in place of the library's default (portable, scalar or lighter-SIMD) arithmetic backend. Reported speedups on the accelerated primitives are on the order of 2–5x, with the actual end-to-end circuit speedup depending on what fraction of total runtime those primitives occupy for your specific workload (multiply-heavy circuits benefit the most; rotation- or overhead-dominated small circuits less so). <span class="tag tag-certain">Certain</span> If you are deploying on Intel server hardware and haven't checked whether your build links HEXL, that is very likely the single highest-leverage, zero-algorithmic-change performance change available to you.</p>
+
+<h4>17.5 FHERMA — community-optimized components</h4>
+<p>FHERMA is a competition-based platform — run through a collaboration involving IBM Research, Fair Math, and the OpenFHE community — where participants submit optimized implementations of reusable FHE building blocks (comparison, sign evaluation, argmax, and other components that are individually hard to make fast and are needed repeatedly across encrypted-ML pipelines) and the best submissions are benchmarked and made available as reference implementations. <span class="tag tag-certain">Certain</span> For an engineer optimizing a real pipeline, FHERMA is worth checking before hand-rolling a component like comparison-under-CKKS from scratch — there is a reasonable chance a competition-tuned version already exists and outperforms a first-pass implementation by a wide margin, since these are exactly the components where Paterson–Stockmeyer-style depth reduction and BSGS-style operation-count reduction have already been pushed hard by specialists.</p>
+
+<div class="artifact-box">
+<div class="box-title">Artifact — profiling Chapter 16's NN inference and applying Paterson–Stockmeyer</div>
+<p><strong>Setup.</strong> Take the 3-layer NN from Chapter 16's artifact and instrument it: wrap each <code>EvalMult</code>, <code>Rescale</code>, and rotation call with timers, run one inference, and tabulate.</p>
+<pre><code>Stage                  Mults   Rotations   Levels used   Rel. time
+Linear1 (BSGS diag)      1        ~2*sqrt(k1)     1          low
+Act1 (Horner, deg 3)     2        0               2          medium
+Linear2 (BSGS diag)      1        ~2*sqrt(k2)     1          low
+Act2 (Horner, deg 3)     2        0               2          medium
+Linear3 (BSGS diag)      1        ~2*sqrt(k3)     1          low
+                                                   -----
+                                            total: 7 levels</code></pre>
+<p><strong>Observation.</strong> The two activation evaluations account for 4 of the 7 total levels (well over half the circuit's depth budget) despite being individually "small" polynomials — this is the expected profile: multiplication dominates, and in a network with many layers, repeated low-degree polynomial activations compound into the majority of total depth consumed, even though each one looks cheap in isolation.</p>
+<p><strong>Optimization.</strong> Replace the naive-Horner degree-3 evaluation with its Paterson–Stockmeyer form. For $d=3$ specifically the naive form is already near-optimal ($\lceil \log_2 3\rceil \approx 2$ levels either way), so the real payoff appears when the activation's polynomial-approximation degree is pushed higher for better accuracy — e.g. a degree-15 minimax fit to GELU. Naive Horner at $d=15$: 14 sequential multiplies, 14 levels — likely exceeding the entire security-budgeted chain from Chapter 14 on its own. Paterson–Stockmeyer at $d=15$: baby-step powers up to $\lceil\sqrt{15}\rceil = 4$ (computed in $\lceil\log_2 4\rceil = 2$ levels via repeated squaring: $x,x^2,x^4$), giant-step combination adding roughly $\lceil\log_2\sqrt{15}\rceil \approx 2$ more levels — landing around 4–5 total levels versus Horner's 14, an approximately 3x depth reduction that turns an infeasible activation into one that comfortably fits inside a modest chain, at the cost of allowing a much better polynomial fit (and therefore better downstream model accuracy) for the same depth budget the naive degree-3 approximation was using.</p>
+<p><strong>Result:</strong> depth reduction from Paterson–Stockmeyer doesn't just save time on a fixed approximation — it changes what approximation degree is affordable at all, which is usually the more valuable outcome: the same 7-level depth budget from Chapter 14 that only fit two degree-3 activations naively can, restructured this way, fit two much higher-degree (hence more accurate) activations instead.</p>
+</div>
+
+<div class="key-takeaways">
+<div class="box-title">Key Takeaways</div>
+<ul>
+<li>Multiplication (and the relinearization/rotation key-switches riding alongside it) dominates CKKS runtime; keygen is a one-time amortized cost; bootstrapping, when used, dwarfs everything else per call.</li>
+<li>Paterson–Stockmeyer turns $O(d)$-depth polynomial evaluation into $O(\log d)$-depth — the single highest-leverage technique for affording higher-accuracy polynomial activations inside a fixed level budget.</li>
+<li>BSGS turns $O(N)$-rotation linear transforms into $O(\sqrt N)$-rotation ones; tree reduction turns $O(n)$-rotation slot summation into $O(\log n)$ — both are default-assume techniques for any production encrypted linear algebra.</li>
+<li>Rotation/Galois keys are the most easily over-provisioned memory cost in a pipeline — generate exactly the offsets your (BSGS-restructured) circuit uses, nothing more.</li>
+<li>Intel HEXL is free (AVX-512-driven) 2–5x acceleration on the NTT/modmul inner loop, available as a build flag in OpenFHE, SEAL, and HElib — check whether your build links it before optimizing anything algorithmic.</li>
+<li>FHERMA is a standing venue for community-tuned reference implementations of hard-to-optimize FHE components (comparison, sign, argmax); check it before hand-rolling one from scratch.</li>
+</ul>
+</div>
+</div>
 
 <!-- PART_IV_START -->
 <!-- PART_IV_END -->
