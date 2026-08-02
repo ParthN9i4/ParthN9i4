@@ -106,9 +106,20 @@ def train_concrete_xgboost(X_train, y_train, n_bits=6):
 def compare_accuracy(plain_model, concrete_model, X_test, y_test):
     """Compare plain vs quantized-Concrete accuracy on the test set.
 
-    Note: this runs Concrete-ML's *simulate* mode (clear-text emulation of
-    the FHE circuit) rather than actual FHE inference, because actual FHE
-    is very slow for a tutorial exercise.
+    The `fhe` argument of Concrete-ML's predict() selects the execution mode
+    and DEFAULTS TO "disable" -- i.e. plain predict() runs the quantized
+    model in the clear and involves no FHE circuit at all.  The three modes:
+
+        fhe="disable"   (default) quantized inference in the clear
+        fhe="simulate"  emulates the FHE circuit, including its noise, in
+                        the clear -- the right choice for accuracy studies
+        fhe="execute"   real FHE execution (correct, but orders of
+                        magnitude slower)
+
+    We use "simulate" here: it reflects what the FHE circuit would actually
+    produce without paying the cost of real encrypted execution.  Note that
+    predict(fhe="simulate"/"execute") requires the model to be compiled
+    first.
 
     Returns
     -------
@@ -118,8 +129,8 @@ def compare_accuracy(plain_model, concrete_model, X_test, y_test):
     plain_preds = plain_model.predict(X_test)
     plain_acc = accuracy_score(y_test, plain_preds)
 
-    # Concrete-ML simulate mode: evaluates the quantized model in the clear
-    concrete_preds = concrete_model.predict(X_test)
+    # Explicitly request simulation; the default would silently skip FHE.
+    concrete_preds = concrete_model.predict(X_test, fhe="simulate")
     concrete_acc = accuracy_score(y_test, concrete_preds)
 
     return plain_acc, concrete_acc

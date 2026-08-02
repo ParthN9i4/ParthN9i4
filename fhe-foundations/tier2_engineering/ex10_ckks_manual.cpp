@@ -3,20 +3,34 @@
  * ============================================================
  *
  * WHAT YOU LEARN:
- *   In TenSEAL, rescale and relinearize happen automatically behind the scenes.
- *   In OpenFHE with FIXEDMANUAL scaling technique, YOU control when rescale and
- *   relinearize happen. This is the core CKKS engineering skill: managing scale
- *   and level bookkeeping by hand.
+ *   In TenSEAL, rescaling happens automatically behind the scenes. In OpenFHE
+ *   with the FIXEDMANUAL scaling technique, YOU control when it happens. This
+ *   is the core CKKS engineering skill: managing scale and level bookkeeping
+ *   by hand.
+ *
+ *   Read this carefully, because it is the single most common misconception:
+ *
+ *     FIXEDMANUAL controls RESCALING ONLY. It does NOT make relinearization
+ *     manual. In OpenFHE, cc->EvalMult(ct1, ct2) ALREADY relinearizes
+ *     internally -- the header documents it as "Homomorphic multiplication of
+ *     two ciphertexts using a relinearization key" (cryptocontext.h). Its
+ *     result is a normal 2-component ciphertext, so calling Relinearize() on
+ *     it afterwards is wrong.
+ *
+ *     If you genuinely want a 3-component ciphertext -- e.g. to defer and
+ *     batch relinearization, which is a real optimisation -- use
+ *     EvalMultNoRelin() and then Relinearize() yourself.
  *
  *   After a ciphertext multiply:
  *     - The scale doubles (Delta^2), so you MUST rescale to bring it back to Delta
- *     - The ciphertext grows from 2 to 3 components, so you MUST relinearize
  *     - Each rescale consumes one level from your depth budget
+ *     - Relinearization is already done for you unless you opted out
  *
  * WHAT YOU DO:
  *   1. Set up a CKKS context with FIXEDMANUAL scaling (no auto-rescale)
  *   2. Encrypt two vectors
- *   3. Multiply -> rescale -> relinearize -> multiply again -> rescale -> relin
+ *   3. Path A: EvalMult -> Rescale (the normal workflow)
+ *      Path B: EvalMultNoRelin -> Relinearize -> Rescale (manual control)
  *   4. Track and print the level after each operation
  *   5. Decrypt and verify against plaintext computation
  *
@@ -35,8 +49,10 @@ int main() {
     // -----------------------------------------------------------------------
     // Step 1: Set up CryptoContext with FIXEDMANUAL scaling
     // -----------------------------------------------------------------------
-    // FIXEDMANUAL means OpenFHE will NOT auto-rescale or auto-relin for you.
-    // You must call Rescale() and Relinearize() yourself after each multiply.
+    // FIXEDMANUAL means OpenFHE will NOT auto-rescale for you: you call
+    // Rescale() yourself after each multiply. Relinearization is NOT part of
+    // this setting -- EvalMult always relinearizes unless you use
+    // EvalMultNoRelin.
 
     CCParams<CryptoContextCKKSRNS> parameters;         // [VERIFY] parameter class name
     parameters.SetMultiplicativeDepth(3);               // [VERIFY] method name
@@ -89,27 +105,42 @@ int main() {
     // Step 4: First multiply -> rescale -> relinearize
     // -----------------------------------------------------------------------
     // === YOUR TASK ===
-    // Try commenting out the Rescale or Relinearize calls to see what breaks.
+    // Try commenting out the Rescale calls to see what breaks.
     // Questions to answer:
-    //   - What happens to the level if you skip Rescale?
-    //   - What happens to subsequent multiplies if you skip Relinearize?
+    //   - What happens to the scale/level if you skip Rescale?
+    //   - Using EvalMultNoRelin without a following Relinearize, what happens
+    //     to the ciphertext size when you multiply again? Why is that costly?
 
     std::cout << "--- First multiplication: ct_ab = ct_a * ct_b ---" << std::endl;
 
-    // Multiply: result has scale Delta^2 and ciphertext size 3
-    auto ct_ab = cc->EvalMult(ct_a, ct_b);              // [VERIFY] EvalMult signature
+    // EvalMult multiplies AND relinearizes. The result is a 2-component
+    // ciphertext whose scale is Delta^2 -- under FIXEDMANUAL it is left to us
+    // to rescale it back down.
+    auto ct_ab = cc->EvalMult(ct_a, ct_b);
     std::cout << "  After EvalMult:        level = " << ct_ab->GetLevel()
-              << " (ciphertext has 3 components now)" << std::endl;
+              << ", size = " << ct_ab->GetElements().size()
+              << " (already relinearized; scale is now ~Delta^2)" << std::endl;
 
-    // Rescale: divides out one Delta, consumes one level
-    ct_ab = cc->Rescale(ct_ab);                          // [VERIFY] Rescale signature (may be ModReduce in some versions)
+    // Rescale: divides out one Delta, consumes one level.
+    // Do NOT call Relinearize() here -- EvalMult already did it.
+    ct_ab = cc->Rescale(ct_ab);
     std::cout << "  After Rescale:         level = " << ct_ab->GetLevel()
+              << ", size = " << ct_ab->GetElements().size()
               << " (scale back to ~Delta)" << std::endl;
+    std::cout << std::endl;
 
-    // Relinearize: reduces ciphertext from 3 components back to 2
-    ct_ab = cc->Relinearize(ct_ab);                      // [VERIFY] Relinearize signature
-    std::cout << "  After Relinearize:     level = " << ct_ab->GetLevel()
-              << " (ciphertext back to 2 components)" << std::endl;
+    // --- Path B: taking manual control of relinearization ------------------
+    // EvalMultNoRelin leaves the degree-3 ciphertext alone so you can decide
+    // when to pay for relinearization. Watch the size go 3 -> 2.
+    std::cout << "--- Manual variant: EvalMultNoRelin -> Relinearize ---" << std::endl;
+    auto ct_manual = cc->EvalMultNoRelin(ct_a, ct_b);
+    std::cout << "  After EvalMultNoRelin: size  = " << ct_manual->GetElements().size()
+              << " (3 components: c0, c1, c2)" << std::endl;
+    ct_manual = cc->Relinearize(ct_manual);
+    std::cout << "  After Relinearize:     size  = " << ct_manual->GetElements().size()
+              << " (back to 2)" << std::endl;
+    ct_manual = cc->Rescale(ct_manual);
+    std::cout << "  After Rescale:         level = " << ct_manual->GetLevel() << std::endl;
     std::cout << std::endl;
 
     // -----------------------------------------------------------------------
@@ -123,19 +154,21 @@ int main() {
     // In FIXEDMANUAL mode, you may need to bring ct_a to the same level.
     // Think about why: operands must share the same scale and level.
 
-    // NOTE: In FIXEDMANUAL, you may need to level-match ct_a down to ct_ab's level.
-    // OpenFHE's EvalMult may handle this internally, or you may need:
-    //   cc->LevelReduce(ct_a, nullptr, ct_ab->GetLevel() - ct_a->GetLevel());
-    // [VERIFY] Check whether EvalMult auto-adjusts levels or requires manual LevelReduce
+    // NOTE: ct_ab has been rescaled once, so it sits one level below ct_a.
+    // In FIXEDMANUAL the operands must be brought to a common level; OpenFHE
+    // exposes cc->LevelReduce(ct, nullptr, levels) for this.
+    // [VERIFY] against your OpenFHE version whether EvalMult level-matches
+    // automatically here, or whether the explicit LevelReduce below is needed.
+    if (ct_a->GetLevel() < ct_ab->GetLevel()) {
+        ct_a = cc->LevelReduce(ct_a, nullptr, ct_ab->GetLevel() - ct_a->GetLevel());
+    }
 
-    auto ct_result = cc->EvalMult(ct_ab, ct_a);          // [VERIFY]
-    std::cout << "  After EvalMult:        level = " << ct_result->GetLevel() << std::endl;
+    auto ct_result = cc->EvalMult(ct_ab, ct_a);   // multiplies AND relinearizes
+    std::cout << "  After EvalMult:        level = " << ct_result->GetLevel()
+              << ", size = " << ct_result->GetElements().size() << std::endl;
 
-    ct_result = cc->Rescale(ct_result);                   // [VERIFY]
+    ct_result = cc->Rescale(ct_result);
     std::cout << "  After Rescale:         level = " << ct_result->GetLevel() << std::endl;
-
-    ct_result = cc->Relinearize(ct_result);               // [VERIFY]
-    std::cout << "  After Relinearize:     level = " << ct_result->GetLevel() << std::endl;
     std::cout << std::endl;
 
     // -----------------------------------------------------------------------
@@ -182,9 +215,11 @@ int main() {
     std::cout << std::endl;
     std::cout << "=== Key Takeaway ===" << std::endl;
     std::cout << "  In FIXEDMANUAL mode, YOU are the compiler:" << std::endl;
-    std::cout << "    multiply -> rescale -> relinearize   (in that order, every time)" << std::endl;
-    std::cout << "  Forget rescale -> scale explodes, precision dies." << std::endl;
-    std::cout << "  Forget relin   -> ciphertext bloats, next ops fail or slow down." << std::endl;
+    std::cout << "    EvalMult (relinearizes for you) -> Rescale   after every multiply" << std::endl;
+    std::cout << "  Forget rescale        -> scale explodes, precision dies." << std::endl;
+    std::cout << "  EvalMultNoRelin and then forget Relinearize" << std::endl;
+    std::cout << "                        -> ciphertext bloats, next ops slow down or fail." << std::endl;
+    std::cout << "  FIXEDMANUAL governs RESCALING only, never relinearization." << std::endl;
 
     return 0;
 }

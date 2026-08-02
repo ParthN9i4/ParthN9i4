@@ -69,8 +69,15 @@ def _eval_chebyshev(coeffs, x, a, b):
 
 
 def _make_approx(f, degree, a, b):
-    """Return a callable Chebyshev approximation of f on [a, b]."""
-    coeffs = _chebyshev_coefficients(f, degree, a, b)
+    """Return a callable Chebyshev approximation of f on [a, b] of DEGREE `degree`.
+
+    A degree-d polynomial has d+1 coefficients, so we request degree+1 of
+    them.  This off-by-one is worth being pedantic about here: FHERMA scores
+    on multiplicative depth, and depth is about ceil(log2(degree+1)) levels
+    under Paterson-Stockmeyer, so mislabelling degree d-1 as d can make you
+    report a depth you cannot actually achieve.
+    """
+    coeffs = _chebyshev_coefficients(f, degree + 1, a, b)
     return lambda x: _eval_chebyshev(coeffs, x, a, b)
 
 

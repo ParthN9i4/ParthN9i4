@@ -64,12 +64,19 @@ int main() {
     cc->EvalMultKeyGen(keys.secretKey);                 // [VERIFY] relin key (needed for matvec)
 
     // === YOUR TASK ===
-    // Generate rotation keys for these offsets: {-1, -2, -4, 1, 2, 4}
+    // Generate a rotation key for EVERY offset the circuit uses.
     // Positive = rotate left (standard convention in OpenFHE).
     // Negative = rotate right.
-    // You MUST generate a key for every rotation offset your circuit uses.
+    //
+    // Inventory the offsets before you write this list:
+    //   - the log-reduce sum below uses 1, 2, 4
+    //   - the diagonal matrix-vector product uses 1, 2, 3
+    // Miss one and OpenFHE throws at the EvalRotate call for that offset --
+    // which is exactly the failure mode described at the top of this file.
+    // Note that 3 is required and is NOT a power of two; it is easy to omit
+    // if you assume the log-reduce offsets are all you need.
 
-    std::vector<int32_t> rotation_indices = {-1, -2, -4, 1, 2, 4};
+    std::vector<int32_t> rotation_indices = {-4, -2, -1, 1, 2, 3, 4};
     cc->EvalRotateKeyGen(keys.secretKey, rotation_indices);  // [VERIFY] method name and signature
 
     std::cout << "[KeyGen] Keys generated. Rotation keys for indices: ";
@@ -102,8 +109,17 @@ int main() {
         }
         std::cout << "]" << std::endl;
     }
-    // Expected: rotate left by 1 -> [2, 3, 4, 5, 6, 7, 8, 0(ish)]
-    // (Trailing slots wrap cyclically; may show near-zero values from empty slots)
+    // Expected (batch size 8, all 8 slots occupied, so rotation is a genuine
+    // cyclic shift over the batch -- nothing is lost and no zeros appear):
+    //   rotate by  1 -> [2, 3, 4, 5, 6, 7, 8, 1]
+    //   rotate by  2 -> [3, 4, 5, 6, 7, 8, 1, 2]
+    //   rotate by  4 -> [5, 6, 7, 8, 1, 2, 3, 4]
+    //   rotate by -1 -> [8, 1, 2, 3, 4, 5, 6, 7]
+    // Small deviations in the last decimal are CKKS approximation error.
+    //
+    // Zeros WOULD appear if the batch were larger than the data you packed:
+    // the empty slots rotate in just like any other slot. That is why the
+    // matrix-vector product below replicates its input instead of padding.
     std::cout << std::endl;
 
     // -----------------------------------------------------------------------
@@ -183,8 +199,20 @@ int main() {
         {13, 14, 15, 16}
     };
 
-    // The input vector
-    std::vector<double> v = {1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0};
+    // The input vector.
+    //
+    // IMPORTANT: OpenFHE rotations are cyclic over the whole BATCH (8 slots
+    // here), not over our 4-element logical vector. The Halevi-Shoup diagonal
+    // method needs rotation to be cyclic modulo n = 4, so padding with zeros
+    // would be wrong: rotating [1,2,3,4,0,0,0,0] left by 3 gives
+    // [4,0,0,0,0,1,2,3], whose first 4 slots are [4,0,0,0] instead of the
+    // required [4,1,2,3].
+    //
+    // The standard fix is REPLICATION: pack the vector twice so that a
+    // batch-cyclic rotation by k < n reproduces the n-cyclic rotation in the
+    // first n slots. Rotating [1,2,3,4,1,2,3,4] left by 3 gives
+    // [4,1,2,3,4,1,2,3] -- first 4 slots [4,1,2,3], exactly right.
+    std::vector<double> v = {1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0};
 
     auto pt_v = cc->MakeCKKSPackedPlaintext(v);          // [VERIFY]
     auto ct_v = cc->Encrypt(keys.publicKey, pt_v);       // [VERIFY]
@@ -194,9 +222,11 @@ int main() {
 
     for (int k = 0; k < n; k++) {
         // Extract diagonal k: diag_k[i] = M[i][(i+k) % n]
+        // Replicate the diagonal too, so it lines up with the replicated v
+        // across all 8 slots.
         std::vector<double> diag(8, 0.0);
-        for (int i = 0; i < n; i++) {
-            diag[i] = M[i][(i + k) % n];
+        for (int i = 0; i < 8; i++) {
+            diag[i] = M[i % n][((i % n) + k) % n];
         }
 
         std::cout << "  diag_" << k << " = [";

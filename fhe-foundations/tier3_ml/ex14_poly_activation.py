@@ -121,17 +121,25 @@ def eval_chebyshev(coeffs, x, a=-1.0, b=1.0):
     return result
 
 
+# NOTE on the degree/coefficient off-by-one.  chebyshev_coefficients(f, n)
+# returns n coefficients c_0..c_{n-1}, which describe a polynomial of DEGREE
+# n-1.  So a degree-d approximation needs d+1 coefficients.  The helpers
+# below take a true polynomial degree and do the conversion, because getting
+# this wrong misstates the multiplicative depth: evaluating a degree-d
+# polynomial costs about ceil(log2(d+1)) levels (Paterson-Stockmeyer), so an
+# off-by-one in d can silently cost you a whole level in a depth budget.
+
 def approx_relu(x, degree, a=-5.0, b=5.0):
-    """Approximate ReLU(x) on [a, b] using a Chebyshev polynomial of given degree."""
+    """Approximate ReLU(x) on [a, b] by a Chebyshev polynomial of DEGREE `degree`."""
     relu = lambda t: max(0.0, t)
-    coeffs = chebyshev_coefficients(relu, degree, a, b)
+    coeffs = chebyshev_coefficients(relu, degree + 1, a, b)
     return eval_chebyshev(coeffs, x, a, b)
 
 
 def approx_sigmoid(x, degree, a=-8.0, b=8.0):
-    """Approximate sigmoid(x) on [a, b] using a Chebyshev polynomial of given degree."""
+    """Approximate sigmoid(x) on [a, b] by a Chebyshev polynomial of DEGREE `degree`."""
     sigmoid = lambda t: 1.0 / (1.0 + math.exp(-t))
-    coeffs = chebyshev_coefficients(sigmoid, degree, a, b)
+    coeffs = chebyshev_coefficients(sigmoid, degree + 1, a, b)
     return eval_chebyshev(coeffs, x, a, b)
 
 
