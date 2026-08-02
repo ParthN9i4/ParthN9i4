@@ -9,21 +9,36 @@ Key ideas
 ---------
 * Standard activations (ReLU, sigmoid) are non-polynomial and cannot be
   evaluated natively in CKKS.  We replace them with a low-degree polynomial.
-* We use  poly_relu(x) = 0.5*x + 0.25*x^2  -- a crude degree-2 approximation
-  that is positive for positive x and near-zero for negative x.  Crucially,
-  it requires only one extra multiplication (x^2), keeping the multiplicative
-  depth small.
+* We use  poly_relu(x) = 0.5*x + 0.25*x^2  -- a very crude degree-2 stand-in,
+  the same shape CryptoNets used.  Be honest about what it is: it is NOT a
+  good approximation of ReLU.  Its max error is 0.25 on [-1,1], it goes
+  NEGATIVE on (-2,0) where ReLU is flat zero, and it blows up quadratically
+  outside a narrow range.  It is used here because it costs only one
+  multiplication.  ex14 shows how to do this properly with Chebyshev fits.
 * Weights and biases are *plaintext*; only the input is encrypted.  This is
   the standard ML-as-a-service scenario.
-* Each matrix multiply followed by an activation consumes multiplicative
-  levels.  The CKKS context needs enough levels for the full forward pass.
+
+THREAT MODEL -- the point of this exercise
+------------------------------------------
+The server holds only the public/evaluation keys, NOT the secret key.  That
+means intermediate values can never be decrypted mid-computation: the whole
+forward pass must stay ciphertext-to-ciphertext, and only the final output
+goes back to the key holder to decrypt.
+
+It is tempting to write layer 1, decrypt the hidden activations, re-encrypt
+them, and continue -- and the numbers come out right, so tests pass.  But
+that silently assumes the server has the secret key, which destroys the
+entire security property.  If you ever find yourself calling .decrypt()
+in the middle of an "encrypted" pipeline, the pipeline is not encrypted.
+Here layer 2 is linear, so we simply scale the encrypted activations by
+plaintext weights and add the ciphertexts -- no decryption required.
 
 Depth budget
 ------------
-  Layer 1 matmul:   1 level  (ct * pt element-wise, then sum)
-  poly_relu (x^2):  1 level
-  Layer 2 matmul:   1 level
-  Total:            3 levels  (so we need >= 3 interior primes)
+  Layer 1 matmul:        1 level  (ct * pt element-wise, then sum)
+  poly_relu (Horner):    2 levels (one pt multiply + one ct multiply)
+  Layer 2 scaling:       1 level  (ct * pt)
+  Total:                 4 levels (so we need 4 interior primes)
 """
 
 import sys, os
@@ -127,34 +142,33 @@ def encrypted_nn_inference(ctx, x_enc, W1, b1, W2, b2):
     hidden_dim = len(b1)
     output_dim = len(b2)
 
-    # Layer 1: for each hidden neuron, compute z = W1[i] . x + b1[i]
-    h_values = []
+    # Layer 1: for each hidden neuron, compute h_i = poly_relu(W1[i] . x + b1[i]).
+    # Each h_i stays a CIPHERTEXT -- we never decrypt an intermediate value.
+    h_encs = []
     for i in range(hidden_dim):
-        # Dot product: element-wise multiply with weight row, then sum
-        z_enc = x_enc * W1[i]       # ct * pt vector
-        z_enc = z_enc.sum()          # sum all slots
-        z_enc = z_enc + b1[i]        # add bias
+        # Dot product: element-wise multiply with weight row, then sum slots
+        z_enc = x_enc * W1[i]        # ct * pt vector          -> level 1
+        z_enc = z_enc.sum()          # sum all slots (free)
+        z_enc = z_enc + b1[i]        # add bias (free)
 
-        # poly_relu: 0.5*z + 0.25*z^2
-        term1 = z_enc * 0.5          # 0.5 * z
-        z_sq = z_enc * z_enc         # z^2
-        term2 = z_sq * 0.25          # 0.25 * z^2
-        h_enc = term1 + term2        # poly_relu result
+        # poly_relu in Horner form:  0.5*z + 0.25*z^2 = z * (0.25*z + 0.5)
+        # Horner keeps a single accumulator, so we never add two ciphertexts
+        # that sit at different levels.
+        inner = z_enc * 0.25 + 0.5   # 0.25*z + 0.5            -> level 2
+        h_encs.append(inner * z_enc)  # z * (...)               -> level 3
 
-        # Decrypt the hidden neuron value (single slot)
-        h_val = h_enc.decrypt()[0]
-        h_values.append(h_val)
-
-    # Re-encrypt hidden layer output for layer 2
-    h_enc = ts.ckks_vector(ctx, h_values)
-
-    # Layer 2: linear (no activation on output)
+    # Layer 2 is LINEAR, so it can be evaluated directly on the encrypted
+    # hidden activations: out_j = sum_i W2[j][i] * h_i + b2[j].  Each h_i is
+    # a separate ciphertext holding its value in slot 0, so we scale each by
+    # a plaintext weight and add the ciphertexts together.
     out_values = []
-    for i in range(output_dim):
-        z_enc = h_enc * W2[i]
-        z_enc = z_enc.sum()
-        z_enc = z_enc + b2[i]
-        out_values.append(z_enc.decrypt()[0])
+    for j in range(output_dim):
+        acc = None
+        for i, h_enc in enumerate(h_encs):
+            term = h_enc * W2[j][i]  # ct * pt scalar          -> level 4
+            acc = term if acc is None else acc + term
+        acc = acc + b2[j]            # add bias (free)
+        out_values.append(acc.decrypt()[0])   # decrypt ONLY the final output
 
     return out_values
 
@@ -179,12 +193,20 @@ def random_bias(dim, scale=0.1):
 def make_context():
     """Create a TenSEAL CKKS context with enough depth for a 2-layer NN.
 
-    Depth needed: matmul(1) + poly_relu/z^2(1) + matmul(1) = 3 levels.
-    We allocate 4 interior primes for safety margin.
+    Depth accounting (plaintext multiplies count too -- see ex08):
+        1. x * W1[i]            (ct * pt)
+        2. z * 0.25             (ct * pt)
+        3. inner * z            (ct * ct)
+        4. h_i * W2[j][i]       (ct * pt)
+    4 levels, so 4 interior primes.
+
+    Ring size: this chain totals 280 bits.  SEAL caps N=8192 at 218 bits for
+    128-bit security, so N=8192 raises "encryption parameters are not set
+    correctly"; N=16384 (cap 438 bits) is the smallest ring that fits.
     """
     ctx = ts.context(
         ts.SCHEME_TYPE.CKKS,
-        poly_modulus_degree=8192,
+        poly_modulus_degree=16384,
         coeff_mod_bit_sizes=[60, 40, 40, 40, 40, 60],
     )
     ctx.global_scale = 2 ** 40

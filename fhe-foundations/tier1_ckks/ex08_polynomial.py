@@ -4,9 +4,22 @@ Evaluating a polynomial  f(x) = a*x^2 + b*x + c  homomorphically is a
 fundamental building block.  Activation functions, scoring models, and
 many feature transforms can be approximated by low-degree polynomials.
 
-Key insight: every ciphertext multiplication consumes one *multiplicative
-level*.  A degree-2 polynomial needs at least 2 levels (one for x^2, one
-for a*x^2).  The context below is configured with enough depth for this.
+Key insight -- and the one most people get wrong: in CKKS a multiplication
+by a PLAINTEXT costs a level too, not just ciphertext x ciphertext.
+Multiplying by a plaintext multiplies the scale (2^40 -> 2^80), so TenSEAL
+must rescale afterwards, and a rescale drops one prime from the modulus
+chain.  You can verify this yourself in a 1-level context ([60,40,60]):
+
+    v = ts.ckks_vector(ctx, [1.0]); (v * 2.0)        # fine
+                                    (v * 2.0) * 3.0  # ValueError: scale out of bounds
+
+So "free" plaintext multiplies do not exist here.  Only ADDITION (of a
+ciphertext or a plaintext) is depth-free.  Budget accordingly: the
+depth of a circuit is its count of multiplications of ANY kind along the
+longest path.
+
+We compute the polynomial on an *entire vector at once* -- this is the
+SIMD (single instruction, multiple data) nature of CKKS.
 
 We compute the polynomial on an *entire vector at once* -- this is the
 SIMD (single instruction, multiple data) nature of CKKS.
@@ -51,28 +64,31 @@ def eval_poly_encrypted(ctx, x_vec, a, b, c):
     """Encrypt x_vec, evaluate  a*x^2 + b*x + c  homomorphically,
     then decrypt and return the result list.
 
-    Strategy (minimises depth):
-        term2 = enc_x * enc_x          # depth 1  (x^2)
-        term2 = term2 * a              # plain mul, no extra depth
-        term1 = enc_x * b              # plain mul, depth 0
-        term0 = c                      # constant
-        result = term2 + term1 + c     # additions are free in depth
+    We use HORNER form:  a*x^2 + b*x + c  =  (a*x + b)*x + c
+
+    Depth accounting (remember: plaintext multiplies cost a level too):
+        enc_x * a        -> level 1   (plaintext multiply, then rescale)
+        + b              -> free      (addition never costs a level)
+        * enc_x          -> level 2   (ciphertext multiply)
+        + c              -> free
+    Total depth 2, so the context needs at least 2 interior primes.
+
+    Why Horner rather than the naive  a*(x*x) + b*x + c ?  The naive form
+    also costs 2 levels, but it leaves you adding two ciphertexts that sit
+    at DIFFERENT levels (a*x^2 at level 2, b*x at level 1), which is the
+    single most common CKKS bug.  Horner keeps one running accumulator, so
+    every operand is always at the same level by construction.
     """
     enc_x = ts.ckks_vector(ctx, x_vec)
 
-    # x^2  (consumes 1 multiplicative level)
-    enc_x2 = enc_x * enc_x
+    # (a*x + b)              -- one plaintext multiply (costs a level), then
+    #                           a depth-free plaintext addition
+    acc = enc_x * a + b
 
-    # a * x^2  (plain scalar multiply -- free in depth)
-    enc_ax2 = enc_x2 * a
+    # (a*x + b) * x + c      -- one ciphertext multiply, then a free addition
+    acc = acc * enc_x + c
 
-    # b * x  (plain scalar multiply)
-    enc_bx = enc_x * b
-
-    # a*x^2 + b*x + c
-    result = enc_ax2 + enc_bx + c
-
-    return result.decrypt()
+    return acc.decrypt()
 
 
 # ---------------------------------------------------------------------------

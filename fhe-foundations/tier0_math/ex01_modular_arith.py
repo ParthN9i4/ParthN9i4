@@ -77,36 +77,51 @@ def crt_reconstruct(remainders, moduli):
 # 3. Number Theoretic Transform (NTT)  —  Cooley-Tukey butterfly
 # ---------------------------------------------------------------------------
 
-def ntt(a, q, psi):
-    """Compute the NTT of polynomial coefficient vector *a* in Z_q.
+def ntt(a, q, w):
+    """Compute the CYCLIC NTT of coefficient vector *a* in Z_q.
+
+    This is the transform that diagonalizes multiplication modulo X^N - 1:
+        A[k] = sum_{i=0}^{N-1} a[i] * w^{i k}   mod q
 
     Parameters
     ----------
-    a   : array-like of length N (must be a power of 2)
-    q   : prime modulus
-    psi : a primitive 2N-th root of unity in Z_q
-          (i.e. psi^N = -1 mod q, and no smaller power gives -1)
+    a : array-like of length N (must be a power of 2)
+    q : prime modulus
+    w : a primitive N-th root of unity in Z_q.  Concretely this means
+        w^N = 1 and w^{N/2} = -1 mod q.  (The second condition is what
+        makes the butterfly split correctly at every stage; a value with
+        w^N = -1 is a 2N-th root and will NOT work here.)
 
     Returns
     -------
-    numpy array of length N — the NTT of a.
+    numpy array of length N — the cyclic NTT of a.
+
+    IMPORTANT — cyclic vs negacyclic.  Lattice crypto works in
+    R_q = Z_q[X]/(X^N + 1), which needs the *negacyclic* convolution, NOT
+    the cyclic one computed here.  Conflating the two is the classic
+    implementation bug in this area.  The bridge is the "psi-twist": given
+    psi a primitive 2N-th root (psi^N = -1), pre-multiply by psi^i, run
+    this cyclic NTT with w = psi^2, and post-multiply by psi^{-i}.
+    ex02_ring_poly.poly_mul_ntt does exactly that — see it for the full
+    negacyclic multiplication.
 
     Algorithm: iterative Cooley-Tukey decimation-in-time.
-    The twiddle factor at stage s for group j is psi^(bit-reverse of j).
-    We use the "negacyclic" NTT convention:
-        A[k] = sum_{i=0}^{N-1} a[i] * psi^{(2*bit_rev(k)+1)*i}  mod q
-    which is equivalent to pre-multiplying by powers of psi then doing a
-    standard NTT.  Here we implement a simpler version using the butterfly.
     """
     # === YOUR CODE HERE ===
     N = len(a)
     A = np.array(a, dtype=np.int64) % q
+    if pow(int(w), N, q) != 1 or pow(int(w), N // 2, q) != q - 1:
+        raise ValueError(
+            f"w={w} is not a primitive {N}-th root of unity mod {q}: "
+            f"need w^{N}=1 and w^{N//2}=-1, got {pow(int(w), N, q)} and "
+            f"{pow(int(w), N // 2, q)}"
+        )
 
-    # Precompute powers of psi: psi^0, psi^1, ..., psi^{N-1}
-    psi_powers = np.zeros(N, dtype=np.int64)
-    psi_powers[0] = 1
+    # Precompute powers of w: w^0, w^1, ..., w^{N-1}
+    w_powers = np.zeros(N, dtype=np.int64)
+    w_powers[0] = 1
     for i in range(1, N):
-        psi_powers[i] = (psi_powers[i - 1] * psi) % q
+        w_powers[i] = (w_powers[i - 1] * w) % q
 
     # Bit-reversal permutation
     log_n = int(np.log2(N))
@@ -122,9 +137,9 @@ def ntt(a, q, psi):
         step = N // length
         for i in range(0, N, length):
             for j in range(half):
-                w = psi_powers[(j * step) % N]
+                tw = w_powers[(j * step) % N]
                 u = A[i + j]
-                v = (A[i + j + half] * w) % q
+                v = (A[i + j + half] * tw) % q
                 A[i + j] = (u + v) % q
                 A[i + j + half] = (u - v) % q
         length *= 2
@@ -132,16 +147,17 @@ def ntt(a, q, psi):
     return A % q
 
 
-def intt(A, q, psi):
-    """Compute the inverse NTT.
+def intt(A, q, w):
+    """Compute the inverse cyclic NTT.
 
-    Uses the fact that INTT is an NTT with psi replaced by psi^{-1},
-    followed by multiplication by N^{-1} mod q.
+    Uses the fact that the INTT is an NTT with w replaced by w^{-1},
+    followed by multiplication by N^{-1} mod q.  (w^{-1} is again a
+    primitive N-th root, so the validity check in ntt still passes.)
     """
     # === YOUR CODE HERE ===
     N = len(A)
-    psi_inv = mod_inv(psi, q)
-    result = ntt(A, q, psi_inv)
+    w_inv = mod_inv(w, q)
+    result = ntt(A, q, w_inv)
     n_inv = mod_inv(N, q)
     return (result * n_inv) % q
 
@@ -180,24 +196,58 @@ if __name__ == "__main__":
     check("CRT [1,2,3] mod [2,3,5]", crt_reconstruct([1, 2, 3], [2, 3, 5]), 23)
 
     # --- NTT / INTT ---
-    # q=17, psi=2 (2 is a primitive 8th root of unity mod 17: 2^4=16=-1 mod 17)
+    # q=17, N=4.  We need a primitive *N*-th = 4th root of unity: w^4 = 1
+    # and w^2 = -1.  That is w = 4  (4^2 = 16 = -1 mod 17, 4^4 = 1).
+    #
+    # Careful: psi = 2 is a primitive *8th* root mod 17 (2^4 = 16 = -1), so
+    # it is the right value for the negacyclic TWIST in ex02, but it is NOT
+    # a valid root for this cyclic transform.  The check inside ntt() now
+    # rejects it rather than silently computing a meaningless matrix.
     q = 17
-    psi = 2
     N = 4
+    w = 4
     a = np.array([1, 2, 3, 4], dtype=np.int64)
 
-    A = ntt(a, q, psi)
-    a_recovered = intt(A, q, psi)
+    A = ntt(a, q, w)
+    a_recovered = intt(A, q, w)
 
     check("NTT then INTT recovers original", list(a_recovered), list(a))
 
-    # Verify NTT of [1,0,0,0] = [1,1,1,1] (all-ones, since it is the constant 1)
+    # NTT of the constant polynomial 1 evaluates to 1 at every point.
     one = np.array([1, 0, 0, 0], dtype=np.int64)
-    One_ntt = ntt(one, q, psi)
-    check("NTT of [1,0,0,0] is all ones", list(One_ntt), [1, 1, 1, 1])
+    check("NTT of [1,0,0,0] is all ones", list(ntt(one, q, w)), [1, 1, 1, 1])
 
     # Round-trip another vector
     b = np.array([5, 0, 12, 3], dtype=np.int64)
-    check("INTT(NTT(b)) == b", list(intt(ntt(b, q, psi), q, psi)), list(b))
+    check("INTT(NTT(b)) == b", list(intt(ntt(b, q, w), q, w)), list(b))
+
+    # A wrong root must be rejected, not silently accepted.
+    try:
+        ntt(a, q, 2)
+        check("ntt rejects psi=2 (a 2N-th root)", False, True)
+    except ValueError:
+        check("ntt rejects psi=2 (a 2N-th root)", True, True)
+
+    # --- NON-VACUOUS test: the NTT must actually diagonalize CYCLIC
+    # convolution.  A round-trip test alone would pass even if the
+    # transform were nonsense, so we check it against a direct
+    # convolution computed independently.
+    def cyclic_conv(x, y, N, q):
+        out = np.zeros(N, dtype=np.int64)
+        for i in range(N):
+            for j in range(N):
+                out[(i + j) % N] = (out[(i + j) % N] + x[i] * y[j]) % q
+        return out
+
+    rng = np.random.default_rng(0)
+    ok = True
+    for _ in range(20):
+        x = rng.integers(0, q, N)
+        y = rng.integers(0, q, N)
+        via_ntt = intt((ntt(x, q, w) * ntt(y, q, w)) % q, q, w)
+        if list(via_ntt) != list(cyclic_conv(x, y, N, q)):
+            ok = False
+            break
+    check("pointwise NTT product == cyclic convolution (20 random pairs)", ok, True)
 
     summary()

@@ -1,9 +1,19 @@
 """Exercise 09 -- Depth Limits (CKKS)
 
-Every CKKS ciphertext has a finite number of *multiplicative levels*
-(determined by the number of primes in coeff_mod_bit_sizes minus one for
-each special prime).  Each ciphertext--ciphertext multiplication consumes
-one level.  When levels run out, the next multiplication raises an error.
+Every CKKS ciphertext has a finite number of *multiplicative levels*.
+Counting them from coeff_mod_bit_sizes:
+
+    levels = len(coeff_mod_bit_sizes) - 2
+
+The first prime is the "special"/first modulus and the last is reserved
+for key switching; only the INTERIOR primes are spendable.  So
+[60, 40, 60] gives exactly 1 multiplication and [60, 40, 40, 60] gives 2
+(both verified by running this file against TenSEAL 0.3.16).
+
+Each multiplication consumes one level -- and note that a PLAINTEXT
+multiply consumes one too, since it also forces a rescale (see ex08).
+When levels run out, the next multiplication raises
+"ValueError: scale out of bounds".
 
 This exercise deliberately uses a *shallow* context -- only 1
 multiplicative level -- so you can see the depth wall up close:

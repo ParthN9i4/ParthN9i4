@@ -8,15 +8,23 @@ threat model.
 Key ideas
 ---------
 * The sigmoid function is not polynomial, so we cannot evaluate it natively
-  in CKKS.  We replace it with a degree-3 Maclaurin polynomial:
+  in CKKS.  We replace it with a degree-3 LEAST-SQUARES fit:
 
-      sigmoid(x) ~ 0.5 + 0.197*x - 0.004*x^3
+      sigmoid(x) ~ 0.5 + 0.197*x - 0.004*x^3        (max error ~0.05 on [-5,5])
 
-  This is accurate for |x| < ~4 and smooth enough for inference.
+  This is NOT the Maclaurin series.  The degree-3 Maclaurin expansion is
+  0.5 + 0.25*x - x^3/48, and it is far worse away from the origin (max
+  error 0.82 on [-4,4], 1.85 on [-5,5]) because Taylor expansions optimise
+  accuracy at a single point, while least-squares/minimax fits spread the
+  error across the whole interval.  That distinction is the entire reason
+  the FHE-ML literature uses fitted polynomials rather than Taylor ones.
+  (Verify: an L2 fit of 0.5 + a*x + b*x^3 to sigmoid over [-5,5] returns
+  a = 0.1983, b = -0.00447.  The other widely cited variant, fitted over
+  [-8,8] by Kim et al. 2018, is 0.5 + 0.15*x - 0.0015*x^3.)
 * The dot-product (X @ weights + bias) is a sequence of multiplications and
   additions on the ciphertext, then we apply the polynomial activation.
-* The CKKS context must have enough *multiplicative depth* to handle the
-  cubic term (x * x * x requires depth >= 3 after the initial matmul).
+* Depth: remember that plaintext multiplies consume a level too (ex08), so
+  count EVERY multiplication.  See make_context below for the accounting.
 """
 
 import sys, os
@@ -51,12 +59,14 @@ def check_close(name, got, expected, tol=0.1):
 # ---------------------------------------------------------------------------
 
 def sigmoid_poly(x):
-    """Degree-3 Maclaurin approximation of the sigmoid function.
+    """Degree-3 least-squares approximation of the sigmoid function on [-5,5].
 
     sigmoid(x) ~ 0.5 + 0.197*x - 0.004*x^3
 
-    This is accurate for moderate |x| and avoids transcendentals so it can
-    be evaluated homomorphically.
+    Accurate to ~0.05 on [-5,5]; it diverges badly outside that range (the
+    cubic term takes over), so in a real pipeline you must bound the
+    pre-activation z -- e.g. by scaling the inputs -- before applying it.
+    Not a Taylor/Maclaurin series: see the module docstring.
     """
     return 0.5 + 0.197 * x - 0.004 * (x ** 3)
 
@@ -106,19 +116,19 @@ def logistic_inference_encrypted(ctx, X_enc, weights, bias):
         Decrypted predicted probability.
     """
     # Dot product: element-wise multiply then sum
-    z_enc = X_enc * weights           # element-wise ct * pt
-    z_enc = z_enc.sum()               # sum slots -> scalar ciphertext
-    z_enc = z_enc + bias              # add bias (plaintext scalar)
+    z_enc = X_enc * weights           # element-wise ct * pt   -> level 1
+    z_enc = z_enc.sum()               # sum slots (rotations; costs no level)
+    z_enc = z_enc + bias              # add bias -- additions are free
 
-    # Polynomial sigmoid: 0.5 + 0.197*z - 0.004*z^3
-    # Compute z^2 and z^3
-    z2 = z_enc * z_enc                # z^2   (depth +1)
-    z3 = z2 * z_enc                   # z^3   (depth +1)
-
-    # 0.5 + 0.197*z - 0.004*z^3
-    term1 = z_enc * 0.197             # 0.197*z
-    term2 = z3 * (-0.004)             # -0.004*z^3
-    result = term1 + term2 + 0.5      # combine
+    # Polynomial sigmoid in HORNER form:
+    #     0.5 + 0.197*z - 0.004*z^3  =  0.5 + z * (0.197 - 0.004*z^2)
+    #
+    # Writing it this way keeps one accumulator, so we never add two
+    # ciphertexts sitting at different levels (the classic CKKS bug that
+    # the naive term-by-term version walks straight into).
+    z2 = z_enc * z_enc                # z^2                       -> level 2
+    inner = z2 * (-0.004) + 0.197     # 0.197 - 0.004*z^2         -> level 3
+    result = inner * z_enc + 0.5      # z*(...) + 0.5             -> level 4
 
     # Decrypt -- result is a vector with one meaningful slot
     dec = result.decrypt()
@@ -131,13 +141,24 @@ def logistic_inference_encrypted(ctx, X_enc, weights, bias):
 def make_context():
     """Create a TenSEAL CKKS context with enough depth for logistic inference.
 
-    We need depth for: matmul (1) + z^2 (1) + z^3 (1) = 3 multiplications,
-    so we use a chain of 5 coefficient modulus primes (3 interior = 3 levels).
+    Depth accounting (every multiplication counts, plaintext ones included):
+        1. X * weights          (ct * pt)
+        2. z * z                (ct * ct)
+        3. z2 * (-0.004)        (ct * pt)  <-- easy to forget
+        4. inner * z            (ct * ct)
+    That is 4 levels, so we need 4 interior primes:
+    len(coeff_mod_bit_sizes) - 2 = 4.
+
+    Ring size: the chain below totals 60+40*4+60 = 280 bits.  SEAL caps the
+    coefficient modulus at 218 bits for N=8192 at the default 128-bit
+    security level (per the HomomorphicEncryption.org standard), so N=8192
+    would raise "encryption parameters are not set correctly".  N=16384
+    allows up to 438 bits and is the smallest ring that fits this circuit.
     """
     ctx = ts.context(
         ts.SCHEME_TYPE.CKKS,
-        poly_modulus_degree=8192,
-        coeff_mod_bit_sizes=[60, 40, 40, 40, 60],
+        poly_modulus_degree=16384,
+        coeff_mod_bit_sizes=[60, 40, 40, 40, 40, 60],
     )
     ctx.global_scale = 2 ** 40
     ctx.generate_galois_keys()
