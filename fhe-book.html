@@ -644,6 +644,7 @@ August 2026 &middot; Comprehensive Reference
 <a class="toc-chapter" href="#appendix-a"><span class="ch-num">A</span> Notation and Mathematical Prerequisites</a>
 <a class="toc-chapter" href="#appendix-b"><span class="ch-num">B</span> Installation and Environment Setup</a>
 <a class="toc-chapter" href="#appendix-c"><span class="ch-num">C</span> Complete Code for All Artifacts</a>
+<a class="toc-chapter" href="#appendix-d"><span class="ch-num">D</span> Sources and Further Reading</a>
 </div>
 </div>
 
@@ -2236,7 +2237,9 @@ which decrypts to $m_1+m_2 \bmod n$. Paillier is the canonical example of the co
 
 <div class="warning-box">
 <div class="box-title">The circular security assumption</div>
-<p>Bootstrapping requires publishing an encryption of the secret key under (functionally) its own public key. This means security no longer follows from semantic security against arbitrary auxiliary information alone — it requires assuming the scheme remains secure even when the adversary is given an encryption of its own key, a strictly stronger assumption called <em>circular security</em> (or key-dependent-message, KDM, security). This assumption is unproven in general and is a standing caveat on every bootstrapped FHE deployment. <span class="tag tag-certain">Certain</span></p>
+<p>Bootstrapping under a <em>single</em> key pair requires publishing an encryption of the secret key under (functionally) its own public key. Security then no longer follows from semantic security alone: it requires assuming the scheme stays secure when the adversary is handed an encryption of its own key, a strictly stronger assumption called <em>circular security</em>. The assumption is unproven in general and is a standing caveat on every unbounded-depth FHE deployment. <span class="tag tag-certain">Certain</span></p>
+<p>Two precisions, both easy to get wrong and both worth carrying into Chapter 12. First, <strong>bootstrappability alone does not require circular security</strong> — it gives <em>leveled</em> FHE outright. Generate $L{+}1$ independent key pairs and publish the chain $\mathrm{Enc}_{pk_{i+1}}(sk_i)$; each bootstrap moves the ciphertext from key $i$ to key $i{+}1$, no key ever encrypts itself, and any circuit of depth $\le L$ is evaluable under plain semantic security. The cost is an evaluation key that grows linearly in $L$, and a depth ceiling fixed in advance. Circular security is what buys you a <em>single</em>, constant-size key pair and genuinely unbounded depth — it is the price of compactness and unboundedness, not of bootstrapping as such (Gentry 2009, §4; Barak, CS 127 notes).</p>
+<p>Second, <strong>circular security is not the same as KDM security</strong>. Circular security is the special case in which the adversary sees encryptions of the key itself (or a fixed simple function of it); KDM security quantifies over arbitrary efficiently-computable functions of the key. FHE needs the former, which is weaker; conflating them overstates the assumption.</p>
 </div>
 
 <h5>6.4.3 Squashing the decryption circuit</h5>
@@ -2326,7 +2329,7 @@ result = she_mult(ct_sum, ct3, relin_key)
 <li>Definition 6.1's two teeth are unbounded depth and compactness; everything short of both is PHE, SHE, or leveled FHE, not FHE proper.</li>
 <li>RSA and ElGamal are multiplicatively homomorphic; Paillier is additively homomorphic — each unlimited in exactly one operation, with no known way to add the other.</li>
 <li>Boneh–Goh–Nissim (2005) was the first to mix operation types: unlimited additions, exactly one multiplication, via bilinear pairings — evaluating any 2-DNF/quadratic form.</li>
-<li>Gentry (2009) proved bootstrapping converts any bootstrappable SHE scheme into unbounded-depth FHE, at the cost of a circular security assumption; squashing made his ideal-lattice scheme's decryption circuit shallow enough to be bootstrappable.</li>
+<li>Gentry (2009) proved bootstrapping converts any bootstrappable SHE scheme into FHE: with a chain of independent keys this yields <em>leveled</em> FHE under plain semantic security, and a circular security assumption upgrades it to unbounded depth with a single compact key pair. Squashing made his ideal-lattice scheme's decryption circuit shallow enough to be bootstrappable.</li>
 <li>BV11 moved FHE onto plain LWE and introduced relinearization; BGV12 introduced modulus switching and made leveled FHE (no bootstrapping needed up to a chosen depth) practical; BFV (Brakerski 2012 / Fan–Vercauteren 2012) achieved the same leveled goal via scale-invariance instead of a modulus chain.</li>
 <li>BGV and BFV target the same problem — exact leveled integer arithmetic — with two different noise-management philosophies, which Chapters 8 and 9 develop in parallel.</li>
 </ul>
@@ -3310,7 +3313,7 @@ print(f"FHE-execute accuracy (n=20): {acc_fhe:.4f}")  # should match acc_sim on 
     <ul>
       <li>State Gentry's bootstrapping theorem precisely and understand why it is the theoretical hinge between "somewhat/leveled HE" and "fully HE."</li>
       <li>Describe the cost anatomy of a bootstrap: what is homomorphically evaluated, and why it is expensive.</li>
-      <li>Walk through CKKS bootstrapping's pipeline — CoeffToSlot, ModRaise, EvalSine/EvalCos, SlotToCoeff — and identify where the cost and the approximation error concentrate.</li>
+      <li>Walk through CKKS bootstrapping's pipeline — ModRaise, CoeffToSlot, EvalSine/EvalCos, SlotToCoeff — and identify where the cost and the approximation error concentrate.</li>
       <li>Contrast CKKS bootstrapping's cost profile with TFHE's blind-rotation bootstrap from Chapter 11.</li>
       <li>Make a principled decision between "increase multiplicative depth" and "bootstrap" for a given circuit.</li>
       <li>Know precisely which libraries do and do not support bootstrapping, and for which schemes.</li>
@@ -3328,7 +3331,7 @@ print(f"FHE-execute accuracy (n=20): {acc_fhe:.4f}")  # should match acc_sim on 
     <p>Let $\mathcal{E}$ be a somewhat/leveled homomorphic encryption scheme whose decryption circuit $D_{sk}(\cdot)$ has multiplicative depth $d_{\mathcal{E}}$. If $\mathcal{E}$ can homomorphically evaluate a circuit of depth at least $d_{\mathcal{E}} + 1$ — its own decryption circuit, plus one additional gate — then $\mathcal{E}$ is <strong>bootstrappable</strong>, and can be transformed into a fully homomorphic scheme: after any operation, homomorphically re-encrypt the ciphertext under a freshly-generated key (or the same key, via a bootstrapping/evaluation key), obtaining a new ciphertext that encrypts the same message with noise reset to a fresh-encryption-like level. Iterating this indefinitely permits circuits of arbitrary depth.</p>
   </div>
 
-  <p>The condition "can evaluate its own decryption circuit plus one gate" is called <strong>circular security</strong>-adjacent bootstrappability in the literature (technically, it requires the scheme to be secure even when the evaluator is handed an encryption of the secret key under itself — the <em>key-dependent message</em>/circular security assumption almost every practical bootstrapping construction relies on). All four families in this book — BGV, BFV, CKKS, TFHE — have been shown bootstrappable under this framework, though the concrete mechanism, and critically the concrete <em>cost</em>, differs enormously by scheme. <span class="tag tag-certain">Certain</span></p>
+  <p>The condition "can evaluate its own decryption circuit plus one gate" is <strong>bootstrappability</strong> (Gentry 2009, Definition 4.1.3: the scheme's decryption circuit, augmented by one gate, lies inside the family the scheme can evaluate). It is worth keeping this separate from circular security, which the two are often run together: bootstrappability is a pure correctness/capacity property of the scheme, and on its own it already delivers <em>leveled</em> FHE via a chain of independent keys. Circular security is the additional assumption — that the scheme stays secure given an encryption of its own secret key — needed to collapse that chain to a single compact key pair and obtain unbounded depth, and it is what almost every practical deployment in fact relies on. All four families in this book — BGV, BFV, CKKS, TFHE — have been shown bootstrappable under this framework, though the concrete mechanism, and critically the concrete <em>cost</em>, differs enormously by scheme. <span class="tag tag-certain">Certain</span></p>
 
   <h4>12.2 Cost Anatomy: What a Bootstrap Actually Computes</h4>
 
@@ -3486,7 +3489,7 @@ auto ctRefreshed = cc-&gt;EvalBootstrap(ctNearlyExhausted);
     <ul>
       <li>Bootstrapping theorem: a scheme that can homomorphically evaluate its own decryption circuit plus one gate can be iterated indefinitely, turning leveled/somewhat-HE into fully HE.</li>
       <li>Mechanically, bootstrapping homomorphically evaluates decryption using an encryption of the secret key — it is a genuine, expensive circuit evaluation, not a magic reset.</li>
-      <li>CKKS bootstrapping's hard part is that modular reduction is not a polynomial; the CoeffToSlot → ModRaise → EvalSine/EvalCos → SlotToCoeff pipeline approximates it, and EvalSine/EvalCos dominates cost. The result is itself approximate.</li>
+      <li>CKKS bootstrapping's hard part is that modular reduction is not a polynomial; the ModRaise → CoeffToSlot → EvalSine/EvalCos → SlotToCoeff pipeline approximates it, and EvalSine/EvalCos dominates cost. The result is itself approximate.</li>
       <li>OpenFHE v1.4+ adds general functional CKKS bootstrapping and sparse-secret encapsulation for cheaper bootstraps.</li>
       <li>TFHE's bootstrap (blind rotation) is a completely different cost model: cheap per-operation, exact (up to negligible PBS failure probability), applied routinely rather than rarely.</li>
       <li>Decide bootstrap-vs-deepen by weighing latency (10-100x a multiply, workload-dependent), precision cost (CKKS bootstrap is approximate), and whether the circuit's depth is genuinely unbounded.</li>
@@ -6111,6 +6114,56 @@ go run main.go</code></pre>
       <li>All book artifacts are indexed here by part; SKELETON-labeled C++ examples illustrate API shape and require cross-checking against the pinned library version's own examples before use.</li>
       <li>Python-based artifacts (TenSEAL, Concrete ML) are the most directly runnable, given greater binding stability across versions.</li>
       <li>Version pinning (Appendix B's exact versions) is not a formality — it is the difference between an artifact compiling and an artifact failing on an unrelated API rename, given this field's pace of change.</li>
+    </ul>
+  </div>
+</div>
+
+
+<div class="chapter" id="appendix-d">
+  <div class="chapter-header">
+    <div class="ch-label">Appendix D</div>
+    <h3>Sources and Further Reading</h3>
+  </div>
+
+  <p>This appendix collects the primary sources a reader should go to next, with an honest note on what each is good for. Where this book and a source disagree, the source wins — several corrections in the current revision came from exactly that comparison.</p>
+
+  <h4>D.1 Foundational papers and theses</h4>
+  <ul>
+    <li><strong>Craig Gentry, <em>A Fully Homomorphic Encryption Scheme</em></strong>, Ph.D. dissertation, Stanford University, September 2009 (advisor: Dan Boneh). 209 pages; a preliminary version appeared as "Fully Homomorphic Encryption Using Ideal Lattices," STOC 2009. <a href="https://crypto.stanford.edu/craig/craig-thesis.pdf">crypto.stanford.edu/craig/craig-thesis.pdf</a>.<br>
+    The founding document, and still the clearest statement of the <em>blueprint</em>: bootstrappability (Definition 4.1.3 — the decryption circuit augmented by one gate must lie inside the evaluable family), squashing, and the recursive self-reference that turns a somewhat-homomorphic scheme into a fully homomorphic one. Read Chapters 1–4 even if you skip the ideal-lattice algebra in the middle. Note the point §6.4.2 of this book now makes explicitly: bootstrappability alone yields <em>leveled</em> FHE with no circular-security assumption; circular security buys unbounded depth with a single compact key.</li>
+
+    <li><strong>Boaz Barak, "Fully Homomorphic Encryption: Introduction and Bootstrapping"</strong>, chapter of <em>An Intensive Introduction to Cryptography</em> (Harvard CS 127 lecture notes). <a href="https://files.boazbarak.org/crypto/lec_15_FHE.pdf">files.boazbarak.org/crypto/lec_15_FHE.pdf</a>.<br>
+    The best short, rigorous treatment of the <em>definitions</em>. Barak is more careful than most textbooks about compactness (Eval's output must be bounded by a fixed polynomial in the security parameter alone — independent of both the number of inputs and the size of the evaluated function), about the distinction between freshly-encrypted and merely-decryptable ciphertexts, and about the precise hypotheses of the bootstrapping theorem. Also the place to understand why no homomorphic scheme can be CCA2-secure: malleability is the feature.</li>
+  </ul>
+
+  <h4>D.2 Textbooks and courses</h4>
+  <ul>
+    <li><strong>Ronny Ko, <em>The Beginner's Textbook for Fully Homomorphic Encryption</em></strong>, arXiv:2503.05136 (first posted March 2025; actively revised). <a href="https://arxiv.org/abs/2503.05136">arxiv.org/abs/2503.05136</a>; LaTeX source and a companion Python demo library at <a href="https://github.com/fhetextbook">github.com/fhetextbook</a>.<br>
+    The closest work to this book, and the best complement to it. Its organising device is <strong>GLWE</strong> — a single ciphertext form $(A_0,\dots,A_{k-1},B)$ with $B = \sum A_i S_i + \Delta M + E$, of which LWE is the case $n=1$ and RLWE the case $k=1$ — from which GLev, GGSW, key switching, relinearization and blind rotation are all derived uniformly. If the per-scheme presentation in Part II ever feels like four unrelated constructions, read Ko's Parts B and C to see them as one. It is also unusually explicit that <em>both</em> encryption sign conventions are in use ($B = +\sum A_iS_i + \Delta M + E$ versus $B = -\sum A_iS_i + \Delta M + E$), proves their equivalence, and then uses the second throughout its scheme chapters — worth knowing before you compare formulas across papers and conclude someone has a sign error.</li>
+
+    <li><strong>MIT 6.S976 / 18.S996, <em>Cryptography and Machine Learning: Foundations and Frontiers</em></strong>, Spring 2026, taught by Shafi Goldwasser and Vinod Vaikuntanathan. <a href="https://mlcrypto.mit.edu/course/">mlcrypto.mit.edu/course/</a>.<br>
+    A graduate treatment of exactly the intersection Part IV of this book occupies, from two people who built much of the underlying theory (Vaikuntanathan is a co-author of BGV and BFV). Use the syllabus as a reading list for the research frontier beyond encrypted inference.</li>
+
+    <li><strong>Jeremy Kun, "A High-Level Technical Overview of Fully Homomorphic Encryption"</strong> (May 2024). <a href="https://www.jeremykun.com/2024/05/04/fhe-overview/">jeremykun.com/2024/05/04/fhe-overview/</a>.<br>
+    The best practitioner-oriented orientation to the field, by an engineer on Google's HEIR compiler project. Strong on the CGGI-versus-CKKS trade-off, programmable bootstrapping, and the compiler/hardware landscape that Chapters 16 and 27 survey.</li>
+  </ul>
+
+  <h4>D.3 Industry and ecosystem</h4>
+  <ul>
+    <li><strong>Duality Technologies, FHE glossary and resources</strong>. <a href="https://dualitytech.com/glossary/fully-homomorphic-encryption/">dualitytech.com/glossary/fully-homomorphic-encryption/</a>. Duality stewards OpenFHE and was co-founded by Shafi Goldwasser, Vinod Vaikuntanathan and Kurt Rohloff; useful for how the technology is framed commercially, and for the DARPA DPRIVE hardware work discussed in Chapter 27.</li>
+    <li><strong>IBM Research, Fully Homomorphic Encryption</strong>. <a href="https://research.ibm.com/topics/fully-homomorphic-encryption">research.ibm.com/topics/fully-homomorphic-encryption</a>. The home of HElib, the original BGV implementation and still the reference for BGV bootstrapping and general-purpose batching techniques.</li>
+    <li><strong>Zama, introduction to homomorphic encryption</strong>. <a href="https://www.zama.org/introduction-to-homomorphic-encryption">zama.org/introduction-to-homomorphic-encryption</a>. The TFHE-centric view of the world, and the entry point to Concrete, Concrete ML and TFHE-rs (Chapters 11, 24).</li>
+    <li><strong>FHERMA</strong>, the FHE component challenge platform run by Fair Math with the OpenFHE community. <a href="https://fherma.io/">fherma.io</a>; challenge repository <a href="https://github.com/fairmath/fherma-challenges">github.com/fairmath/fherma-challenges</a>; resulting component library <a href="https://github.com/fairmath/polycircuit">polycircuit</a>. See Chapter 17 §5.</li>
+    <li><strong>HomomorphicEncryption.org Security Standard</strong> — the parameter tables every deployment should be checked against, and the source of the dimension/modulus limits quoted throughout Chapter 14.</li>
+  </ul>
+
+  <div class="key-takeaways">
+    <div class="box-title">How to use these</div>
+    <ul>
+      <li>For <em>definitions and theorem statements</em>: Barak first, then Gentry's thesis for the original framing.</li>
+      <li>For <em>scheme mechanics and derivations</em>: Ko's textbook, read alongside Part II of this book.</li>
+      <li>For <em>what to actually type</em>: the library documentation, always — API surfaces move faster than any book, which is why every library-level claim here carries a verification note.</li>
+      <li>For <em>research directions</em>: the MIT course reading list, and the FHERMA challenge archive for open engineering problems with measurable scoring.</li>
     </ul>
   </div>
 </div>
