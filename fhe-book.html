@@ -2633,7 +2633,7 @@ where $\hat d_2^{(i)} \cdot \mathsf{rlk}_i$ is understood component-wise. One ch
 <p>Tensor $\to$ rescale-and-round $\to$ relinearize takes two two-component ciphertexts encrypting $m, m'$ at noise level $\|v\|,\|v'\| \le B$ and produces one two-component ciphertext encrypting $mm' \bmod t$ at noise level $\|v_{\mathrm{mult}}\| = O(t n B) + O(w n \ell)$ — dominated in typical parameter regimes by the first term, matching Chapter 7's Result 7.1. <span class="tag tag-certain">Certain, general shape</span></p>
 </div>
 
-<h4>8.5 Leveled BFV in Microsoft SEAL (v4.1.2)</h4>
+<h4>8.5 Leveled BFV in Microsoft SEAL (v4.4)</h4>
 
 <p>SEAL's BFV implementation follows Definitions 8.1–8.5 essentially verbatim, using RNS (Residue Number System) representation internally for performance — the single large $q$ is represented as a product of many smaller word-sized primes $q = q_1 q_2 \cdots q_k$, and all arithmetic is done in parallel modulo each $q_i$ via CRT, which is what <code>CoeffModulus::Create</code> is choosing when you hand it a list of bit-sizes. This does not change the mathematics of §8.1–8.4; it changes only how $R_q$ arithmetic is implemented.</p>
 
@@ -2644,7 +2644,7 @@ where $\hat d_2^{(i)} \cdot \mathsf{rlk}_i$ is understood component-wise. One ch
 
 <div class="artifact-box">
 <div class="box-title">Artifact 8.1 — BFV integer arithmetic in SEAL (C++ skeleton)</div>
-<p>The following mirrors the standard structure of SEAL's own bundled examples (<code>native/examples/1_bfv_basics.cpp</code>, <code>2_encoders.cpp</code>, <code>3_levels.cpp</code>). Signatures below are written as a skeleton — <strong>verify exact method names and overloads against the SEAL v4.1.2 header files / bundled examples before compiling</strong>, per this book's no-hallucination policy on volatile library APIs.</p>
+<p>The following mirrors the standard structure of SEAL's own bundled examples (<code>native/examples/1_bfv_basics.cpp</code>, <code>2_encoders.cpp</code>, <code>3_levels.cpp</code>). Signatures below are written as a skeleton — <strong>verify exact method names and overloads against the SEAL v4.4 header files / bundled examples before compiling</strong>, per this book's no-hallucination policy on volatile library APIs.</p>
 <pre><code><span class="pp">#include</span> <span class="str">"seal/seal.h"</span>
 <span class="kw">using namespace</span> seal;
 
@@ -2999,7 +2999,7 @@ pairing first-with-last: $z_0$ with $z_{N-1}$, $z_1$ with $z_{N-2}$, and so on. 
 
   <p>TenSEAL (OpenMined's Python wrapper around Microsoft SEAL) exposes a high-level `CKKSVector`/`CKKSTensor` API in which arithmetic operators (`+`, `*`) automatically relinearize and rescale internally after each multiplication. <span class="tag tag-certain">Certain</span> This is excellent for building intuition fast — you write `y = x * x + x` and it works — but it means the scale/level bookkeeping described above is happening for you, invisibly. The pedagogical cost: you can use CKKS correctly in TenSEAL without ever internalizing <em>why</em> a deep circuit eventually fails when the level budget (set via `coeff_mod_bit_sizes`) runs out. Push past TenSEAL to SEAL or OpenFHE once the conceptual model above is solid — you need to see the rescale calls to debug real pipelines.</p>
 
-  <h5>10.4.2 Microsoft SEAL v4.1.2 — Rescale Explicit</h5>
+  <h5>10.4.2 Microsoft SEAL v4.4 — Rescale Explicit</h5>
 
   <p>SEAL's CKKS evaluator requires you to call `relinearize_inplace` and `rescale_to_next_inplace` yourself after every multiplication, and to manually align scales/levels (via `mod_switch_to_inplace`) before combining ciphertexts from unbalanced branches. <span class="tag tag-likely">Likely — verify exact call names against the current `native/examples/4_ckks_basics.cpp`</span> This is the "see every rescale" regime: painful at first, but it is where the discipline in the warning box above becomes muscle memory. SEAL has no bootstrapping (a fact we return to in Chapter 12), so in SEAL the level budget set at parameter generation is a hard, non-negotiable ceiling — there is no escape hatch if you mis-budget depth.</p>
 
@@ -3011,7 +3011,7 @@ pairing first-with-last: $z_0$ with $z_{N-1}$, $z_1$ with $z_{N-2}$, and so on. 
     <thead><tr><th>Library</th><th>Rescale</th><th>Bootstrapping</th><th>Best for</th></tr></thead>
     <tbody>
       <tr><td>TenSEAL v0.3.16</td><td>Automatic, hidden</td><td>No (SEAL-based)</td><td>Fast intuition, prototyping</td></tr>
-      <tr><td>SEAL v4.1.2</td><td>Fully manual</td><td>No</td><td>Learning the discipline by hand</td></tr>
+      <tr><td>SEAL v4.4</td><td>Fully manual</td><td>No</td><td>Learning the discipline by hand</td></tr>
       <tr><td>OpenFHE v1.5.1</td><td>Manual or auto-flagged</td><td>Yes (incl. functional)</td><td>Production, deep circuits</td></tr>
     </tbody>
   </table>
@@ -3213,7 +3213,7 @@ auto decoded = resultPt-&gt;GetRealPackedValue();
   <table>
     <thead><tr><th>Layer</th><th>What it is</th><th>Who touches it</th></tr></thead>
     <tbody>
-      <tr><td><strong>TFHE-rs</strong> (v0.11+)</td><td>Pure-Rust implementation of the TFHE scheme itself — Boolean gates, shortint, and integer APIs over encrypted data, with a CUDA GPU backend and an FPGA backend (Zama's Homomorphic Processing Unit, targeting AMD Alveo V80 boards)</td><td>Systems/crypto engineers building custom circuits or new higher-level tools</td></tr>
+      <tr><td><strong>TFHE-rs</strong> (v1.x; 1.7.0 current)</td><td>Pure-Rust implementation of the TFHE scheme itself — Boolean gates, shortint, and integer APIs over encrypted data, with a CUDA GPU backend and an FPGA backend (Zama's Homomorphic Processing Unit, targeting AMD Alveo V80 boards). Note the 1.0 release (early 2025) came with an API-stability commitment, and the HPU backend shipped in the 1.x line — pinning the old 0.11 puts you on a pre-stability API without it</td><td>Systems/crypto engineers building custom circuits or new higher-level tools</td></tr>
       <tr><td><strong>Concrete compiler</strong> (v2.10)</td><td>Compiles a numerical Python program (via an MLIR-based dialect) into an FHE circuit over TFHE-rs, handling bit-width analysis and LUT synthesis automatically</td><td>Anyone who wants "write NumPy-ish code, get FHE" without hand-rolling the LUT/bootstrap graph</td></tr>
       <tr><td><strong>Concrete ML</strong> (v1.8)</td><td>sklearn/PyTorch-compatible ML layer on top of the Concrete compiler: quantization-aware training/inference, model `.compile()`, encrypted `.predict(..., fhe="execute")`</td><td>ML engineers who want encrypted inference without touching crypto APIs at all</td></tr>
     </tbody>
@@ -3417,7 +3417,7 @@ print(f"FHE-execute accuracy (n=20): {acc_fhe:.4f}")  # should match acc_sim on 
   <table>
     <thead><tr><th>Library</th><th>Bootstrapping support</th></tr></thead>
     <tbody>
-      <tr><td>Microsoft SEAL v4.1.2</td><td>None, any scheme</td></tr>
+      <tr><td>Microsoft SEAL v4.4</td><td>None, any scheme</td></tr>
       <tr><td>TenSEAL v0.3.16</td><td>None (SEAL-based)</td></tr>
       <tr><td>OpenFHE v1.5.1</td><td>Yes — CKKS (incl. functional bootstrapping, sparse-secret encapsulation, v1.4+), and FHEW/TFHE-style bootstrapping for its binary-FHE module</td></tr>
       <tr><td>HEAAN</td><td>Yes — CKKS, from the scheme's original authors</td></tr>
@@ -3829,7 +3829,7 @@ cc-&gt;Decrypt(keys.secretKey, result, &amp;resultPt);
 <table>
 <tr><th>Library</th><th>Language</th><th>Schemes</th><th>Bootstrapping</th><th>Niche</th></tr>
 <tr><td>OpenFHE v1.5.1</td><td>C++ (Python bindings)</td><td>BGV, BFV, CKKS, FHEW, TFHE</td><td>Yes (incl. CKKS) + scheme switching</td><td>Production, research, most feature-complete</td></tr>
-<tr><td>Microsoft SEAL v4.1.2</td><td>C++ (.NET/Python wrappers)</td><td>BFV, BGV, CKKS</td><td>No</td><td>Leveled-only learning &amp; embedded use</td></tr>
+<tr><td>Microsoft SEAL v4.4</td><td>C++ (.NET/Python wrappers)</td><td>BFV, BGV, CKKS</td><td>No</td><td>Leveled-only learning &amp; embedded use</td></tr>
 <tr><td>TenSEAL v0.3.16</td><td>Python (wraps SEAL)</td><td>CKKS, BFV</td><td>No</td><td>Fast tensor-level CKKS prototyping</td></tr>
 <tr><td>HEaaN</td><td>C++</td><td>CKKS only</td><td>Yes</td><td>Reference CKKS from the scheme's authors</td></tr>
 <tr><td>Concrete ML v1.8</td><td>Python (on TFHE)</td><td>TFHE (CGGI)</td><td>Yes (programmable)</td><td>Sklearn/XGBoost/QAT-NN with zero crypto code</td></tr>
@@ -3849,7 +3849,11 @@ cc-&gt;Decrypt(keys.secretKey, result, &amp;resultPt);
 </div>
 
 <h4>15.3 Microsoft SEAL — the leveled-only workhorse</h4>
-<p>SEAL (current: v4.1.2, July 2024) implements BFV, BGV, and CKKS with no bootstrapping in any scheme — depth is a hard ceiling set entirely by your parameter choice at context creation. It is MIT-licensed, extremely well-tested, and for years was the field's default teaching implementation because its API makes every maintenance operation (relinearize, rescale, mod-switch) an explicit call rather than something hidden inside a wrapper. Release cadence has slowed markedly since the 4.1 line; treat the bundled <code>native/examples/</code> as the living reference and check the repository's actual recent commit activity before assuming a feature is current. <span class="tag tag-certain">Certain</span></p>
+<p>SEAL (current: v4.4, July 2026) implements BFV, BGV, and CKKS with no bootstrapping in any scheme — depth is a hard ceiling set entirely by your parameter choice at context creation. It is MIT-licensed, extremely well-tested, and for years was the field's default teaching implementation because its API makes every maintenance operation (relinearize, rescale, mod-switch) an explicit call rather than something hidden inside a wrapper. Treat the bundled <code>native/examples/</code> as the living reference. <span class="tag tag-certain">Certain</span></p>
+
+<div class="warning-box">
+<p><strong>Upgrade if you are pinned below 4.4.</strong> The SEAL maintainers flag 4.4 as a <em>critical security update</em>: "All users should upgrade to version 4.4.0 or later as soon as possible," citing fixes for untrusted-input handling, native memory safety, and managed/native interoperability. Anything still pinned to the 4.1 line — as older tutorials and this book's earlier drafts were — should be moved. Note the practical consequence for FHE specifically: untrusted-input handling matters because a server evaluating a ciphertext is by construction processing data it cannot inspect.</p>
+</div>
 
 <h4>15.4 TenSEAL — CKKS at tensor granularity</h4>
 <p>TenSEAL (v0.3.16, February 2025), maintained by OpenMined, wraps SEAL behind a NumPy-flavored Python API (<code>CKKSVector</code>, <code>CKKSTensor</code>, <code>BFVVector</code>) that hides relinearization and rescaling entirely — arithmetic operators trigger the correct maintenance calls internally. This makes it the fastest path to a working encrypted dot-product or matrix-vector multiply, and the worst path to actually learning scale/level management, since the mechanism Chapter 16 is entirely about is invisible here by design. <span class="tag tag-certain">Certain</span></p>
@@ -5257,7 +5261,7 @@ $$\nabla_w \mathcal{L} = \frac{1}{m}X^\top(\hat y - y)$$
 
 <div class="example">
 <div class="box-title">Depth per GD iteration, encrypted logistic regression</div>
-<p>Forward: $Xw$ (1 level) → $\sigma(\cdot)$ via degree-$d$ Chebyshev (Ch.19 §5's $\lceil\log_2(d{+}1)\rceil$ levels). Backward: $\hat y - y$ (free, plaintext-known $y$ if $y$ is not itself sensitive to the training coordinator, or another ciphertext subtract if it is), $X^\top(\hat y - y)$ (1 level, same diagonal-method structure as the forward matmul). Update: $w \leftarrow w - \eta \cdot \mathrm{grad}$ (free, plaintext scalar multiply and subtract). For a modest degree-7 sigmoid fit ($\lceil\log_2 8\rceil=3$ levels): roughly $1+3+1 = 5$ levels per iteration. Ten iterations, chained without bootstrapping, is $\approx 50$ levels — large but not absurd for a leveled CKKS parameter set, and squarely why "encrypted logistic regression training, ~10 iterations" is a standard, achievable worked example rather than an aspirational one, while the equivalent arithmetic for even a small CNN (Chapter 21's 16-level-per-forward-pass example, roughly doubled for backward, times hundreds of iterations) is not.</p>
+<p>Forward: $Xw$ (1 level) → $\sigma(\cdot)$ via degree-$d$ Chebyshev (Ch.19 §5's $\lceil\log_2(d{+}1)\rceil$ levels). Backward: $\hat y - y$ (free, plaintext-known $y$ if $y$ is not itself sensitive to the training coordinator, or another ciphertext subtract if it is), $X^\top(\hat y - y)$ (1 level, same diagonal-method structure as the forward matmul). Update: $w \leftarrow w - \eta \cdot \mathrm{grad}$ (free, plaintext scalar multiply and subtract). Two corrections to the naive count. First, the update $w \leftarrow w - \eta\cdot\mathrm{grad}$ is <em>not</em> free: $\eta = 0.1$ is a non-integer plaintext, so it is encoded at scale $\Delta$ and the product must be rescaled, costing one level (only additions and subtractions are genuinely free). Second, budget the activation from OpenFHE's degree-to-depth table (Fact 19.3), not from $\lceil\log_2(d{+}1)\rceil$: a degree-7 Chebyshev consumes 5 levels, not 3. So the honest per-iteration cost is $1 + 5 + 1 + 1 = 8$ levels, and ten iterations chained without bootstrapping is $\approx 80$ levels — large but not absurd for a leveled CKKS parameter set, and squarely why "encrypted logistic regression training, ~10 iterations" is a standard, achievable worked example rather than an aspirational one, while the equivalent arithmetic for even a small CNN (Chapter 21's 16-level-per-forward-pass example, roughly doubled for backward, times hundreds of iterations) is not.</p>
 </div>
 
 <h4>24.4 What Concrete-ML does and does not do for training</h4>
@@ -5299,7 +5303,7 @@ using namespace lbcrypto;
 
 int main() {
     CCParams<CryptoContextCKKSRNS> parameters;
-    parameters.SetMultiplicativeDepth(50);     // per Sec 24.3's per-iteration
+    parameters.SetMultiplicativeDepth(80);     // per Sec 24.3's per-iteration
                                                  // budget x 10 iterations
     parameters.SetScalingModSize(45);
     auto cc = GenCryptoContext(parameters);
@@ -5324,14 +5328,15 @@ int main() {
 
     double lr = 0.1;
     double R = 8.0;              // calibrated sigmoid input range, Sec 18.4/19.6
-    uint32_t sigDegree = 7;      // -> ceil(log2(8)) = 3 levels, Sec 24.3's budget
+    uint32_t sigDegree = 7;      // -> 5 levels per OpenFHE's degree-to-depth
+                                 //    table (Fact 19.3), NOT ceil(log2(8))=3
     auto sigmoid = [](double x){ return 1.0 / (1.0 + std::exp(-x)); };
 
     for (int iter = 0; iter < 10; ++iter) {
         // Forward: z = Xw  (diagonal-method matmul, Sec 21.3) -- 1 level
         auto ctZ = EvalLinearLayer(cc, ctX, ctW, rotOffsets);  // helper, Ch.21-style
 
-        // yhat = sigma(z), degree-7 Chebyshev -- 3 levels (Sec 19.2/19.5)
+        // yhat = sigma(z), degree-7 Chebyshev -- 5 levels (OpenFHE table)
         auto ctYhat = cc->EvalChebyshevFunction(sigmoid, ctZ, -R, R, sigDegree);
 
         // Backward: grad = X^T (yhat - y) / m -- 1 level for the matmul,
@@ -5339,12 +5344,15 @@ int main() {
         auto ctErr = cc->EvalSub(ctYhat, ctY);
         auto ctGrad = EvalTransposeLinearLayer(cc, ctX, ctErr, rotOffsetsT); // helper
 
-        // Update: w <- w - lr * grad -- free (plaintext scalar EvalMultPlain
-        // by a constant, then EvalSub)
+        // Update: w <- w - lr * grad -- COSTS 1 LEVEL, not free. lr = 0.1 is a
+        // non-integer plaintext, so it is encoded at scale Delta and the
+        // product must be rescaled. Only EvalAdd/EvalSub are level-free.
+        // (To reclaim this level, fold lr into the Chebyshev coefficients of
+        // the sigmoid so the scaling rides along with an existing multiply.)
         ctW = cc->EvalSub(ctW, cc->EvalMult(ctGrad, lr));
 
         // NOTE: no bootstrap call anywhere in this loop -- by design, per
-        // the ~50-level budget provisioned up front (Sec 24.2(c)). Beyond
+        // the ~80-level budget provisioned up front (Sec 24.2(c)). Beyond
         // ~10 iterations at this per-iteration depth, this parameter set
         // is exhausted and either bootstrapping (Sec 24.2(a)) or a fresh
         // re-encryption checkpoint becomes necessary.
@@ -5413,7 +5421,7 @@ int main() {
     <p>A $(t,N)$-threshold FHE scheme is correct if any $t$ of the $N$ partial decryptions combine to recover the correct plaintext (up to the usual FHE noise), and is secure if any coalition of fewer than $t$ parties, given their own secret shares and arbitrary ciphertexts, learns nothing about the plaintext beyond what is implied by the joint public key. The standard construction achieves $t = N$ ("full threshold") most simply; general $t$-of-$N$ requires either an additional secret-sharing layer (e.g., Shamir shares of $s$ combined with interpolation in the exponent/noise domain) or an interactive combining protocol.</p>
   </div>
 
-  <p>Threshold CKKS and threshold BFV are the two variants that matter in practice, and both are supported as of OpenFHE v1.5.1 through the <code>Threshold*</code> family of APIs layered on top of the ordinary CKKS and BFV/BGV crypto contexts. <span class="tag tag-certain">Certain</span> The key insight that makes this practical rather than a research toy is that the homomorphic evaluation layer needs zero modification — the threshold machinery lives entirely in key generation and decryption, so all the optimizations, bootstrapping procedures, and packing tricks from Parts II–IV of this book carry over unchanged to the multiparty setting.</p>
+  <p>Threshold CKKS and threshold BFV are the two variants that matter in practice, and both are supported in OpenFHE through the <code>Multiparty*</code> family of APIs — <code>MultipartyKeyGen</code>, <code>MultipartyDecryptLead</code>, <code>MultipartyDecryptMain</code> and <code>MultipartyDecryptFusion</code>, gated by <code>Enable(MULTIPARTY)</code> — layered on top of the ordinary CKKS and BFV/BGV crypto contexts. (There is no <code>Threshold*</code> API despite the feature's name; only the example filenames use "threshold", which is a reliable way to waste an afternoon searching for symbols that do not exist.) <span class="tag tag-certain">Certain</span> The key insight that makes this practical rather than a research toy is that the homomorphic evaluation layer needs zero modification — the threshold machinery lives entirely in key generation and decryption, so all the optimizations, bootstrapping procedures, and packing tricks from Parts II–IV of this book carry over unchanged to the multiparty setting.</p>
 
   <h5>25.1.1 Noise Flooding in Partial Decryption</h5>
 
@@ -5423,7 +5431,7 @@ int main() {
 
   <p>Threshold FHE assumes the parties agree in advance to share one key. Multi-key HE (MKHE) removes even that assumption: each party $i$ generates its own completely independent $(pk_i, sk_i)$ under a common set of public parameters, and encrypts its own data under its own key with ordinary single-key encryption. The interesting machinery is in the <em>evaluator</em>, who receives ciphertexts $ct_1$ (under $pk_1$), $ct_2$ (under $pk_2$), ..., and must compute a function of the combined plaintexts <em>without ever holding any secret key</em>.</p>
 
-  <p>The dominant approach, following López-Alt, Tromer, and Vaikuntanathan's original 2012 construction and its later CKKS/BFV-compatible descendants (Chen–Zhang–Wang / Kim–Song–Cheon–Park style constructions used by OpenFHE and Lattigo), extends every ciphertext that touches multiple keys into a structure whose size grows linearly with the number of <em>distinct</em> keys involved in its ancestry. Concretely, a "fresh" ciphertext under a single key looks like an ordinary RLWE pair, but the moment you homomorphically combine ciphertexts encrypted under $k$ different keys, the result is represented relative to the concatenated key vector $(s_1, \dots, s_k)$, and its size (and the cost of every subsequent operation on it) grows roughly linearly, sometimes quadratically for multiplication, in $k$. <span class="tag tag-likely">Likely</span></p>
+  <p>The dominant approach, following López-Alt, Tromer, and Vaikuntanathan's original 2012 construction and its later packed CKKS/BFV-compatible descendants (Chen, Dai, Kim and Song, "Efficient Multi-Key Homomorphic Encryption with Packed Ciphertexts," CCS 2019, <a href="https://eprint.iacr.org/2019/524">eprint 2019/524</a>; and Chen, Chillotti and Song for the TFHE analogue), extends every ciphertext that touches multiple keys into a structure whose size grows linearly with the number of <em>distinct</em> keys involved in its ancestry. Concretely, a "fresh" ciphertext under a single key looks like an ordinary RLWE pair, but the moment you homomorphically combine ciphertexts encrypted under $k$ different keys, the result is represented relative to the concatenated key vector $(s_1, \dots, s_k)$, and its size (and the cost of every subsequent operation on it) grows roughly linearly, sometimes quadratically for multiplication, in $k$. <span class="tag tag-likely">Likely</span></p>
 
   <div class="theorem">
     <div class="box-title">Property 25.1 — MKHE Cost Scaling</div>
@@ -5558,7 +5566,7 @@ int main() {
 
   <h4>26.2 The OpenFHE Scheme-Switching Pipeline</h4>
 
-  <p>OpenFHE exposes CKKS↔FHEW scheme switching as a first-class capability, following the CKKS-bootstrapping-via-FHEW-PBS line of research (building on Lu–Sakzad–Steinfeld/Bae–Cheon–Cho–Kim–Song "PEGASUS"-style constructions and later refinements). The pipeline, expressed at the level of the operations you actually call, is:</p>
+  <p>OpenFHE exposes CKKS↔FHEW scheme switching as a first-class capability, following the CKKS-bootstrapping-via-FHEW-PBS line of research (building on PEGASUS — Lu, Huang, Hong, Ma and Qu, IEEE S&amp;P 2021, <a href="https://eprint.iacr.org/2020/1606">eprint 2020/1606</a> — alongside CHIMERA and OpenFHE's own scheme-switching and functional-bootstrapping papers). The pipeline, expressed at the level of the operations you actually call, is:</p>
 
   <ol>
     <li><strong>Slot extraction.</strong> A CKKS ciphertext packs up to $N/2$ complex (or real) values into its slots via the canonical embedding. To apply a scalar function to one slot's value using FHEW, that value must first be isolated as its own LWE-style sample. OpenFHE does this with a homomorphic linear transform (effectively a rotate-and-mask sequence, the same machinery used for CKKS bootstrapping's linear layer in Chapter 17) that extracts one coefficient of the underlying RLWE ciphertext into a standalone LWE ciphertext encrypting that single slot's (scaled, rounded) value.</li>
@@ -5726,14 +5734,14 @@ Ciphertext<DCRTPoly> forwardSchemeSwitchReLU(
   <ul>
     <li><strong>CryptoLab and Niobium Systems partnership (announced October 2024).</strong> The two companies partnered specifically to pursue encrypted LLM/generative-AI inference by combining CryptoLab's HEaaN CKKS software stack with Niobium's dedicated FHE accelerator hardware, explicitly targeting the latency gap that makes software-only encrypted LLM inference impractical at present. <span class="tag tag-verify">Verify</span></li>
     <li><strong>Zama Concrete ML v1.8.</strong> Ships hybrid fine-tuning workflows for LLMs (keeping most of a model's weights in plaintext on a trusted server while encrypting only sensitive activations or a small adapter, rather than encrypting the entire model end to end) and a Low-Rank Approximation API aimed at reducing the multiplicative depth and ciphertext volume a fine-tuned adapter's FHE evaluation requires — a pragmatic middle ground between "no privacy" and "fully encrypted end-to-end LLM," and the shape most production encrypted-LLM offerings currently take. <span class="tag tag-verify">Verify</span></li>
-    <li><strong>Zama's stated roadmap</strong> targets on the order of 100x speedup over current FHE-LLM throughput and a goal of 500–1000 tokens per second by the end of 2026 — an explicit, aggressive roadmap target, not a currently shipped benchmark, and should be read and cited as such. <span class="tag tag-verify">Verify</span></li>
+    <li><strong>Zama's stated roadmap</strong> targets on the order of 100x FHE speedup overall. Keep two distinct numbers apart here, because they are routinely conflated: the widely-quoted "500–1000 by end of 2026" figure is <em>confidential blockchain transactions per second</em> (TPS) per chain for the Zama Protocol / fhEVM after GPU migration — it is <strong>not</strong> LLM tokens per second. For encrypted LLMs, Zama's published ambition is far more modest: on the order of <em>dozens</em> of encrypted tokens per second, and hardware-dependent at that. All of these are roadmap targets rather than shipped benchmarks and should be cited as such. <span class="tag tag-verify">Verify</span></li>
   </ul>
 
   <div class="warning-box">
     <div class="box-title">HONEST Gap Assessment</div>
     <p><strong>Feasible today (small models, published/benchmarked):</strong> encrypted inference on BERT-tiny/DistilBERT-scale encoders and GPT-2-small-scale decoders, with FHE-friendly substitutes for softmax and layer norm, at latencies of seconds to low minutes per inference on accelerated hardware.</p>
     <p><strong>Feasible today (hybrid, production-shipped):</strong> LLM workflows that keep the bulk of a model in plaintext and encrypt only a targeted slice — inputs, a fine-tuning adapter, or specific sensitive activations — via hybrid architectures like Concrete ML's LLM fine-tuning tools. This is the pattern behind essentially every production "private LLM" offering as of this writing.</p>
-    <p><strong>Aspirational (roadmap, not yet shipped):</strong> full end-to-end FHE inference of a frontier-scale LLM at interactive latency, with every weight, activation, and token generation step encrypted throughout. Vendor targets exist (e.g., Zama's 500–1000 TPS by end-2026 goal) but should be treated as forward-looking statements, not present capability, until independently benchmarked and reproduced.</p>
+    <p><strong>Aspirational (roadmap, not yet shipped):</strong> full end-to-end FHE inference of a frontier-scale LLM at interactive latency, with every weight, activation, and token generation step encrypted throughout. Vendor targets exist (e.g. Zama's 500–1000 confidential-blockchain TPS by end-2026 — a throughput figure for encrypted transactions, not LLM tokens) but should be treated as forward-looking statements, not present capability, until independently benchmarked and reproduced.</p>
   </div>
 
   <h4>27.4 Other NLP Tasks Below LLM Scale</h4>
@@ -5770,7 +5778,7 @@ Ciphertext<DCRTPoly> forwardSchemeSwitchReLU(
     <ul>
       <li>Encrypted CNN inference has progressed from CryptoNets' MNIST-scale demonstration (2016) to CIFAR-10-scale in low minutes and ImageNet-scale in hours, driven by better bootstrapping, packing, and polynomial approximation.</li>
       <li>Transformers add three obstacles beyond CNNs: softmax's exponential-plus-division, layer norm's inverse square root, and the compounding depth/sequentiality of autoregressive generation.</li>
-      <li>Small encoder/decoder models (BERT-tiny, GPT-2-small scale) with FHE-friendly substitutes are feasible and published today; full frontier-scale encrypted LLM inference is a roadmap target (Zama: 100x speedup, 500-1000 TPS by end-2026), not a currently shipped capability — treat vendor timelines as forward-looking statements pending independent benchmarking.</li>
+      <li>Small encoder/decoder models (BERT-tiny, GPT-2-small scale) with FHE-friendly substitutes are feasible and published today; full frontier-scale encrypted LLM inference is a roadmap target (Zama: 100x FHE speedup; 500–1000 confidential blockchain TPS by end-2026; dozens of encrypted LLM tokens/sec longer-term — three different metrics that are easy to conflate), not a currently shipped capability — treat vendor timelines as forward-looking statements pending independent benchmarking.</li>
       <li>Hybrid architectures (Concrete ML LLM fine-tuning, encrypt-only-what's-sensitive) are the practical, production-shipped middle ground today, distinct from full end-to-end encrypted LLM inference.</li>
     </ul>
   </div>
@@ -5815,7 +5823,7 @@ Ciphertext<DCRTPoly> forwardSchemeSwitchReLU(
 
   <h5>28.2.2 ASICs — Niobium Microsystems and Cornami</h5>
 
-  <p>Niobium Microsystems has raised $5.5M (May 2024) and a further $23M+ round (December 2025), and — working with SEMIFIVE and Samsung Foundry — has developed what is reported as the first commercially viable FHE ASIC fabricated on Samsung's 8nm process node, a milestone specifically because it targets commercial manufacturability and cost, not merely a research prototype's raw speedup number. <span class="tag tag-verify">Verify</span> Niobium's hardware is also the accelerator side of the CryptoLab partnership for encrypted LLM inference discussed in Chapter 27.</p>
+  <p>Niobium Microsystems has raised $5.5M (May 2024) and a further $23M+ round (December 2025), and in February 2026 contracted SEMIFIVE (a Samsung Foundry design-solution partner) to <em>develop</em> its FHE accelerator ASIC on Samsung's 8nm 8LPU process, in a design-services deal reported at around KRW 10 billion. Read the tense carefully: this is a contract to advance the ASIC toward production, targeting what would be the first commercially manufacturable FHE ASIC. <strong>No commercially fabricated FHE ASIC exists yet</strong> — claiming one has been "fabricated" is precisely the kind of maturity inflation this chapter warns against, and the distinction between taped-out silicon, a design contract, and a shipping product is exactly what separates a procurement decision from a press release. <span class="tag tag-verify">Verify</span> Niobium's hardware is also the accelerator side of the CryptoLab partnership for encrypted LLM inference discussed in Chapter 27.</p>
 
   <p>Cornami closed a Series D round in July 2025 and reported roughly 52 employees, positioning its FHE-accelerated hardware specifically around encrypted AI inference workloads rather than general-purpose FHE acceleration. <span class="tag tag-verify">Verify</span></p>
 
@@ -5994,15 +6002,19 @@ cd ../build/bin/examples/pke
 
   <p><strong>Common build issues:</strong> stale CMake caches after switching branches/tags (delete <code>build/</code> and reconfigure rather than reusing a cache across version changes); missing OpenMP on macOS (install via <code>brew install libomp</code> and ensure CMake finds it); and linker errors from mixing a system-installed OpenFHE with a locally built one — uninstall or isolate one before building the other, since OpenFHE does not namespace its installed libraries by version by default.</p>
 
-  <h4>B.2 Microsoft SEAL (v4.1.2)</h4>
+  <h4>B.2 Microsoft SEAL (v4.4)</h4>
 
   <pre><code>git clone https://github.com/microsoft/SEAL.git
-cd SEAL && git checkout v4.1.2
-cmake -S . -B build -DSEAL_USE_INTEL_HEXL=ON   # optional: enable HEXL acceleration
+cd SEAL && git checkout v4.4.0
+# NOTE: SEAL_BUILD_EXAMPLES defaults to OFF, so the examples binary is NOT
+# built unless you ask for it. Omit this flag and build/bin/sealexamples
+# will simply not exist.
+cmake -S . -B build -DSEAL_BUILD_EXAMPLES=ON \
+                    -DSEAL_USE_INTEL_HEXL=ON   # HEXL acceleration is optional
 cmake --build build
 sudo cmake --install build
 
-# Hello-world: build and run the native examples binary
+# Hello-world: run the native examples binary
 cd build/bin && ./sealexamples
 # Select the BFV or CKKS "basics" example from the printed menu.</code></pre>
 
@@ -6127,7 +6139,7 @@ go run main.go</code></pre>
 
   <h4>C.3 Version-Pinning Note</h4>
 
-  <p>Every artifact in this book was written and (where marked runnable rather than SKELETON) tested against the specific library versions enumerated in Appendix B: OpenFHE v1.5.1, SEAL v4.1.2, TenSEAL v0.3.16, Concrete ML v1.8, and Lattigo v6. FHE libraries have historically changed their APIs across major and even minor versions more readily than most cryptographic software, precisely because the underlying research (bootstrapping techniques, scheme-switching primitives, multiparty protocols — the subject of this Part) continues to move quickly, as documented throughout Chapters 25–28. Readers building on these artifacts in a real project should: pin dependency versions explicitly (a <code>requirements.txt</code> with exact versions for Python libraries; a checked-out git tag rather than a floating branch for C++ libraries built from source); re-verify any artifact's function signatures against that pinned version's own documentation before relying on it in anything beyond a learning exercise; and treat every dated, company-specific, or roadmap claim in Chapters 25–28 specifically — flagged throughout with <span class="tag tag-verify">Verify</span> tags — as a snapshot of a fast-moving commercial and research landscape as of this writing, not a permanent fact, and re-confirm any such claim against primary sources before citing it.</p>
+  <p>Every artifact in this book was written and (where marked runnable rather than SKELETON) tested against the specific library versions enumerated in Appendix B: OpenFHE v1.5.1, SEAL v4.4, TenSEAL v0.3.16, Concrete ML v1.8, and Lattigo v6. FHE libraries have historically changed their APIs across major and even minor versions more readily than most cryptographic software, precisely because the underlying research (bootstrapping techniques, scheme-switching primitives, multiparty protocols — the subject of this Part) continues to move quickly, as documented throughout Chapters 25–28. Readers building on these artifacts in a real project should: pin dependency versions explicitly (a <code>requirements.txt</code> with exact versions for Python libraries; a checked-out git tag rather than a floating branch for C++ libraries built from source); re-verify any artifact's function signatures against that pinned version's own documentation before relying on it in anything beyond a learning exercise; and treat every dated, company-specific, or roadmap claim in Chapters 25–28 specifically — flagged throughout with <span class="tag tag-verify">Verify</span> tags — as a snapshot of a fast-moving commercial and research landscape as of this writing, not a permanent fact, and re-confirm any such claim against primary sources before citing it.</p>
 
   <div class="key-takeaways">
     <div class="box-title">Key Takeaways</div>
