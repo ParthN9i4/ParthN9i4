@@ -2,7 +2,8 @@
 
 ## What is FHERMA?
 
-FHERMA (https://fherma.io) is Fair Math's competitive benchmarking platform
+FHERMA (https://fherma.io) is a competitive benchmarking platform developed
+jointly by Fair Math and the OpenFHE team
 for Fully Homomorphic Encryption.  It hosts challenges where participants
 implement FHE computations that are evaluated on accuracy, performance, and
 correctness against standardized test suites.
@@ -73,8 +74,12 @@ These are where your Chebyshev/Remez skills from ex14 apply directly:
 3. **Consider the domain carefully.** Many challenges specify the input range.
    A narrower range needs fewer terms for the same accuracy.
 4. **Exploit symmetry.** Sigmoid is antisymmetric around 0 (after shifting by
-   0.5), so only odd Chebyshev terms are nonzero -- you can skip even terms
-   and halve your depth.
+   0.5), so only odd Chebyshev terms are nonzero -- you can skip the even
+   terms. Note what this does and does not buy: it roughly halves the number
+   of coefficient multiplications, but it does NOT halve the depth. Depth is
+   driven by the polynomial's degree (you still have to reach x^d), so a
+   degree-15 odd-only fit costs the same levels as a degree-15 dense one.
+   The saving is work, not depth.
 5. **Remez algorithm** gives the true minimax polynomial, which is optimal.
    Chebyshev is near-optimal and much easier to compute -- start there, then
    try Remez if you need to shave off one more degree.

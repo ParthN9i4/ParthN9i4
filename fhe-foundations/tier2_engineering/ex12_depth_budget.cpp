@@ -55,10 +55,13 @@ void report_context_size(int depth) {
     // plus a special modulus. Total log(Q) ~ (depth+1)*50 + special bits.
     // Ring dimension is chosen to satisfy 128-bit security for that Q.
 
-    // Estimate ciphertext size: each ciphertext is 2 polynomials of N coefficients,
-    // each coefficient stored in RNS with (depth+1+1) moduli, each modulus ~64 bits.
-    // Rough size ~ 2 * N * (depth + 2) * 8 bytes
-    size_t est_ct_bytes = 2ULL * ring_dim * (depth + 2) * 8;
+    // Estimate ciphertext size: each ciphertext is 2 polynomials of N
+    // coefficients, stored in RNS with (depth + 1) moduli -- one per level in
+    // the chain Q, each ~64 bits. The auxiliary modulus P used by hybrid key
+    // switching is NOT counted here: it exists only transiently inside the
+    // key-switch operation and is never part of a stored ciphertext.
+    // Rough size ~ 2 * N * (depth + 1) * 8 bytes
+    size_t est_ct_bytes = 2ULL * ring_dim * (depth + 1) * 8;
 
     std::cout << "  Depth " << std::setw(2) << depth << ":  "
               << "N = " << std::setw(6) << ring_dim

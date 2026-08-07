@@ -81,7 +81,13 @@ def poly_mul_schoolbook(a, b, N, q):
     # Full convolution (length 2N - 1)
     full = np.convolve(a, b)
 
-    # Negacyclic reduction: X^N = -1, so X^{N+k} = -X^k
+    # Negacyclic reduction. X^N = -1, so X^{N+k} = -X^k -- but the sign
+    # ALTERNATES with each further wrap, it does not simply stay negative:
+    # X^{2N+k} = (+1)X^k, X^{3N+k} = -X^k, and so on. In general the sign is
+    # (-1)^(i // N), which is what the code below uses. Saying "always
+    # subtract" is only right for N <= i < 2N; schoolbook products of two
+    # degree-(N-1) inputs stop at i < 2N-1, so the error stays hidden there
+    # and bites as soon as you reduce a longer polynomial.
     result = np.zeros(N, dtype=np.int64)
     for i, c in enumerate(full):
         pos = i % N

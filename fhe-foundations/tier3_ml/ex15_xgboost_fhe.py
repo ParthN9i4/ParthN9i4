@@ -4,7 +4,9 @@ Concrete-ML wraps familiar scikit-learn-style estimators and compiles them
 into FHE circuits.  Under the hood it:
   1. Trains a normal model (XGBoost, logistic regression, neural net, ...).
   2. Quantizes the model weights and decision thresholds to `n_bits` bits.
-  3. Compiles the quantized model into a TFHE boolean circuit.
+  3. Compiles the quantized model into a TFHE *integer* circuit -- encrypted
+     integer arithmetic plus programmable-bootstrapping table lookups, not a
+     gate-level boolean circuit.
   4. Runs inference entirely on encrypted data.
 
 The key trade-off is **quantization bitwidth**:
@@ -69,7 +71,6 @@ def train_plain_xgboost(X_train, y_train):
         n_estimators=50,
         max_depth=4,
         learning_rate=0.1,
-        use_label_encoder=False,
         eval_metric="logloss",
         random_state=42,
     )

@@ -44,8 +44,11 @@ int main() {
     parameters.SetMultiplicativeDepth(2);               // [VERIFY] enough for one mult in matvec
     parameters.SetScalingModSize(50);                   // [VERIFY]
     parameters.SetBatchSize(8);                         // [VERIFY] 8 slots for readability
-    parameters.SetScalingTechnique(FIXEDAUTO);          // [VERIFY] auto rescale/relin for simplicity
-    // Using FIXEDAUTO here so we can focus on rotations, not rescale/relin.
+    parameters.SetScalingTechnique(FIXEDAUTO);          // [VERIFY] automatic rescaling
+    // FIXEDAUTO here so we can focus on rotations rather than rescale calls.
+    // Precisely: the scaling technique governs RESCALING only. Relinearization
+    // is not tied to it -- EvalMult relinearizes under every scaling technique
+    // (EvalMultNoRelin is the opt-out), so "auto relin" is not a thing.
 
     auto cc = GenCryptoContext(parameters);             // [VERIFY]
     cc->Enable(PKE);                                    // [VERIFY]

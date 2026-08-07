@@ -18,7 +18,15 @@ def check(name, got, expected=True, tol=None):
     if tol is not None:
         try:
             if hasattr(got, '__iter__') and hasattr(expected, '__iter__'):
-                ok = all(abs(a - b) < tol for a, b in zip(got, expected))
+                got_l, exp_l = list(got), list(expected)
+                # Lengths must match. zip() truncates to the shorter sequence,
+                # so without this a short -- or entirely empty -- result
+                # silently PASSes against the expected vector.
+                if len(got_l) != len(exp_l):
+                    name = f"{name} [length {len(got_l)} != {len(exp_l)}]"
+                    ok = False
+                else:
+                    ok = all(abs(a - b) < tol for a, b in zip(got_l, exp_l))
             else:
                 ok = abs(got - expected) < tol
         except TypeError:

@@ -20,7 +20,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # [VERIFY] OpenFHE cmake exports these variables. Check with:
 #   cmake -LH <build-dir> | grep OpenFHE
 # Common variables: OpenFHE_INCLUDE, OpenFHE_LIBDIR, OpenFHE_LIBRARIES,
-#                   OPENFE_INCLUDE_DIRS, OpenFHE_CXX_FLAGS
+#                   OpenFHE_INCLUDE, OpenFHE_LIBDIR, OpenFHE_CXX_FLAGS
 # The exact variable names depend on the OpenFHE version's CMake config.
 include_directories(${OpenFHE_INCLUDE})                                       # [VERIFY] variable name
 include_directories(${OpenFHE_INCLUDE}/third-party/include)                   # [VERIFY] third-party headers (cereal, etc.)

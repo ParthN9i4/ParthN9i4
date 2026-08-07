@@ -22,7 +22,10 @@
  *     EvalMultNoRelin() and then Relinearize() yourself.
  *
  *   After a ciphertext multiply:
- *     - The scale doubles (Delta^2), so you MUST rescale to bring it back to Delta
+ *     - The scale SQUARES (Delta -> Delta^2), so you MUST rescale back to Delta.
+ *       Note "squares", not "doubles": it is log2(scale) that doubles. For
+ *       Delta = 2^50 the product sits at 2^100, not 2^51 -- a distinction that
+ *       decides whether your chain survives.
  *     - Each rescale consumes one level from your depth budget
  *     - Relinearization is already done for you unless you opted out
  *
@@ -155,13 +158,11 @@ int main() {
     // Think about why: operands must share the same scale and level.
 
     // NOTE: ct_ab has been rescaled once, so it sits one level below ct_a.
-    // In FIXEDMANUAL the operands must be brought to a common level; OpenFHE
-    // exposes cc->LevelReduce(ct, nullptr, levels) for this.
-    // [VERIFY] against your OpenFHE version whether EvalMult level-matches
-    // automatically here, or whether the explicit LevelReduce below is needed.
-    if (ct_a->GetLevel() < ct_ab->GetLevel()) {
-        ct_a = cc->LevelReduce(ct_a, nullptr, ct_ab->GetLevel() - ct_a->GetLevel());
-    }
+    // You do NOT need to level-match by hand: OpenFHE's own example says
+    // "LevelReduce, and both FIXEDMANUAL and FLEXIBLEAUTO do it
+    // automatically" (src/pke/examples/advanced-real-numbers.cpp), and notes
+    // it costs essentially nothing. FIXEDMANUAL hands you control of
+    // RESCALING only -- not level matching, and not relinearization.
 
     auto ct_result = cc->EvalMult(ct_ab, ct_a);   // multiplies AND relinearizes
     std::cout << "  After EvalMult:        level = " << ct_result->GetLevel()
