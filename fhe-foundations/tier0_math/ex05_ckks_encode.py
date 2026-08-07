@@ -28,7 +28,13 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 def roots_of_cyclotomic(N):
-    """Return the N/2 primitive (2N)-th roots of unity used by CKKS.
+    """Return the N/2 roots CKKS encodes into, one per conjugate pair.
+
+    Note on counting: there are N primitive (2N)-th roots of unity in total
+    (phi(2N) = N for N a power of two), and they come in N/2 conjugate pairs.
+    Because a real-coefficient polynomial's evaluations are determined by one
+    member of each pair, CKKS carries N/2 free complex slots -- which is what
+    this function returns: one representative per pair, not all the roots.
 
     These are omega^(2j+1) for j = 0, ..., N/2 - 1,
     where omega = exp(2*pi*i / (2N)).

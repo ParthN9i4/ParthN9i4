@@ -92,5 +92,12 @@ git clone https://github.com/fairmath/fherma-challenges.git
 
 Your existing strength in Chebyshev/Remez polynomial approximation for activation functions
 maps directly to FHERMA's activation-function challenges (ReLU, GELU, softmax, sign).
-The tier 4 exercises simulate the optimization loop: given a function to evaluate
-homomorphically, minimize depth while maintaining accuracy — exactly the FHERMA scoring metric.
+The tier 4 exercises walk the real optimization loop: given a function to evaluate
+homomorphically, find the lowest degree meeting the accuracy bar, since degree drives
+depth and depth drives ring dimension and runtime.
+
+On scoring, be precise rather than assuming: FHERMA's own challenge repository states
+that for black-box challenges the primary metric is usually **accuracy**, and the exact
+metric varies per challenge. Read the challenge page before optimizing for the wrong
+thing — minimizing depth is what makes a solution fast and feasible, but it is not
+automatically what you are scored on.
