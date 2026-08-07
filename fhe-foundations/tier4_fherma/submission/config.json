@@ -1,0 +1,23 @@
+{
+  "indexes_for_rotation_key": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128
+  ],
+  "mult_depth": 5,
+  "ring_dimension": 16384,
+  "scale_mod_size": 59,
+  "first_mod_size": 60,
+  "batch_size": 8192,
+  "enable_bootstrapping": false,
+  "levels_available_after_bootstrap": 10,
+  "level_budget": [
+    4,
+    4
+  ]
+}

@@ -59,6 +59,8 @@ A typical FHERMA challenge provides:
 | ex16 (encrypted NN) | End-to-end encrypted inference pipeline |
 | ex17 (challenge template) | Understanding FHERMA submission structure |
 | ex18 (activation optimization) | The exact workflow for activation function challenges |
+| fherma_config.py | Turning a chosen degree into a `mult_depth` the evaluator accepts |
+| submission/ | The real C++ contract: CLI flags, solver class, `config.json` |
 
 ## Tips for Activation Function Challenges
 
@@ -85,7 +87,19 @@ These are where your Chebyshev/Remez skills from ex14 apply directly:
 # From the fhe-foundations directory:
 python tier4_fherma/ex17_fherma_template.py
 python tier4_fherma/ex18_activation_challenge.py
+python tier4_fherma/fherma_config.py        # depth budgeting + config.json
 ```
 
 Both exercises are pure Python (no FHE library required) and focus on the
 algorithmic and optimization skills needed for FHERMA submissions.
+
+
+## Submission harness
+
+`submission/` is a ready-to-fill OpenFHE C++ project matching the real FHERMA
+contract (six `--flag` paths to binary-serialized objects; you implement
+`eval()` in `yourSolution.cpp`). `fherma_config.py` computes the `mult_depth`
+you must declare — from OpenFHE's published cost table rather than the
+`ceil(log2(d+1))` formula, which understates a degree-7 activation by two
+levels. See `submission/README.md` for the workflow and the pre-submission
+checklist.

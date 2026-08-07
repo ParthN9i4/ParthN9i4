@@ -73,9 +73,13 @@ def _make_approx(f, degree, a, b):
 
     A degree-d polynomial has d+1 coefficients, so we request degree+1 of
     them.  This off-by-one is worth being pedantic about here: FHERMA scores
-    on multiplicative depth, and depth is about ceil(log2(degree+1)) levels
-    under Paterson-Stockmeyer, so mislabelling degree d-1 as d can make you
+    on multiplicative depth, so mislabelling degree d-1 as d can make you
     report a depth you cannot actually achieve.
+
+    On converting degree to depth: ceil(log2(degree+1)) is the
+    Paterson-Stockmeyer *theoretical* cost, and OpenFHE's implementation
+    charges more than that.  Use fherma_config.chebyshev_depth(), which
+    encodes OpenFHE's published table -- a degree-7 fit costs 5 levels, not 3.
     """
     coeffs = _chebyshev_coefficients(f, degree + 1, a, b)
     return lambda x: _eval_chebyshev(coeffs, x, a, b)
@@ -322,5 +326,34 @@ for deg, err, passes in sig_result["search_log"]:
                                  deg == sig_result["optimal_degree"]) else ""
     print(f"  {deg:>8}  {err:>12.6f}  {'yes' if passes else 'no':>6}{marker}")
 print("  " + "-" * 30)
+
+# --- Test 7: turn the optimal degree into an actual submission config ------
+# This is the step that closes the loop between "I found the cheapest degree"
+# and "I declared parameters the evaluator will accept". The degree alone is
+# not a submission -- mult_depth has to come from OpenFHE's real cost table,
+# not from ceil(log2(degree+1)).
+print("\n  --- From optimal degree to config.json ---")
+try:
+    from fherma_config import chebyshev_depth, naive_formula_depth, build_config, validate_config
+
+    for name, res, rots in [("sigmoid", sig_result, [1, 2, 4]),
+                            ("relu", relu_result, [1, 2, 4]),
+                            ("gelu", gelu_result, [1, 2, 4])]:
+        if not res["passes"]:
+            continue
+        deg = res["optimal_degree"]
+        real = chebyshev_depth(deg)
+        naive = naive_formula_depth(deg)
+        cfg = build_config(mult_depth=real, rotation_indices=rots)
+        print(f"  {name:<8} degree {deg:>2} -> depth {real} "
+              f"(formula would say {naive}), N={cfg['ring_dimension']}")
+
+    cfg = build_config(mult_depth=chebyshev_depth(sig_result["optimal_degree"]),
+                       rotation_indices=[1, 2, 4])
+    check("emitted config validates clean", validate_config(cfg), [])
+    check("depth matches OpenFHE's table, not the formula",
+          cfg["mult_depth"], chebyshev_depth(sig_result["optimal_degree"]))
+except ImportError:
+    print("  (fherma_config.py not importable -- run from tier4_fherma/)")
 
 summary()
