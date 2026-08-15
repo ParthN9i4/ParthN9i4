@@ -1,0 +1,821 @@
+<title>Foundations of Modern Machine Learning</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="author" content="Parth Nagar">
+<meta name="description" content="A rigorous from-scratch treatment of machine learning, deep learning, Transformers, Vision Transformers, State Space Models, and large language models — closing with machine learning under homomorphic encryption.">
+
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true
+  },
+  options: {
+    skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+    enableMenu: false
+  },
+  startup: {
+    pageReady: function () {
+      return MathJax.startup.defaultPageReady().then(function () {
+        var el = document.getElementById('mathjax-status');
+        if (el) el.style.display = 'none';
+      });
+    }
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<style>
+:root {
+  --bg: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #1c2128;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent: #58a6ff;
+  --accent-secondary: #7ee787;
+  --accent-warm: #d2a8ff;
+  --border: #30363d;
+  --border-light: #21262d;
+  --code-bg: #161b22;
+  --highlight: #1f6feb33;
+  --warning: #d29922;
+  --error: #f85149;
+  --success: #3fb950;
+  --chapter-num: #58a6ff;
+  --part-bg: linear-gradient(135deg, #1f6feb22, #23863622);
+  --theorem-bg: #1c2128;
+  --theorem-border: #58a6ff;
+  --definition-border: #7ee787;
+  --example-border: #d2a8ff;
+  --warning-border: #d29922;
+  --artifact-bg: #0d1117;
+  --artifact-border: #3fb950;
+  --encrypted-border: #39c5cf;
+  --alongside-border: #6e7681;
+  --font-serif: 'Georgia', 'Times New Roman', serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  font-size: 17px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-serif);
+  line-height: 1.8;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.book-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 2rem 6rem;
+}
+
+/* Typesetting indicator */
+#mathjax-status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 0.4rem;
+  z-index: 200;
+}
+
+/* Title page */
+.title-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 4rem 2rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4rem;
+}
+
+.title-page h1 {
+  font-family: var(--font-sans);
+  font-size: 2.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.title-page .subtitle {
+  font-size: 1.3rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-bottom: 2.5rem;
+}
+
+.title-page .author {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.title-page .affiliation {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+.title-page .epigraph {
+  max-width: 600px;
+  font-style: italic;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--border);
+  padding-left: 1.5rem;
+  margin: 2rem 0;
+  text-align: left;
+  font-size: 1rem;
+}
+
+.title-page .epigraph .attribution {
+  display: block;
+  margin-top: 0.5rem;
+  font-style: normal;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.title-page .dateline {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 2rem;
+  letter-spacing: 0.05em;
+}
+
+/* How to read this book */
+.how-to-read {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem 1.75rem;
+  margin-bottom: 4rem;
+}
+
+.how-to-read h2 {
+  font-family: var(--font-sans);
+  font-size: 1.4rem;
+  color: var(--text);
+  margin-bottom: 1rem;
+}
+
+.how-to-read p {
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.how-to-read p:last-child { margin-bottom: 0; }
+
+/* Table of contents */
+.toc {
+  margin-bottom: 4rem;
+  padding-bottom: 3rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.toc h2 {
+  font-family: var(--font-sans);
+  font-size: 1.8rem;
+  color: var(--text);
+  margin-bottom: 2rem;
+  letter-spacing: -0.01em;
+}
+
+.toc-part {
+  margin-bottom: 1.5rem;
+}
+
+.toc-part-title {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--highlight);
+  border-radius: 6px;
+}
+
+.toc-chapter {
+  display: block;
+  padding: 0.35rem 0.75rem 0.35rem 2rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  transition: color 0.15s, background 0.15s;
+  border-radius: 4px;
+}
+
+.toc-chapter:hover {
+  color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.toc-chapter .ch-num {
+  display: inline-block;
+  width: 2.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Parts */
+.part-header {
+  text-align: center;
+  padding: 4rem 2rem;
+  margin: 4rem 0 3rem;
+  background: var(--part-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.part-header .part-label {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.part-header h2 {
+  font-family: var(--font-sans);
+  font-size: 2rem;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.part-header .part-desc {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Chapters */
+.chapter {
+  margin-bottom: 4rem;
+  padding-bottom: 3rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.chapter-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.chapter-header .ch-label {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chapter-num);
+  margin-bottom: 0.25rem;
+}
+
+.chapter-header h3 {
+  font-family: var(--font-sans);
+  font-size: 1.7rem;
+  color: var(--text);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* Learning objectives */
+.learning-objectives {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.learning-objectives .lo-title {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.learning-objectives ul {
+  list-style: none;
+  padding: 0;
+}
+
+.learning-objectives li {
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  position: relative;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+}
+
+.learning-objectives li::before {
+  content: '\25B8';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+/* Read-alongside pointer */
+.read-alongside {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  border-left: 3px solid var(--alongside-border);
+  padding: 0.4rem 0 0.4rem 1rem;
+  margin-bottom: 2rem;
+}
+
+.read-alongside strong {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.75rem;
+}
+
+/* Section headings within chapters */
+.chapter h4 {
+  font-family: var(--font-sans);
+  font-size: 1.3rem;
+  color: var(--text);
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.chapter h5 {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  color: var(--text);
+  margin: 2rem 0 0.75rem;
+}
+
+/* Paragraphs */
+.chapter p {
+  margin-bottom: 1.2rem;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* Theorem/Definition/Example boxes */
+.theorem, .definition, .example, .warning-box, .artifact-box, .encrypted-note {
+  margin: 1.5rem 0;
+  padding: 1.25rem 1.5rem;
+  border-radius: 8px;
+  background: var(--theorem-bg);
+}
+
+.theorem {
+  border-left: 4px solid var(--theorem-border);
+}
+
+.definition {
+  border-left: 4px solid var(--definition-border);
+}
+
+.example {
+  border-left: 4px solid var(--example-border);
+}
+
+.warning-box {
+  border-left: 4px solid var(--warning-border);
+}
+
+.artifact-box {
+  border: 1px solid var(--artifact-border);
+  border-left: 4px solid var(--artifact-border);
+  background: var(--artifact-bg);
+}
+
+.encrypted-note {
+  border: 1px dashed var(--encrypted-border);
+  border-left: 4px solid var(--encrypted-border);
+}
+
+.box-title {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.theorem .box-title { color: var(--theorem-border); }
+.definition .box-title { color: var(--definition-border); }
+.example .box-title { color: var(--example-border); }
+.warning-box .box-title { color: var(--warning-border); }
+.artifact-box .box-title { color: var(--artifact-border); }
+.encrypted-note .box-title { color: var(--encrypted-border); }
+
+/* Code blocks */
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--bg-tertiary);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: var(--accent);
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+}
+
+/* Syntax highlighting */
+.kw { color: #ff7b72; }
+.fn { color: #d2a8ff; }
+.str { color: #a5d6ff; }
+.num { color: #79c0ff; }
+.cm { color: #8b949e; font-style: italic; }
+.tp { color: #7ee787; }
+.op { color: #ff7b72; }
+.pp { color: #ffa657; }
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  overflow-x: auto;
+  display: block;
+}
+
+th, td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border: 1px solid var(--border);
+}
+
+th {
+  background: var(--bg-secondary);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+td { color: var(--text-secondary); }
+
+tr:nth-child(even) { background: var(--bg-secondary); }
+
+/* Lists */
+.chapter ul, .chapter ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.chapter li {
+  margin-bottom: 0.4rem;
+}
+
+/* Key takeaways */
+.key-takeaways {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-top: 2rem;
+}
+
+.key-takeaways .kt-title {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-secondary);
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.key-takeaways ul {
+  list-style: none;
+  padding: 0;
+}
+
+.key-takeaways li {
+  padding: 0.3rem 0 0.3rem 1.25rem;
+  position: relative;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+}
+
+.key-takeaways li::before {
+  content: '\2713';
+  position: absolute;
+  left: 0;
+  color: var(--accent-secondary);
+  font-weight: 700;
+}
+
+/* Confidence tags */
+.tag {
+  display: inline;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  padding: 0.1em 0.45em;
+  border-radius: 3px;
+  font-weight: 600;
+  vertical-align: super;
+}
+
+.tag-certain { background: #238636; color: #fff; }
+.tag-likely { background: #1f6feb; color: #fff; }
+.tag-verify { background: #d29922; color: #000; }
+.tag-contested { background: #da3633; color: #fff; }
+
+/* Blockquotes */
+blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1.25rem;
+  margin: 1.5rem 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Footnotes */
+.footnote {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-light);
+  padding-top: 1rem;
+  margin-top: 2rem;
+}
+
+sup a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.8em;
+}
+
+/* Navigation */
+.back-to-top {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-size: 1.2rem;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 100;
+  cursor: pointer;
+}
+
+.back-to-top.visible { opacity: 1; }
+
+/* Print styles */
+@media print {
+  body { background: #fff; color: #000; font-size: 11pt; }
+  .back-to-top, #mathjax-status { display: none; }
+  pre { border: 1px solid #ccc; background: #f5f5f5; }
+  .part-header { break-before: page; }
+  .chapter { break-inside: avoid; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  html { font-size: 15px; }
+  .book-container { padding: 1rem 1rem 4rem; }
+  .title-page h1 { font-size: 2rem; }
+  .title-page { padding: 2rem 1rem; min-height: auto; }
+  .part-header { padding: 2rem 1rem; }
+  table { font-size: 0.8rem; }
+}
+</style>
+
+<div id="mathjax-status">Typesetting mathematics&hellip;</div>
+
+<div class="book-container">
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TITLE PAGE -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="title-page" id="top">
+<h1>Foundations of Modern Machine Learning</h1>
+<div class="subtitle">From Linear Algebra to Frontier Models, and What Survives Encryption</div>
+
+<div class="author">Parth Nagar</div>
+<div class="affiliation">Junior Research Fellow &middot; Sri Sathya Sai Institute of Higher Learning &middot; Mathematics &amp; Computer Science</div>
+
+<div class="epigraph">
+&ldquo;The question of whether a computer can think is no more interesting than the question of whether a submarine can swim.&rdquo;
+<span class="attribution">&mdash; Edsger W. Dijkstra, <em>EWD898</em> (1984)</span>
+</div>
+
+<div class="epigraph">
+&ldquo;All models are wrong, but some are useful.&rdquo;
+<span class="attribution">&mdash; George E. P. Box, <em>Robustness in the Strategy of Scientific Model Building</em> (1979)</span>
+</div>
+
+<div class="dateline">August 2026 &middot; Comprehensive Reference</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- HOW TO READ THIS BOOK -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="how-to-read">
+<h2>How to Read This Book</h2>
+
+<p>Every chapter follows the same shape. Five <strong>learning objectives</strong> state what you should be able to do afterwards, and the last one is always to implement something. A short orienting paragraph says why the chapter exists. Numbered sections carry the argument, interleaved with boxed <strong>definitions</strong>, <strong>theorems</strong> (with proofs or proof sketches), worked numeric <strong>examples</strong> small enough to check by hand, and <strong>Common Pitfall</strong> boxes naming real implementation bugs. Each chapter ends with exactly one <strong>Artifact</strong>: a complete, runnable module that builds the chapter's core idea from scratch and verifies itself against a reference. The code is not illustration. It is evidence.</p>
+
+<p>Claims carry confidence tags. <span class="tag tag-certain">Certain</span> means textbook-stable. <span class="tag tag-likely">Likely</span> means a strong inference the literature supports but has not settled. <span class="tag tag-verify">Verify</span> means correct as of writing but attached to a moving API or a number that will drift &mdash; check Appendix F before you cite it. <span class="tag tag-contested">Contested</span> means the field genuinely disagrees; those passages present both positions and state which evidence would change the verdict. A book about a field moving this fast that used only one tag would be lying.</p>
+
+<p>A recurring <strong>Under Encryption</strong> box appears wherever a construct has a consequence for computing on ciphertext. Homomorphic encryption evaluates polynomials cheaply and everything else expensively, so a surprising amount of ordinary architectural choice &mdash; the softmax, the normalization layer, the activation function, the very decision to quantize &mdash; is load-bearing the moment you encrypt. Those boxes are pointers into Part VIII, which treats the subject at research level. Readers with no interest in encrypted computation can skip every one of them without losing the thread.</p>
+
+<p>Appendix E maps each chapter onto the corresponding treatment in Géron, Raschka, Trask, Serrano, and Chakraborty, and every chapter carries an inline pointer to its counterparts. Read the fundamentals in at least two of them. One book's explanation of backpropagation is a claim; two independent explanations that agree are closer to understanding.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TABLE OF CONTENTS -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="toc" id="toc">
+<h2>Table of Contents</h2>
+
+<div class="toc-part">
+<div class="toc-part-title">Part I &mdash; Mathematical and Statistical Foundations</div>
+<a class="toc-chapter" href="#ch1"><span class="ch-num">Ch. 1</span> Linear Algebra as Computation</a>
+<a class="toc-chapter" href="#ch2"><span class="ch-num">Ch. 2</span> Probability, Information, and Why Cross-Entropy Is the Only Loss</a>
+<a class="toc-chapter" href="#ch3"><span class="ch-num">Ch. 3</span> Generalization: Classical Theory and Its Deep-Learning Failure</a>
+<a class="toc-chapter" href="#ch4"><span class="ch-num">Ch. 4</span> Optimization: Convergence Rates and the Non-Convex Reality</a>
+<a class="toc-chapter" href="#ch5"><span class="ch-num">Ch. 5</span> Numerics: Floating Point, Precision, and Stability</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part II &mdash; Classical Machine Learning</div>
+<a class="toc-chapter" href="#ch6"><span class="ch-num">Ch. 6</span> Linear and Logistic Regression: the Atom</a>
+<a class="toc-chapter" href="#ch7"><span class="ch-num">Ch. 7</span> Kernels, Margins, and the Bridge to Infinite-Width Networks</a>
+<a class="toc-chapter" href="#ch8"><span class="ch-num">Ch. 8</span> Trees, Bagging, and Gradient Boosting</a>
+<a class="toc-chapter" href="#ch9"><span class="ch-num">Ch. 9</span> Unsupervised Learning: PCA, Clustering, and Latent Variables</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part III &mdash; Neural Networks and Optimization at Scale</div>
+<a class="toc-chapter" href="#ch10"><span class="ch-num">Ch. 10</span> The Multilayer Perceptron and What Depth Buys</a>
+<a class="toc-chapter" href="#ch11"><span class="ch-num">Ch. 11</span> Automatic Differentiation and Backpropagation</a>
+<a class="toc-chapter" href="#ch12"><span class="ch-num">Ch. 12</span> Initialization, Normalization, and Signal Propagation</a>
+<a class="toc-chapter" href="#ch13"><span class="ch-num">Ch. 13</span> Optimizers: SGD to Muon</a>
+<a class="toc-chapter" href="#ch14"><span class="ch-num">Ch. 14</span> Regularization and the Generalization Levers That Actually Work</a>
+<a class="toc-chapter" href="#ch15"><span class="ch-num">Ch. 15</span> Hyperparameter Transfer: muP, Schedules, and Batch Size</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part IV &mdash; Architectures</div>
+<a class="toc-chapter" href="#ch16"><span class="ch-num">Ch. 16</span> Convolutional Networks</a>
+<a class="toc-chapter" href="#ch17"><span class="ch-num">Ch. 17</span> Recurrence: RNNs, LSTMs, and the Gradient Pathology</a>
+<a class="toc-chapter" href="#ch18"><span class="ch-num">Ch. 18</span> Attention and the Transformer</a>
+<a class="toc-chapter" href="#ch19"><span class="ch-num">Ch. 19</span> Positional Information and Long Context</a>
+<a class="toc-chapter" href="#ch20"><span class="ch-num">Ch. 20</span> Vision Transformers and Multimodal Encoders</a>
+<a class="toc-chapter" href="#ch21"><span class="ch-num">Ch. 21</span> State Space Models: S4, Mamba, and the SSD Duality</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part V &mdash; Large Language Models</div>
+<a class="toc-chapter" href="#ch22"><span class="ch-num">Ch. 22</span> Mixture of Experts and Conditional Computation</a>
+<a class="toc-chapter" href="#ch23"><span class="ch-num">Ch. 23</span> Tokenization and the Language-Modeling Objective</a>
+<a class="toc-chapter" href="#ch24"><span class="ch-num">Ch. 24</span> Scaling Laws</a>
+<a class="toc-chapter" href="#ch25"><span class="ch-num">Ch. 25</span> The Pretraining Pipeline: Data, Curricula, Mid-Training</a>
+<a class="toc-chapter" href="#ch26"><span class="ch-num">Ch. 26</span> Supervised Fine-Tuning and Parameter-Efficient Adaptation</a>
+<a class="toc-chapter" href="#ch27"><span class="ch-num">Ch. 27</span> Preference Optimization: RLHF, DPO, GRPO</a>
+<a class="toc-chapter" href="#ch28"><span class="ch-num">Ch. 28</span> Reasoning Models and Test-Time Compute</a>
+<a class="toc-chapter" href="#ch29"><span class="ch-num">Ch. 29</span> Evaluation and the Measurement Crisis</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part VI &mdash; Systems and Efficiency</div>
+<a class="toc-chapter" href="#ch30"><span class="ch-num">Ch. 30</span> The GPU Execution Model and the Memory Wall</a>
+<a class="toc-chapter" href="#ch31"><span class="ch-num">Ch. 31</span> FlashAttention and Writing Fast Kernels</a>
+<a class="toc-chapter" href="#ch32"><span class="ch-num">Ch. 32</span> Distributed Training</a>
+<a class="toc-chapter" href="#ch33"><span class="ch-num">Ch. 33</span> Inference: Serving, Caching, and Speculative Decoding</a>
+<a class="toc-chapter" href="#ch34"><span class="ch-num">Ch. 34</span> Quantization, Distillation, and Compression</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part VII &mdash; The Frontier</div>
+<a class="toc-chapter" href="#ch35"><span class="ch-num">Ch. 35</span> Diffusion, Flow Matching, and Non-Autoregressive Generation</a>
+<a class="toc-chapter" href="#ch36"><span class="ch-num">Ch. 36</span> Agents, Tool Use, and Long-Horizon Training</a>
+<a class="toc-chapter" href="#ch37"><span class="ch-num">Ch. 37</span> Interpretability, Safety, and Open Problems</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Part VIII &mdash; Machine Learning Under Encryption</div>
+<a class="toc-chapter" href="#ch38"><span class="ch-num">Ch. 38</span> What Breaks When You Encrypt a Transformer</a>
+<a class="toc-chapter" href="#ch39"><span class="ch-num">Ch. 39</span> Approximating the Non-Polynomial Core</a>
+<a class="toc-chapter" href="#ch40"><span class="ch-num">Ch. 40</span> Private Transformer Inference Systems</a>
+<a class="toc-chapter" href="#ch41"><span class="ch-num">Ch. 41</span> Encrypted LLM Serving at Scale</a>
+<a class="toc-chapter" href="#ch42"><span class="ch-num">Ch. 42</span> The Research Frontier: Where a Contribution Fits</a>
+</div>
+
+<div class="toc-part">
+<div class="toc-part-title">Appendices</div>
+<a class="toc-chapter" href="#appendix-a"><span class="ch-num">A</span> Notation and Mathematical Prerequisites</a>
+<a class="toc-chapter" href="#appendix-b"><span class="ch-num">B</span> Environment Setup</a>
+<a class="toc-chapter" href="#appendix-c"><span class="ch-num">C</span> Complete Code for All Artifacts</a>
+<a class="toc-chapter" href="#appendix-d"><span class="ch-num">D</span> Sources and Further Reading</a>
+<a class="toc-chapter" href="#appendix-e"><span class="ch-num">E</span> Reading Crosswalk</a>
+<a class="toc-chapter" href="#appendix-f"><span class="ch-num">F</span> Reference Numbers (dated)</a>
+</div>
+</div>
+
+<!-- PART_I_START -->
+<!-- PART_I_END -->
+
+<!-- PART_II_START -->
+<!-- PART_II_END -->
+
+<!-- PART_III_START -->
+<!-- PART_III_END -->
+
+<!-- PART_IV_START -->
+<!-- PART_IV_END -->
+
+<!-- PART_V_START -->
+<!-- PART_V_END -->
+
+<!-- PART_VI_START -->
+<!-- PART_VI_END -->
+
+<!-- PART_VII_START -->
+<!-- PART_VII_END -->
+
+<!-- PART_VIII_START -->
+<!-- PART_VIII_END -->
+
+<!-- APPENDICES_START -->
+<!-- APPENDICES_END -->
+
+</div><!-- .book-container -->
+
+<a href="#top" class="back-to-top" id="backToTop">&uarr;</a>
+
+<script>
+window.addEventListener('scroll', function() {
+  var btn = document.getElementById('backToTop');
+  if (window.scrollY > 500) {
+    btn.classList.add('visible');
+  } else {
+    btn.classList.remove('visible');
+  }
+});
+</script>
