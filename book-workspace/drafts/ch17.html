@@ -1,0 +1,388 @@
+<div class="chapter" id="ch17">
+<div class="chapter-header"><div class="ch-label">Chapter 17</div><h3>Recurrence: RNNs, LSTMs, and the Gradient Pathology</h3></div>
+
+<div class="learning-objectives">
+<div class="lo-title">Learning Objectives</div>
+<ul>
+<li>Derive backpropagation through time and exhibit the gradient as a sum over source steps of a product of Jacobians $\prod_{k} \partial h_k/\partial h_{k-1}$, whose growth or decay is governed by the spectral radius $\rho(W_h)$.</li>
+<li>Explain the LSTM constant-error carousel and prove that along the cell-state path the gradient multiplier is exactly the forget gate: $\partial c_t/\partial c_{t-1} = \mathrm{diag}(f_t)$.</li>
+<li>Compare LSTM and GRU parameter counts &mdash; $4(d_h d_{\text{in}} + d_h^2 + d_h)$ against $3(d_h d_{\text{in}} + d_h^2 + d_h)$ &mdash; and state the empirical verdict on when the $25\%$ difference matters.</li>
+<li>Quantify the parallelism deficit: $\Theta(T)$ sequential operations for recurrence against $\Theta(1)$ for attention, and convert that into a measured hardware-utilization gap.</li>
+<li>Implement an LSTM cell with backpropagation through time in working code, verified against <code>torch.nn.LSTM</code> and instrumented to measure gradient decay.</li>
+</ul>
+</div>
+
+<div class="read-alongside"><strong>Read alongside</strong> &mdash; Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em>, for the canonical treatment of BPTT, the vanishing-gradient analysis, and echo-state initialization; its sequence-modeling material is the closest thing to a reference derivation for Sections 17.2&ndash;17.4. Prince, <em>Understanding Deep Learning</em>, for the clearest gate diagrams. Chakraborty, <em>Introduction to Large Language Models</em> (and the NPTEL lectures), for the NLP-side story of how seq2seq with attention became the Transformer &mdash; Section 17.7 is the compressed version of that arc.</div>
+
+<p>A recurrent network is a loop with a learned body: it carries a fixed-size state forward, updates it once per token, and reads outputs off the state, processing a length-$T$ sequence in $O(T)$ time and $O(1)$ memory &mdash; a genuinely good algorithmic profile that made recurrence the default for sequences from 1990 to 2017. Two things then went wrong, and only one of them is the famous one. The gradient pathology of Section 17.3 is real and is largely fixed by the gating of Section 17.4; the architecture that replaced recurrence did not win on modeling quality alone. It won because the update is <em>sequential in $T$</em> and a GPU is a machine for doing $10^5$ things at once. Chapter 16 built spatial locality into the architecture; this chapter builds temporal locality and measures what it costs. Chapter 18 removes the loop, and Chapter 21 puts a version of it back after first making it associative &mdash; exactly the property Theorem 17.4 identifies as the missing one.</p>
+
+<h4>17.1 Sequence Modeling and State</h4>
+
+<p>A sequence model maps a variable-length prefix to a prediction, and there are only three structural choices: read a fixed window (Chapter 16's convolution over time), read everything with pairwise interactions (Chapter 18's attention), or compress the prefix into a fixed-size summary and update it incrementally. The third is recurrence, and its defining commitment is that the summary has bounded size.</p>
+
+<div class="definition"><div class="box-title">Definition 17.1 (Recurrent map)</div><p>A recurrent model is a pair of maps $h_t = \varphi_\theta(h_{t-1}, x_t)$ and $\hat{y}_t = \psi_\theta(h_t)$, with $h_t \in \mathbb{R}^{d_h}$ the <em>state</em>, $h_0$ given, and $\theta$ shared across all $t$. The state is a <em>sufficient statistic under the model</em>: $\hat{y}_t$ depends on $x_{1:t}$ only through $h_t$.</p></div>
+
+<p>Three consequences follow immediately and none of them are about gradients. Parameter count is independent of $T$, so the model applies at lengths it never saw during training. Inference is $O(1)$ per token in both time and memory, which is why an RNN decoder needs no KV cache and a Transformer decoder does (Chapter 33). And the bounded state is a hard information bottleneck: whatever must survive from step $t$ to step $T$ must fit in $d_h$ real numbers, competing with everything else the state carries. At $d_h = 1024$ in fp32 that is 4 KB for the whole history, against a Transformer's 4 KB <em>per token</em>. The bottleneck is the price of the $O(1)$ inference, and Section 17.7 is the story of the field deciding, in 2014, that it was not worth paying. <span class="tag tag-certain">Certain</span></p>
+
+<h4>17.2 The Vanilla RNN and BPTT</h4>
+
+<div class="definition"><div class="box-title">Definition 17.2 (Elman RNN)</div><p>$h_t = \tanh(W_h h_{t-1} + W_x x_t + b)$ with $W_h \in \mathbb{R}^{d_h \times d_h}$, $W_x \in \mathbb{R}^{d_h \times d_{\text{in}}}$. Write $a_t = W_h h_{t-1} + W_x x_t + b$ for the pre-activation and $D_t = \mathrm{diag}(1 - h_t \odot h_t) = \mathrm{diag}(\tanh'(a_t))$.</p></div>
+
+<p>Training unrolls the loop into a feedforward network of depth $T$ with tied weights and applies reverse-mode autodiff (Chapter 11) to the unrolled graph. That is all "backpropagation through time" means; the only structural novelty is weight tying, which turns one parameter into $T$ uses and therefore makes the parameter gradient a sum over uses.</p>
+
+<div class="theorem"><div class="box-title">Theorem 17.1 (BPTT gradient decomposition)</div><p>Let $\mathcal{L} = \sum_{t=1}^T \ell_t(h_t)$. Then
+$$\frac{\partial \mathcal{L}}{\partial W_h} \;=\; \sum_{t=1}^{T}\;\sum_{k=1}^{t}\; \frac{\partial \ell_t}{\partial h_t}\,\underbrace{\left(\prod_{j=k+1}^{t} \frac{\partial h_j}{\partial h_{j-1}}\right)}_{J_{t\leftarrow k}}\,\frac{\partial^{+} h_k}{\partial W_h},$$
+where $\partial^{+}$ denotes the immediate partial holding $h_{k-1}$ fixed, and for the Elman RNN $\dfrac{\partial h_j}{\partial h_{j-1}} = D_j W_h$, so $J_{t\leftarrow k} = D_t W_h D_{t-1} W_h \cdots D_{k+1} W_h$.</p></div>
+
+<p><strong>Proof.</strong> Unroll: $h_t$ is a function of $W_h$ both directly and through $h_{t-1}$, which is itself a function of $W_h$. The total derivative therefore satisfies the recursion $\frac{d h_t}{d W_h} = \frac{\partial^+ h_t}{\partial W_h} + \frac{\partial h_t}{\partial h_{t-1}}\frac{d h_{t-1}}{d W_h}$. Expanding the recursion down to $h_0$ (which does not depend on $W_h$) gives $\frac{d h_t}{d W_h} = \sum_{k\le t} J_{t\leftarrow k}\,\frac{\partial^+ h_k}{\partial W_h}$; contracting with $\partial\ell_t/\partial h_t$ and summing over $t$ gives the claim. Differentiating $h_j = \tanh(a_j)$ gives $\partial h_j/\partial h_{j-1} = \mathrm{diag}(\tanh'(a_j))W_h = D_jW_h$. $\blacksquare$</p>
+
+<p>Reverse mode computes this in one backward sweep rather than $O(T^2)$ path enumeration: carry $\delta_t = \partial\mathcal{L}/\partial h_t$ backwards via $\delta_{t-1} = W_h^\top D_t \delta_t + \partial\ell_{t-1}/\partial h_{t-1}$, accumulating $\partial\mathcal{L}/\partial W_h \mathrel{+}= (D_t\delta_t) h_{t-1}^\top$. Cost is $\Theta(T(d_h^2 + d_hd_{\text{in}}))$ FLOPs per sequence with activation memory $\Theta(Td_h)$, since every $h_t$ must be retained &mdash; the tension Chapter 11 resolved with checkpointing, and the reason Section 17.6 truncates.</p>
+
+<p>The double sum is the whole chapter in one formula. The <em>contribution of step $k$ to the loss at step $t$</em> is routed entirely through $J_{t\leftarrow k}$, a product of $t-k$ Jacobians. Long-range credit assignment is a statement about the magnitude of that product at large $t-k$, and a product of many matrices does one of two things.</p>
+
+<h4>17.3 Vanishing and Exploding Gradients</h4>
+
+<div class="theorem"><div class="box-title">Theorem 17.2 (Growth rate of the Jacobian product)</div><p>(i) <em>Upper bound.</em> $\|J_{t\leftarrow k}\|_2 \le \prod_{j=k+1}^{t}\|D_j\|_2\|W_h\|_2 \le \big(\gamma\|W_h\|_2\big)^{t-k}$ where $\gamma = \sup|\varphi'|$, equal to $1$ for $\tanh$ and $\tfrac14$ for the logistic $\sigma$. Hence $\gamma\|W_h\|_2 &lt; 1$ forces exponential vanishing.<br>
+(ii) <em>Exact rate in the linear case.</em> If $\varphi = \mathrm{id}$ then $J_{t\leftarrow k} = W_h^{\,t-k}$, and by Gelfand's formula $\lim_{n\to\infty}\|W_h^{\,n}\|^{1/n} = \rho(W_h)$ for any submultiplicative norm. So the asymptotic per-step growth factor is the spectral radius, not the operator norm: $\rho &lt; 1$ vanishes, $\rho &gt; 1$ explodes, and the two regimes are separated by a set of measure zero.</p></div>
+
+<p><strong>Proof.</strong> (i) is submultiplicativity of $\|\cdot\|_2$ plus $\|D_j\|_2 = \max_i \varphi'(a_{j,i}) \le \gamma$. (ii) is Gelfand's spectral radius formula. $\blacksquare$</p>
+
+<p>The gap between $\rho(W_h)$ and $\|W_h\|_2$ is not a technicality. For a non-normal $W_h$ the two differ, and the bound in (i) can be loose by an arbitrary factor at finite $n$: transient growth followed by asymptotic decay is the generic behaviour, and it is why an RNN can look stable for 20 steps and diverge at 200. The artifact measures the convergence directly &mdash; with $\rho$ set to $0.5$, $0.9$ and $1.2$ on a $32\times32$ Gaussian matrix, $\|W_h^{T}\|_2^{1/T}$ reads $0.51246$, $0.92243$, $1.22991$ at $T=16$ and $0.50077$, $0.90138$, $1.20184$ at $T=256$. <span class="tag tag-certain">Certain</span></p>
+
+<div class="example"><div class="box-title">Example 17.1 (Two units, done by hand)</div><p>Take $W_h = \begin{pmatrix}0 &amp; \rho\\ \rho &amp; 0\end{pmatrix}$, whose eigenvalues are $\pm\rho$, and drop the nonlinearity. Then $W_h^2 = \rho^2 I$, so $J_{T\leftarrow 0} = W_h^{T} = \rho^{T}I$ exactly for even $T$. At $T=64$: $\rho=0.9$ gives $0.9^{64} = 1.179\times10^{-3}$, and $\rho=1.2$ gives $1.2^{64} = 1.168\times10^{5}$ &mdash; a factor of $10^8$ between two matrices whose entries differ by $0.3$. Now the LSTM comparison, also by hand: a single-unit cell with input gate closed and forget-gate pre-activation pinned at $4$ has $f = \sigma(4) = 0.98201$, so $\partial c_{64}/\partial c_0 = 0.98201^{64} = 0.3130$ and $\partial c_{256}/\partial c_0 = 9.60\times10^{-3}$. Over 256 steps the Elman product at $\rho=0.9$ has fallen to $1.93\times10^{-12}$; the cell has fallen by a factor of $10^{2}$.</p></div>
+
+<p>Now the part that is usually stated wrongly. "Exploding gradients" is not the mirror image of vanishing gradients in a saturating RNN, because saturation is itself a decay mechanism: as $|h|\to1$, $D_j \to 0$ and the product collapses regardless of $\rho$. The artifact drives a $\tanh$ RNN with $\rho = 1.2$ on real inputs and measures $\|\partial h_T/\partial h_0\|_2$ rising to $1.894$ at $T=2$ and then falling to $2.639\times10^{-27}$ at $T=256$, with $\max_t|h_t|$ reaching $0.9989$. The nonlinearity that supposedly makes the RNN expressive is the same nonlinearity that shuts the gradient off. Explosion in practice is a <em>local</em> phenomenon &mdash; a cliff in the loss surface where a small parameter change flips many units out of saturation at once &mdash; not steady $\rho^T$ growth, which is why clipping (Section 17.6) works so well on it and nothing works nearly as well on vanishing. <span class="tag tag-likely">Likely</span></p>
+
+<p>How much does this actually explain? The received story is that RNNs failed at long-range dependencies because gradients vanish. The measurements say the mechanism is real: at $\rho=0.9$ the artifact's $\tanh$ RNN reaches $2.828\times10^{-46}$ at $T=256$, so the gradient signal from 256 steps back is $46$ orders of magnitude below the signal from one step back and is annihilated by fp32 long before it reaches the optimizer. But gating largely fixes it (Section 17.4), gated RNNs still lost, and well-tuned LSTM language models remained competitive with early Transformers on perplexity at matched parameter count. The vanishing gradient explains why <em>vanilla</em> RNNs failed; it does not explain why <em>LSTMs</em> lost. Section 17.7 gives the explanation that does. <span class="tag tag-contested">Contested</span></p>
+
+<h4>17.4 LSTM: Gates and the Cell-State Highway</h4>
+
+<p>The fix, due to Hochreiter and Schmidhuber (1997) with the forget gate added by Gers, Schmidhuber and Cummins (2000): add a second state whose default dynamics are the identity, and make every write to it multiplicative and learned.</p>
+
+<div class="definition"><div class="box-title">Definition 17.3 (LSTM cell)</div><p>With $z_t = W_x x_t + W_h h_{t-1} + b \in \mathbb{R}^{4d_h}$ split into four blocks,
+$$i_t = \sigma(z_t^{(i)}),\quad f_t = \sigma(z_t^{(f)}),\quad g_t = \tanh(z_t^{(g)}),\quad o_t = \sigma(z_t^{(o)}),$$
+$$c_t = f_t \odot c_{t-1} + i_t \odot g_t, \qquad h_t = o_t \odot \tanh(c_t).$$
+The state is the pair $(h_t, c_t)$; $c_t$ is the <em>cell</em> and is never squashed on its own update path.</p></div>
+
+<div class="theorem"><div class="box-title">Theorem 17.3 (Constant error carousel)</div><p>Holding the gates fixed &mdash; equivalently, along the path that does not route back through $h$ &mdash;
+$$\frac{\partial c_t}{\partial c_{t-1}} = \mathrm{diag}(f_t), \qquad \frac{\partial c_T}{\partial c_k} = \mathrm{diag}\!\left(\prod_{j=k+1}^{T} f_j\right).$$
+The multiplier is diagonal, elementwise, in $(0,1)$, and directly learnable through $b^{(f)}$. With $f_j \equiv 1$ the path is the exact identity for all $T$.</p></div>
+
+<p><strong>Proof.</strong> Differentiate $c_t = f_t\odot c_{t-1} + i_t \odot g_t$ with $f_t, i_t, g_t$ treated as constants: the second term drops and the first is elementwise multiplication by $f_t$, i.e. $\mathrm{diag}(f_t)$. Diagonal matrices commute, so the product telescopes into the elementwise product of the gates. $\blacksquare$</p>
+
+<p>Three properties improve on $D_jW_h$. <em>Diagonal</em>: no mixing, no non-normal transient &mdash; unit $i$'s memory decays at its own rate $\prod_j f_{j,i}$ and cannot be rotated into another unit. <em>Bounded by 1</em>: this path cannot explode, so the LSTM trades a two-sided pathology for a one-sided one. <em>Directly parameterized</em>: raising $b^{(f)}$ raises every $f_j$, which is why initializing the forget-gate bias to $1$ or $2$ is standard and measurably helps. The artifact verifies the theorem to $1.084\times10^{-19}$ over 40 steps against $\prod_t f_t$ computed directly.</p>
+
+<p>The catch is that gates are <em>not</em> constant: $f_t$ depends on $h_{t-1}$, which depends on $c_{t-1}$, so the true Jacobian $\partial c_t/\partial c_{t-1}$ is $\mathrm{diag}(f_t)$ plus a rank-structured correction routed through the gate pre-activations. Theorem 17.3 is therefore a statement about one path in the computation graph, not about the full derivative. It is still the right statement, because that path is the only one whose length-$T$ product is not a product of dense matrices &mdash; and empirically it dominates. The artifact's full measurement, with every path included, gives $\|\partial h_T/\partial h_0\|_2 = 2.311$ at $T = 256$ against $2.828\times10^{-46}$ for the $\tanh$ RNN at $\rho=0.9$: a ratio of $8.2\times10^{45}$. <span class="tag tag-certain">Certain</span></p>
+
+<p>Parameter count: the four gates share one $(4d_h)\times d_{\text{in}}$ input matrix, one $(4d_h)\times d_h$ recurrent matrix and $4d_h$ biases, so $N_{\text{LSTM}} = 4(d_hd_{\text{in}} + d_h^2 + d_h)$. At $d_h = d_{\text{in}} = 512$ that is $2{,}099{,}200$ per layer, of which $8d_h^2 = 2{,}097{,}152$ is matrix. Peephole connections (Gers and Schmidhuber, 2000) add $c_{t-1}$ to the gate pre-activations and $3d_h$ parameters; they are essentially never used now and Greff et al.'s 5400-run ablation found removing them harmless.</p>
+
+<div class="warning-box"><div class="box-title">Common Pitfall</div><p>Transplanting weights into or out of <code>torch.nn.LSTM</code> with the wrong gate order. Torch packs the four blocks of <code>weight_ih_l0</code> (shape $(4d_h, d_{\text{in}})$) in the order $(i, f, g, o)$; TensorFlow's <code>LSTMCell</code> historically used $(i, g, f, o)$ and several textbook implementations use $(i, f, o, g)$. Swapping $f$ and $g$ exchanges a sigmoid gate with a $\tanh$ candidate, which is dimensionally legal, numerically finite, and silently wrong: the artifact does exactly this swap on otherwise-identical weights and measures a relative error of $1.394$ in the hidden states &mdash; the outputs are pure noise, but nothing raises. A second trap in the same family: torch keeps <em>two</em> bias vectors, <code>bias_ih_l0</code> and <code>bias_hh_l0</code>, which are added together, so a single-bias implementation must write the bias into one and zeros into the other, and receives the <em>same</em> gradient for both. Test any transplant by comparing forward outputs before you look at gradients.</p></div>
+
+<h4>17.5 GRU</h4>
+
+<div class="definition"><div class="box-title">Definition 17.4 (GRU cell)</div><p>Cho et al. (2014). With update gate $z_t$ and reset gate $r_t$,
+$$z_t = \sigma(W_zx_t + U_zh_{t-1} + b_z),\qquad r_t = \sigma(W_rx_t + U_rh_{t-1} + b_r),$$
+$$\tilde{h}_t = \tanh(W x_t + U(r_t \odot h_{t-1}) + b), \qquad h_t = z_t\odot h_{t-1} + (1-z_t)\odot\tilde{h}_t.$$
+There is one state, not two. The retention path multiplier is $\mathrm{diag}(z_t)$, and the input and forget gates are <em>coupled</em>: what is not retained is exactly what is written.</p></div>
+
+<p>The GRU is the LSTM with the output gate deleted, the cell and hidden states merged, and $i_t$ tied to $1 - f_t$. Three gate-sized matrices instead of four gives $N_{\text{GRU}} = 3(d_hd_{\text{in}} + d_h^2 + d_h)$, exactly $75\%$ of the LSTM: $1{,}574{,}400$ against $2{,}099{,}200$ at $d_h=d_{\text{in}}=512$. The carousel argument survives verbatim with $z_t$ in place of $f_t$ &mdash; and the coupling is not free, because $z_{t,i}\approx1$ now means both "keep the old value" and "write nothing", so a GRU unit cannot hold a value while simultaneously integrating new evidence into it.</p>
+
+<p>The empirical verdict, from Chung et al. (2014) on music and speech, Greff et al.'s <em>LSTM: A Search Space Odyssey</em> (5400 runs, eight variants, three tasks), and Jozefowicz et al.'s (2015) architecture search over ten thousand candidates: no consistent winner, and the differences between reasonable gated variants are smaller than the effect of the learning rate. Greff's positive findings are about which components are load-bearing, not which architecture wins &mdash; the forget gate and the output activation are the two whose removal reliably hurts. Where the $25\%$ does matter is memory-bound inference and small data: at fixed parameter budget the GRU buys $33\%$ more width, and at fixed width it costs $25\%$ less state and bandwidth. Where it does not matter is accuracy on a well-tuned task. The one substantive claim in the LSTM's favour is that the separate output gate lets $c_t$ hold a value the network is not yet ready to expose, which shows up on tasks with explicit long-range copying; the evidence is suggestive rather than settled, and a clean test would be matched-parameter runs on a synthetic copy task with the horizon swept. <span class="tag tag-contested">Contested</span></p>
+
+<p>One implementation note that costs people days: torch's GRU applies the reset gate <em>after</em> the recurrent matmul, computing $n_t = \tanh(W_nx_t + b_{in} + r_t\odot(U_nh_{t-1} + b_{hn}))$, whereas Definition 17.4 applies it before. The two are not equal, and torch's form is the cuDNN one because it allows $U_nh_{t-1}$ to be fused with the other gates into a single GEMM. Torch also names the gates $(r, z, n)$ and writes $h_t = (1-z_t)\odot n_t + z_t\odot h_{t-1}$, which is Definition 17.4 with the same meaning of $z$. <span class="tag tag-verify">Verify</span></p>
+
+<h4>17.6 Bidirectionality, Truncation, Gradient Clipping</h4>
+
+<p><strong>Bidirectionality</strong> (Schuster and Paliwal, 1997) runs a second RNN right-to-left and concatenates: $h_t = [\overrightarrow{h}_t; \overleftarrow{h}_t]$. It doubles parameters and compute, makes $h_t$ depend on the entire sequence &mdash; correct for tagging, parsing and encoders, <em>structurally impossible</em> for autoregressive generation, which is why BERT-style encoders are bidirectional and GPT-style decoders are not &mdash; and destroys streaming, since no output exists until the whole input has arrived.</p>
+
+<p><strong>Truncated BPTT</strong> (Williams and Peng, 1990) backpropagates only $k_2$ steps and takes a gradient step every $k_1$ steps, carrying $h_t$ forward across boundaries but cutting the gradient. Memory falls from $\Theta(Td_h)$ to $\Theta(k_2d_h)$ and the estimator becomes biased: every $J_{t\leftarrow k}$ with $t-k &gt; k_2$ is set to zero. The bias is defensible precisely when Theorem 17.2 says those terms were negligible anyway, which is a circular justification for a vanilla RNN and a substantive one for an LSTM, where they are not negligible &mdash; truncating an LSTM at $k_2 = 35$ discards exactly the long-range signal the architecture was built to carry. <span class="tag tag-likely">Likely</span></p>
+
+<div class="definition"><div class="box-title">Definition 17.5 (Norm clipping)</div><p>Pascanu, Mikolov and Bengio (2013). Given the full gradient $g$ and threshold $c$, use $\tilde{g} = g\cdot\min(1, c/\|g\|_2)$. The direction is preserved exactly; only the step length is capped.</p></div>
+
+<p>Clipping is a trust region imposed after the fact, and it works because explosion is spiky: gradient norms sit in a narrow band with occasional $10$&ndash;$100\times$ excursions, so clipping near the running median leaves most steps untouched while removing the excursions that would destroy the parameters. Two failure modes: clipping <em>per parameter tensor</em> rather than globally changes the direction as well as the length and quietly reweights layers against each other; and a threshold tuned for SGD is usually far too tight for Adam (Chapter 13), whose second moment already normalizes per coordinate. <span class="tag tag-likely">Likely</span></p>
+
+<h4>17.7 seq2seq and the Attention Bottleneck That Started Everything</h4>
+
+<p>Sutskever, Vinyals and Le (2014) encoded a source sentence with one LSTM into its final state, then decoded with a second LSTM initialized from that state, and reached $34.8$ BLEU on WMT'14 English&ndash;French with a 4-layer, 1000-unit, ~380M-parameter model trained about ten days on 8 GPUs. <span class="tag tag-verify">Verify</span> The tell was buried in the paper: reversing the source word order improved BLEU by several points, because it shortened the distance between the first source words and the first target words. A model whose performance depends on which end of the sentence you feed first is telling you its state is a bottleneck.</p>
+
+<p>Bahdanau, Cho and Bengio (2015) measured it: encoder&ndash;decoder BLEU degrades sharply with source length, and the fix is to let the decoder read a length-weighted combination of <em>all</em> encoder states, $c_i = \sum_j \alpha_{ij}h_j$ with $\alpha_{ij} = \mathrm{softmax}_j(\text{score}(s_{i-1}, h_j))$. That is attention, invented as a patch on a recurrent bottleneck, and Chapter 18's contribution was to notice that once you have it the recurrence is redundant.</p>
+
+<p>Redundant, and expensive. Formalize the cost that matters.</p>
+
+<div class="theorem"><div class="box-title">Theorem 17.4 (Sequential depth, and when it collapses)</div><p>Computing $h_T$ under Definition 17.1 requires $\Theta(T)$ sequential steps when $\varphi$ is an arbitrary nonlinearity, since $h_t$ is not defined until $h_{t-1}$ is. If instead the recurrence is <em>linear in the state with input-dependent coefficients</em>, $h_t = A_t h_{t-1} + b_t$, then composing two steps gives $(A,b)\circ(A',b') = (AA', Ab'+b)$, which is associative; a parallel scan therefore computes all $h_t$ in $\Theta(\log T)$ sequential steps with $\Theta(T)$ work.</p></div>
+
+<p><strong>Proof sketch.</strong> The first claim is the definition of the dependency chain. For the second, verify associativity by expanding both bracketings of a triple, then apply Blelloch's scan: a balanced binary tree over $T$ leaves has depth $\lceil\log_2 T\rceil$, and each internal node combines two pairs at the cost of one matrix product. $\blacksquare$</p>
+
+<p>Theorem 17.4 is the whole argument of Chapter 21 stated early. An LSTM's gate nonlinearities are precisely what breaks associativity, so the LSTM pays $T$ sequential steps; a diagonal $A_t$ makes the composition cheap as well as associative, which is what S4 and Mamba exploit. Self-attention takes the other branch: $\Theta(1)$ sequential operations and $\Theta(T^2d)$ work per layer against recurrence's $\Theta(Td^2)$, so attention is cheaper in FLOPs whenever $T &lt; d$ and always shallower.</p>
+
+<p>The hardware consequence is severe because the sequential steps are individually tiny. Take $d_h = 1024$, batch $64$: one step's recurrent GEMM is $2 \cdot 64 \cdot 1024 \cdot 4096 \approx 5.4\times10^{8}$ FLOPs, which an H100 at ~$10^{15}$ dense bf16 FLOP/s would retire in $0.54\,\mu$s &mdash; below the $\sim3$&ndash;$5\,\mu$s cost of launching a kernel. <span class="tag tag-verify">Verify</span> The GPU spends the step waiting. cuDNN recovers part of this by fusing the input projections for all $T$ steps into one GEMM &mdash; those are not sequential &mdash; and by fusing the elementwise gate work, but the recurrent GEMM chain is irreducible. The artifact measures the same effect on CPU where the launch overhead is smaller and the gap therefore <em>understates</em> the GPU case: at $T=512$, $d=256$, fp32, the sequential loop sustains $10.5$ GFLOP/s at batch 1 against $223.4$ for the time-fused GEMM, a $21\times$ utilization gap that narrows to $2.1\times$ only by growing the batch to 64 &mdash; because batch is the RNN's <em>only</em> parallel dimension, and using it costs memory linearly. <span class="tag tag-verify">Verify</span></p>
+
+<p>That is the verdict. Google's GNMT needed 8 encoder and 8 decoder LSTM layers and roughly six days on 96 K80 GPUs, with explicit layer-pipelining tricks to keep the devices busy; the original Transformer base model trained in 12 hours on 8 P100s. <span class="tag tag-verify">Verify</span> The gap is not modeling quality per parameter; it is that one architecture fills the machine and the other does not, compounded by a decade in which the machine got wider far faster than it got faster per lane. Chapter 21 returns with the state space model, which keeps the $O(1)$ inference of Definition 17.1 and buys back training parallelism by satisfying Theorem 17.4's associativity condition &mdash; the RNN's good properties without its fatal one. <span class="tag tag-likely">Likely</span></p>
+
+<div class="artifact-box"><div class="box-title">Artifact 17.1 &mdash; LSTM with BPTT, and the decay table</div>
+<p>A pure-NumPy LSTM with hand-written forward and backward passes, cross-checked against <code>torch.nn.LSTM</code> in float64 with weights transplanted in torch's $(i,f,g,o)$ block order. It then verifies Theorem 17.3, checks Gelfand's formula, tabulates $\|\partial h_T/\partial h_0\|_2$ against $T$, and times a recurrent loop against the same FLOPs issued as one GEMM.</p>
+<pre><code>&quot;&quot;&quot;
+Artifact 17.1 -- An LSTM cell with full backpropagation through time, from scratch.
+
+[1] BPTT checked against torch.nn.LSTM with the same weights transplanted in
+    (torch packs the gates as [i, f, g, o]; a wrong permutation is also shown).
+[2] The constant-error carousel: with the h-path cut, dc_T/dc_0 = diag(prod_t f_t).
+[3] || dh_T / dh_0 ||_2 versus T -- Gelfand&#x27;s rho for a linear RNN, then a tanh
+    RNN and an LSTM driven by real inputs.
+[4] The parallelism deficit: T sequential GEMMs vs one time-fused GEMM.
+
+Pure NumPy for everything that matters; torch is a cross-check only.
+&quot;&quot;&quot;
+import time
+import numpy as np
+
+try:
+    import torch
+except ImportError:
+    torch = None
+
+def sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-x))
+# Gate block order is torch&#x27;s: rows [0:H)=i, [H:2H)=f, [2H:3H)=g, [3H:4H)=o,
+# so weights transplant without a permutation.
+class LSTM:
+    def __init__(self, d_in, H, forget_bias=0.0, scale=1.0, rng=None):
+        rng = rng or np.random.default_rng(0)
+        self.d_in, self.H = d_in, H
+        s = scale / np.sqrt(H)
+        self.Wx = rng.normal(0.0, s, (4 * H, d_in))   # input-to-hidden
+        self.Wh = rng.normal(0.0, s, (4 * H, H))      # hidden-to-hidden
+        self.bx = np.zeros(4 * H)                     # torch keeps two biases
+        self.bh = np.zeros(4 * H)
+        self.bx[H:2 * H] = forget_bias                # push the forget gate open
+
+    def forward(self, X, h0, c0):
+        &quot;&quot;&quot;X: (T,B,d_in). Returns h stack (T,B,H) and a cache for BPTT.&quot;&quot;&quot;
+        T, B, H = X.shape[0], X.shape[1], self.H
+        h, c = h0.copy(), c0.copy()
+        Hs, cache = np.empty((T, B, H)), []
+        for t in range(T):
+            z = X[t] @ self.Wx.T + h @ self.Wh.T + self.bx + self.bh
+            i, f = sigmoid(z[:, 0:H]), sigmoid(z[:, H:2 * H])
+            g, o = np.tanh(z[:, 2 * H:3 * H]), sigmoid(z[:, 3 * H:4 * H])
+            c_new = f * c + i * g                 # the additive cell update
+            tc = np.tanh(c_new)
+            cache.append((X[t], h, c, i, f, g, o, tc))
+            h, c = o * tc, c_new
+            Hs[t] = h
+        return Hs, (h, c), cache
+
+    def backward(self, cache, dHs, dh_T=None, dc_T=None, cut_h_path=False):
+        &quot;&quot;&quot;Reverse-mode BPTT.
+
+        dHs : (T,B,H) upstream gradient injected at every step (may be zeros).
+        dh_T, dc_T : extra gradient injected at the final state.
+        cut_h_path : if True, do not route gate gradients back into h_{t-1}.
+                     This isolates the cell-state highway (demo [2]).
+        &quot;&quot;&quot;
+        T, H, B = len(cache), self.H, cache[0][1].shape[0]
+        gWx, gWh = np.zeros_like(self.Wx), np.zeros_like(self.Wh)
+        gb, gX = np.zeros(4 * H), np.zeros((T, B, self.d_in))
+        dh = np.zeros((B, H)) if dh_T is None else dh_T.copy()
+        dc = np.zeros((B, H)) if dc_T is None else dc_T.copy()
+        for t in reversed(range(T)):
+            x, h_prev, c_prev, i, f, g, o, tc = cache[t]
+            dh = dh + dHs[t]
+            do = dh * tc
+            dc = dc + dh * o * (1.0 - tc * tc)      # through tanh(c_t)
+            df = dc * c_prev
+            di = dc * g
+            dg = dc * i
+            dc = dc * f                              # &lt;-- the carousel: multiply by f
+            # through the gate nonlinearities
+            dz = np.concatenate([di * i * (1 - i),
+                                 df * f * (1 - f),
+                                 dg * (1 - g * g),
+                                 do * o * (1 - o)], axis=1)
+            gWx += dz.T @ x
+            gWh += dz.T @ h_prev
+            gb += dz.sum(axis=0)
+            gX[t] = dz @ self.Wx
+            dh = np.zeros((B, H)) if cut_h_path else dz @ self.Wh
+        # torch carries two identical bias vectors, so each receives gb
+        return dict(Wx=gWx, Wh=gWh, bx=gb, bh=gb.copy(), X=gX, h0=dh, c0=dc)
+
+class VanillaRNN:
+    &quot;&quot;&quot;h_t = tanh(Wx x_t + Wh h_{t-1} + b), with Wh rescaled to a chosen rho.&quot;&quot;&quot;
+
+    def __init__(self, d_in, H, rho, rng=None):
+        rng = rng or np.random.default_rng(1)
+        W = rng.normal(0.0, 1.0 / np.sqrt(H), (H, H))
+        self.Wh = W * (rho / max(abs(np.linalg.eigvals(W))))
+        self.Wx = rng.normal(0.0, 1.0 / np.sqrt(H), (H, d_in))
+        self.H = H
+
+    def jac_norm(self, X, h0):
+        &quot;&quot;&quot;|| d h_T / d h_0 ||_2, built exactly as prod_t diag(1-h_t^2) Wh.&quot;&quot;&quot;
+        h = h0.copy()
+        J = np.eye(self.H)
+        sat = 0.0
+        for t in range(X.shape[0]):
+            h = np.tanh(X[t] @ self.Wx.T + h @ self.Wh.T)
+            J = (np.diag(1.0 - h[0] ** 2) @ self.Wh) @ J
+            sat = max(sat, np.abs(h).max())
+        return np.linalg.norm(J, 2), sat
+
+def lstm_jac_norm(net, X, h0, c0):
+    &quot;&quot;&quot;|| d h_T / d h_0 ||_2 by running BPTT once per unit basis vector.&quot;&quot;&quot;
+    _, _, cache = net.forward(X, h0, c0)
+    T, B, H = X.shape[0], h0.shape[0], net.H
+    Z, J = np.zeros((T, B, H)), np.empty((H, H))
+    for k in range(H):
+        seed = np.zeros((B, H)); seed[0, k] = 1.0
+        J[k] = net.backward(cache, Z, dh_T=seed)[&quot;h0&quot;][0]  # row k of the Jacobian
+    return np.linalg.norm(J, 2)
+
+# ----------------------------------------------------------------------------
+def demo_torch_check(T=12, B=4, d_in=7, H=5):
+    print(&quot;[1] BPTT vs torch.nn.LSTM, weights transplanted, float64&quot;)
+    rng = np.random.default_rng(0)
+    net = LSTM(d_in, H, forget_bias=0.7, scale=1.0, rng=rng)
+    X = rng.normal(size=(T, B, d_in))
+    h0, c0 = rng.normal(size=(B, H)), rng.normal(size=(B, H))
+    R = rng.normal(size=(T, B, H))                     # loss = sum(R * h)
+    Hs, _, cache = net.forward(X, h0, c0)
+    gn = net.backward(cache, R)
+    print(f&quot;    loss (numpy)              = {float((R * Hs).sum()):.10f}&quot;)
+    if torch is None:
+        print(&quot;    [skipped: torch not installed]&quot;); return
+    tl = torch.nn.LSTM(d_in, H, num_layers=1, batch_first=False, dtype=torch.float64)
+    with torch.no_grad():
+        tl.weight_ih_l0.copy_(torch.from_numpy(net.Wx))
+        tl.weight_hh_l0.copy_(torch.from_numpy(net.Wh))
+        tl.bias_ih_l0.copy_(torch.from_numpy(net.bx))
+        tl.bias_hh_l0.copy_(torch.from_numpy(net.bh))
+    tX = torch.tensor(X, requires_grad=True)
+    th0, tc0 = (torch.tensor(v[None], requires_grad=True) for v in (h0, c0))
+    out, _ = tl(tX, (th0, tc0))
+    loss = (torch.tensor(R) * out).sum()
+    loss.backward()
+    print(f&quot;    loss (torch)              = {loss.item():.10f}   &quot;
+          f&quot;|dloss| = {abs(loss.item() - float((R * Hs).sum())):.3e}&quot;)
+    pairs = [(&quot;h stack&quot;, Hs, out), (&quot;dWx&quot;, gn[&quot;Wx&quot;], tl.weight_ih_l0.grad),
+             (&quot;dWh&quot;, gn[&quot;Wh&quot;], tl.weight_hh_l0.grad), (&quot;dbx&quot;, gn[&quot;bx&quot;], tl.bias_ih_l0.grad),
+             (&quot;dX&quot;, gn[&quot;X&quot;], tX.grad), (&quot;dh0&quot;, gn[&quot;h0&quot;], th0.grad[0]),
+             (&quot;dc0&quot;, gn[&quot;c0&quot;], tc0.grad[0])]
+    worst = 0.0
+    for name, a, b in pairs:
+        b = b.detach().numpy()
+        r = np.abs(a - b).max() / max(1e-12, np.abs(b).max())
+        worst = max(worst, r)
+        print(f&quot;    max rel err {name:&lt;8s}      = {r:.3e}&quot;)
+    assert worst &lt; 1e-9, worst
+    # ---- the classic bug: torch&#x27;s block order is (i,f,g,o), not (i,g,f,o) ----
+    bad = LSTM(d_in, H, rng=np.random.default_rng(0))
+    perm = np.r_[0:H, 2 * H:3 * H, H:2 * H, 3 * H:4 * H]   # swap f and g blocks
+    bad.Wx, bad.Wh = net.Wx[perm], net.Wh[perm]
+    bad.bx, bad.bh = net.bx[perm], net.bh[perm]
+    Hb, _, _ = bad.forward(X, h0, c0)
+    print(f&quot;    same weights, gates read (i,g,f,o): rel err &quot;
+          f&quot;{np.abs(Hb - Hs).max() / np.abs(Hs).max():.3e}  &lt;-- silent, not a crash&quot;)
+    assert np.abs(Hb - Hs).max() / np.abs(Hs).max() &gt; 0.1
+
+def demo_carousel(T=40, B=3, H=6):
+    print(&quot;\n[2] Cell-state highway: d c_T / d c_0 with the h-path cut&quot;)
+    rng = np.random.default_rng(2)
+    net = LSTM(4, H, forget_bias=1.5, scale=1.0, rng=rng)
+    X = rng.normal(size=(T, B, 4))
+    h0, c0 = rng.normal(size=(B, H)), rng.normal(size=(B, H))
+    _, _, cache = net.forward(X, h0, c0)
+    dc0 = net.backward(cache, np.zeros((T, B, H)), dc_T=np.ones((B, H)),
+                       cut_h_path=True)[&quot;c0&quot;]
+    prod_f = np.ones((B, H))
+    for t in range(T):
+        prod_f *= cache[t][4]
+    err = np.abs(dc0 - prod_f).max()
+    print(f&quot;    T = {T}, mean forget gate = {np.mean([c[4].mean() for c in cache]):.6f}&quot;)
+    print(f&quot;    prod_t f_t  in [{prod_f.min():.3e}, {prod_f.max():.3e}]&quot;)
+    print(f&quot;    max |dc0 - prod_t f_t|    = {err:.3e}&quot;)
+    assert err &lt; 1e-12, err
+
+def demo_spectral(H=32, Ts=(16, 64, 256)):
+    &quot;&quot;&quot;Linear RNN: J = Wh^T exactly, so Gelfand&#x27;s formula ||Wh^T||^(1/T) -&gt; rho.&quot;&quot;&quot;
+    print(&quot;\n[3a] Linear RNN: the spectral radius is the growth rate (Gelfand)&quot;)
+    rng = np.random.default_rng(4)
+    W = rng.normal(0.0, 1.0 / np.sqrt(H), (H, H))
+    print(f&quot;    {&#x27;rho&#x27;:&gt;5} {&#x27;T&#x27;:&gt;5} {&#x27;||Wh^T||_2&#x27;:&gt;13} {&#x27;rho^T&#x27;:&gt;13} {&#x27;||Wh^T||^(1/T)&#x27;:&gt;16}&quot;)
+    for rho in (0.5, 0.9, 1.2):
+        Wh = W * (rho / max(abs(np.linalg.eigvals(W))))
+        for T in Ts:
+            n = np.linalg.norm(np.linalg.matrix_power(Wh, T), 2)
+            print(f&quot;    {rho:5.1f} {T:5d} {n:13.4e} {rho ** T:13.4e} {n ** (1.0 / T):16.5f}&quot;)
+        assert abs(n ** (1.0 / T) - rho) &lt; 0.01, (rho, n ** (1.0 / T))
+
+def demo_decay(H=32, d_in=8, Ts=(1, 2, 4, 8, 16, 32, 64, 128, 256)):
+    print(&quot;\n[3b] || d h_T / d h_0 ||_2 versus sequence length, driven by real inputs&quot;)
+    X = np.random.default_rng(3).normal(size=(max(Ts), 1, d_in))
+    h0, c0 = np.zeros((1, H)), np.zeros((1, H))
+    rnns = {r: VanillaRNN(d_in, H, r, rng=np.random.default_rng(4)) for r in (0.5, 0.9, 1.2)}
+    lstm = LSTM(d_in, H, forget_bias=4.0, scale=0.4, rng=np.random.default_rng(5))
+    print(f&quot;    {&#x27;T&#x27;:&gt;5} | {&#x27;tanh rho=0.5&#x27;:&gt;13} {&#x27;tanh rho=0.9&#x27;:&gt;13} {&#x27;tanh rho=1.2&#x27;:&gt;13}&quot;
+          f&quot; | {&#x27;LSTM&#x27;:&gt;11} | {&#x27;LSTM / rho=0.9&#x27;:&gt;15}&quot;)
+    print(&quot;    &quot; + &quot;-&quot; * 84)
+    for T in Ts:
+        v = {rho: r.jac_norm(X[:T], h0)[0] for rho, r in rnns.items()}
+        vl = lstm_jac_norm(lstm, X[:T], h0, c0)
+        print(f&quot;    {T:5d} | {v[0.5]:13.3e} {v[0.9]:13.3e} {v[1.2]:13.3e} | &quot;
+              f&quot;{vl:11.3e} | {vl / v[0.9]:15.3e}&quot;)
+    sat = rnns[1.2].jac_norm(X, h0)[1]      # why rho &gt; 1 does not explode here
+    print(f&quot;    tanh saturation kills even rho=1.2: max |h_t| reached {sat:.4f}, &quot;
+          f&quot;so diag(1-h^2) shrinks the product&quot;)
+    assert v[0.5] &lt; 1e-90 and v[0.9] &lt; 1e-40                 # decayed to nothing
+    assert v[0.5] &lt;= 0.5 ** max(Ts) and v[0.9] &lt;= 0.9 ** max(Ts)   # |tanh&#x27;| &lt;= 1
+    assert vl &gt; 1e-2 and vl / v[0.9] &gt; 1e30                  # the LSTM does not
+
+def demo_parallelism(T=512, d=256, Bs=(1, 8, 32, 64), reps=5, dt=np.float32):
+    print(&quot;\n[4] Parallelism deficit: T sequential GEMMs vs one time-fused GEMM&quot;)
+    rng = np.random.default_rng(6)
+    Wx = (rng.normal(size=(d, 4 * d)) / np.sqrt(d)).astype(dt)
+    Wh = (rng.normal(size=(d, 4 * d)) / np.sqrt(d)).astype(dt)
+    print(f&quot;    T={T}, d={d}, fp32. Sequential depth {T} vs 1; only B is parallel.&quot;)
+    print(f&quot;    {&#x27;B&#x27;:&gt;5} {&#x27;seq ms&#x27;:&gt;9} {&#x27;seq GF/s&#x27;:&gt;10} {&#x27;fused ms&#x27;:&gt;10} &quot;
+          f&quot;{&#x27;fused GF/s&#x27;:&gt;11} {&#x27;gap&#x27;:&gt;7}&quot;)
+    for B in Bs:
+        X = rng.normal(size=(T, B, d)).astype(dt)
+        flops = 2.0 * T * B * d * (4 * d)
+        seq, par = np.inf, np.inf
+        for _ in range(reps):
+            h = np.zeros((B, d), dt); t0 = time.perf_counter()
+            for t in range(T):                      # the loop that cannot be unrolled
+                h = np.tanh((X[t] @ Wx + h @ Wh)[:, :d])
+            seq = min(seq, time.perf_counter() - t0)
+        Xf = X.reshape(T * B, d)
+        for _ in range(reps):
+            t0 = time.perf_counter()
+            _ = Xf @ Wx                             # all T steps at once
+            par = min(par, time.perf_counter() - t0)
+        sr, pr = 2 * flops / seq / 1e9, flops / par / 1e9   # seq does 2 GEMMs/step
+        print(f&quot;    {B:5d} {seq * 1e3:9.1f} {sr:10.1f} {par * 1e3:10.2f} &quot;
+              f&quot;{pr:11.1f} {pr / sr:6.1f}x&quot;)
+        assert pr &gt; sr, (B, sr, pr)
+
+if __name__ == &quot;__main__&quot;:
+    t0 = time.perf_counter()
+    demo_torch_check()
+    demo_carousel()
+    demo_spectral()
+    demo_decay()
+    demo_parallelism()
+    print(f&quot;\nall assertions passed in {time.perf_counter() - t0:.1f} s&quot;)
+</code></pre>
+<p>Every gradient matches torch to at most $5.488\times10^{-16}$ relative error &mdash; float64 round-off, four orders tighter than the $10^{-5}$ target &mdash; while the same weights read in $(i,g,f,o)$ order give a relative error of $1.394$ without raising anything. The carousel identity holds to $1.084\times10^{-19}$. The decay table is the point: at $T=256$ the $\tanh$ RNN reaches $9.301\times10^{-102}$ at $\rho=0.5$ and $2.828\times10^{-46}$ at $\rho=0.9$, while the LSTM sits at $2.311$ &mdash; a ratio of $8.173\times10^{45}$ &mdash; and even $\rho=1.2$ decays, to $2.639\times10^{-27}$, because $\max_t|h_t|$ reaches $0.9989$ and $\mathrm{diag}(1-h^2)$ closes the path. The timing block reports $10.5$ GFLOP/s sequential against $223.4$ fused at batch 1, closing to $125.7$ against $268.7$ at batch 64. Total runtime $5.6$ s. <span class="tag tag-verify">Verify</span></p>
+</div>
+
+<div class="key-takeaways"><div class="kt-title">Key Takeaways</div>
+<ul>
+<li>BPTT is reverse mode on the unrolled graph with weight tying, so the gradient is a double sum whose inner term is $J_{t\leftarrow k} = \prod_{j=k+1}^t D_jW_h$; long-range credit assignment is entirely a statement about the magnitude of that matrix product. <span class="tag tag-certain">Certain</span></li>
+<li>The asymptotic per-step growth factor is the spectral radius $\rho(W_h)$, not $\|W_h\|_2$; measured $\|W_h^T\|_2^{1/T}$ converges to $0.50077$, $0.90138$ and $1.20184$ for $\rho = 0.5, 0.9, 1.2$ at $T=256$, and saturation of $\tanh$ turns even $\rho&gt;1$ into decay. <span class="tag tag-certain">Certain</span></li>
+<li>Along the LSTM cell path the gradient multiplier is exactly $\mathrm{diag}(f_t)$ &mdash; diagonal, bounded by 1, and directly settable through the forget-gate bias &mdash; which is why the measured $\|\partial h_T/\partial h_0\|_2$ at $T=256$ is $2.311$ for an LSTM and $2.828\times10^{-46}$ for a $\tanh$ RNN. <span class="tag tag-certain">Certain</span></li>
+<li>The GRU has exactly $75\%$ of the LSTM's parameters by dropping the output gate and coupling input to forget; across large ablations neither architecture consistently wins, so the difference matters for memory and bandwidth, not accuracy. <span class="tag tag-contested">Contested</span></li>
+<li>Recurrence costs $\Theta(T)$ sequential steps against attention's $\Theta(1)$, each step too small to fill a GPU &mdash; a measured $21\times$ utilization gap at batch 1 &mdash; and the fix is not better gating but making the recurrence associative, which is Chapter 21. <span class="tag tag-likely">Likely</span></li>
+</ul>
+</div>
+</div>

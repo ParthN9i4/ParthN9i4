@@ -1,0 +1,394 @@
+<div class="chapter" id="ch18">
+<div class="chapter-header"><div class="ch-label">Chapter 18</div><h3>Attention and the Transformer</h3></div>
+
+<div class="learning-objectives">
+<div class="lo-title">Learning Objectives</div>
+<ul>
+<li>Derive scaled dot-product attention and prove that the $1/\sqrt{d_k}$ factor holds logit variance at $\Theta(1)$ under standard initialization.</li>
+<li>Derive the attention backward pass, including the softmax Jacobian $J = \mathrm{diag}(p) - pp^{\top}$ and its contraction $\bar{s} = p \odot (\bar{p} - \langle \bar{p}, p\rangle)$.</li>
+<li>Compute exact parameter counts and FLOPs for a transformer block, and locate the sequence length at which the $4n^2d$ attention term overtakes the feed-forward term.</li>
+<li>Explain multi-head, multi-query, and grouped-query attention, and compute the KV-cache reduction each buys.</li>
+<li>Implement multi-head attention and a complete pre-norm transformer block in working code, verified against a reference implementation, finite differences, and a cached-decode identity.</li>
+</ul>
+</div>
+
+<div class="read-alongside"><strong>Read alongside</strong> &mdash; Raschka, <em>Build a Large Language Model (From Scratch)</em>, for the line-by-line construction of causal multi-head attention and the KV cache, which is the closest text to this chapter's artifact. Karpathy, <em>nanoGPT</em> and the <em>Zero to Hero</em> attention lecture, for the same block written as compactly as it can be written and still be read. Prince, <em>Understanding Deep Learning</em>, for the clearest picture of what the attention matrix is actually doing to a sequence, and for the pre-norm/post-norm comparison.</div>
+
+<p>Attention is content-addressable soft retrieval: every position emits a query, every position advertises a key, the match scores become a probability distribution, and the output is the corresponding convex combination of values. That is the entire mechanism. The transformer is what you get when you make retrieval the <em>only</em> operation that moves information between positions, give up the recurrence of Chapter 17 along with its sequential bottleneck, and agree to pay $O(n^2)$ for the privilege. This chapter derives the mechanism (18.2), its backward pass, and the one free parameter in it &mdash; the $1/\sqrt{d_k}$ temperature, which exists for exactly one reason. Then the engineering: masking and its most common bug (18.4), the full block and its parameter count (18.5), the KV-cache economics that drive multi-query and grouped-query attention (18.6), and the quadratic wall (18.7). Chapter 19 adds positional information, which the mechanism derived here conspicuously lacks; Chapter 31 makes it fast.</p>
+
+<h4>18.1 From seq2seq Attention to Self-Attention</h4>
+
+<p>Attention was invented to fix a specific defect. An encoder&ndash;decoder RNN compresses the entire source sentence into one fixed-width state $h_n$, and the decoder reads only that vector; translation quality collapses as source length grows because a 64-dimensional state cannot hold a 40-word sentence. Bahdanau's fix was to let the decoder read <em>all</em> encoder states, weighted by a learned relevance score,</p>
+
+$$e_{ij} = v^{\top}\tanh(W_s s_{i-1} + W_h h_j), \qquad \alpha_{ij} = \frac{\exp e_{ij}}{\sum_{j'} \exp e_{ij'}}, \qquad c_i = \sum_j \alpha_{ij} h_j .$$
+
+<p>Luong replaced the additive MLP score with $e_{ij} = s_{i-1}^{\top} h_j$, which is cheaper because it is a matrix multiplication rather than an elementwise nonlinearity over $n$ pairs. Both were bolted onto a recurrence that still ran sequentially.</p>
+
+<p>Self-attention is the observation that the queries need not come from a decoder at all: let a sequence attend to itself, and the recurrence has nothing left to do. The consequence is a different complexity profile, not merely a different architecture.</p>
+
+<table>
+<tr><th>Layer type</th><th>Compute per layer</th><th>Sequential steps</th><th>Max path length</th></tr>
+<tr><td>Recurrent</td><td>$O(n d^2)$</td><td>$O(n)$</td><td>$O(n)$</td></tr>
+<tr><td>Convolutional, kernel $k$</td><td>$O(k n d^2)$</td><td>$O(1)$</td><td>$O(\log_k n)$</td></tr>
+<tr><td>Self-attention</td><td>$O(n^2 d)$</td><td>$O(1)$</td><td>$O(1)$</td></tr>
+</table>
+
+<p>Two columns matter. <em>Sequential steps</em> is why transformers train on modern hardware and LSTMs do not: an RNN's $O(n)$ dependent steps cannot be filled with parallel work, so a GPU runs at a few percent of peak. <em>Max path length</em> is the gradient argument from Chapter 17 restated &mdash; any two positions are one hop apart, so the multiplicative chain that destroys long-range RNN gradients has length one. The price is the first column: attention is cheaper than recurrence only while $n &lt; d$, and Section 18.7 makes that trade exact. <span class="tag tag-certain">Certain</span></p>
+
+<h4>18.2 Queries, Keys, Values</h4>
+
+<div class="definition"><div class="box-title">Definition 18.1 (Scaled dot-product attention)</div><p>Given queries $Q \in \mathbb{R}^{n_q \times d_k}$, keys $K \in \mathbb{R}^{n_k \times d_k}$ and values $V \in \mathbb{R}^{n_k \times d_v}$, stored one item per row,
+$$\mathrm{Attn}(Q,K,V) \;=\; \underbrace{\mathrm{softmax}\!\left(\frac{QK^{\top}}{\sqrt{d_k}} + M\right)}_{A \,\in\, \mathbb{R}^{n_q \times n_k}} V ,$$
+with the softmax taken over each row and $M$ an additive mask with entries in $\{0, -\infty\}$. Each row of $A$ is a probability vector, so each output row is a convex combination of value rows: attention cannot extrapolate outside the convex hull of $V$.</p></div>
+
+<div class="definition"><div class="box-title">Definition 18.2 (Self-attention)</div><p>For a token matrix $X \in \mathbb{R}^{n \times d}$ and weight matrices $W_q, W_k, W_v \in \mathbb{R}^{d_k \times d}$ acting on column vectors, self-attention sets $Q = XW_q^{\top}$, $K = XW_k^{\top}$, $V = XW_v^{\top}$. Queries, keys and values are three linear views of the same sequence; nothing else in the layer depends on position, so self-attention is exactly permutation-equivariant &mdash; permuting the rows of $X$ permutes the rows of the output identically. Positional information must be injected from outside, which is Chapter 19's subject.</p></div>
+
+<p><strong>Backward pass.</strong> Let $\bar{Z} \equiv \partial\mathcal{L}/\partial Z$. From $O = AV$ we get $\bar{V} = A^{\top}\bar{O}$ and $\bar{A} = \bar{O}V^{\top}$ immediately. The softmax is the only interesting step.</p>
+
+<div class="theorem"><div class="box-title">Theorem 18.1 (Softmax Jacobian and its contraction)</div><p>For $p = \mathrm{softmax}(s)$ with $s \in \mathbb{R}^{m}$, $\;\partial p_i/\partial s_j = p_i(\delta_{ij} - p_j)$, i.e. $J = \mathrm{diag}(p) - pp^{\top}$. Consequently the vector&ndash;Jacobian product needed by backpropagation is
+$$\bar{s} \;=\; J^{\top}\bar{p} \;=\; p \odot \big(\bar{p} - \langle \bar{p}, p\rangle \mathbf{1}\big),$$
+computable in $O(m)$ without forming $J$.</p>
+<p><strong>Proof.</strong> Write $p_i = e^{s_i}/Z$ with $Z = \sum_l e^{s_l}$. Then $\partial p_i/\partial s_j = (\delta_{ij}e^{s_i}Z - e^{s_i}e^{s_j})/Z^2 = p_i\delta_{ij} - p_ip_j$. $J$ is symmetric, so $\bar{s}_j = \sum_i \bar{p}_i p_i(\delta_{ij}-p_j) = p_j\bar{p}_j - p_j\sum_i \bar{p}_ip_i$. $\blacksquare$</p></div>
+
+<p>Applying Theorem 18.1 row-wise to $\bar{A}$ gives $\bar{S}$, and the rest is bilinear:</p>
+
+$$\bar{S} = A \odot \big(\bar{A} - \mathrm{rowsum}(\bar{A}\odot A)\mathbf{1}^{\top}\big)\big/\sqrt{d_k},\qquad \bar{Q} = \bar{S}K,\qquad \bar{K} = \bar{S}^{\top}Q,$$
+
+$$\bar{W}_q = \bar{Q}^{\top}X,\qquad \bar{X} \;\mathrel{+}=\; \bar{Q}W_q \;+\; \bar{K}W_k \;+\; \bar{V}W_v .$$
+
+<p>Note that $\bar{Q}$ and $\bar{K}$ are transposes of each other's construction: the score matrix is bilinear in $Q$ and $K$, so the backward pass through it is a matched pair of matrix products. Note also what must be kept alive between forward and backward: $A$ itself, $n \times n$ per head. That $O(n^2)$ activation, not the FLOPs, is what made long context infeasible before FlashAttention recomputed $A$ tile-by-tile in the backward pass (Chapter 31). <span class="tag tag-certain">Certain</span></p>
+
+<h5>18.2.1 Why the Scaling Factor</h5>
+
+<div class="theorem"><div class="box-title">Theorem 18.2 (Logit variance under standard initialization)</div><p>Let $q, k \in \mathbb{R}^{d_k}$ have mutually independent entries with mean $0$ and variance $1$. Then $\mathbb{E}[q^{\top}k] = 0$ and $\mathrm{Var}(q^{\top}k) = d_k$; hence $\mathrm{Var}\big(q^{\top}k/\sqrt{d_k}\big) = 1$.</p>
+<p><strong>Proof.</strong> $\mathbb{E}[q^{\top}k] = \sum_i \mathbb{E}[q_i]\mathbb{E}[k_i] = 0$. For the second moment, $\mathbb{E}[(q^{\top}k)^2] = \sum_{i,j}\mathbb{E}[q_iq_jk_ik_j]$. For $i \neq j$ independence factorizes the term into $\mathbb{E}[q_i]\mathbb{E}[q_j]\mathbb{E}[k_i]\mathbb{E}[k_j] = 0$; the $i = j$ terms give $\mathbb{E}[q_i^2]\mathbb{E}[k_i^2] = 1$ each. Summing, $\mathrm{Var} = d_k$. $\blacksquare$</p>
+<p>The hypothesis is what standard initialization delivers: if $x$ has unit-variance coordinates and $W_q$ has i.i.d. entries of variance $1/d$ (Chapter 12), then $q = W_qx$ has coordinates of variance $1$, and likewise for $k$.</p></div>
+
+<p>Without the divisor, logit standard deviation grows as $\sqrt{d_k}$ &mdash; a factor of 8 at the near-universal $d_k = 64$, and the gap between the largest and second-largest of $n$ such logits grows like $\sigma\sqrt{2\ln n}$. Softmax of large-spread logits is nearly one-hot, and by Theorem 18.1 a one-hot $p$ has a Jacobian of essentially zero: if $p_m = 1-\varepsilon$, then every entry of $J$ is $O(\varepsilon)$. The layer stops passing gradient before it has learned anything about which key to select. The scale factor is a temperature, and its only job is keeping softmax out of saturation at initialization. <span class="tag tag-certain">Certain</span></p>
+
+<div class="example"><div class="box-title">Example 18.1 (Saturation in four dimensions)</div><p>Take $d_k = 4$, $q = (1,1,1,1)$, $k_1 = (1,1,1,1)$, $k_2 = (1,1,-1,-1)$. Then $q^{\top}k_1 = 4$ and $q^{\top}k_2 = 0$.</p>
+<p><em>Unscaled.</em> $\mathrm{softmax}(4,0) = \left(\tfrac{e^4}{e^4+1}, \tfrac{1}{e^4+1}\right) = (0.9820,\,0.0180)$, since $e^4 = 54.598$.</p>
+<p><em>Scaled by $1/\sqrt{4} = 1/2$.</em> $\mathrm{softmax}(2,0) = \left(\tfrac{e^2}{e^2+1}, \tfrac{1}{e^2+1}\right) = (0.8808,\,0.1192)$, since $e^2 = 7.389$.</p>
+<p>The off-diagonal Jacobian entry $-p_1p_2$ is $-0.0177$ unscaled and $-0.1050$ scaled: dividing by 2 multiplied the available gradient signal by about six. At the realistic $d_k = 64$ the artifact measures the same effect on random logits &mdash; the largest of 8 attention weights is $0.9998$ unscaled and $0.5119$ scaled.</p></div>
+
+<p>One caveat, because it will matter in Chapter 15's setting: $1/\sqrt{d_k}$ is the correct <em>initialization-time</em> scale, and the independence hypothesis of Theorem 18.2 fails after training, when queries and keys become correlated. The muP prescription is therefore $1/d_k$ rather than $1/\sqrt{d_k}$ for attention logits when transferring hyperparameters across widths, and it demonstrably transfers better; standard transformers nevertheless ship $1/\sqrt{d_k}$ because that is what the pretrained checkpoints were trained with. <span class="tag tag-likely">Likely</span></p>
+
+<h4>18.3 Multi-Head Attention</h4>
+
+<div class="definition"><div class="box-title">Definition 18.3 (Multi-head attention)</div><p>With $H$ heads and $d_h = d/H$, take $W_q^{(h)}, W_k^{(h)}, W_v^{(h)} \in \mathbb{R}^{d_h \times d}$ and $W_o \in \mathbb{R}^{d \times d}$, and set
+$$\mathrm{MHA}(X) = \mathrm{Concat}\big(\mathrm{head}_1,\ldots,\mathrm{head}_H\big)W_o^{\top}, \qquad \mathrm{head}_h = \mathrm{Attn}\big(XW_q^{(h)\top}, XW_k^{(h)\top}, XW_v^{(h)\top}\big).$$
+Splitting $W_o$ column-blockwise as $W_o = [W_o^{(1)} \cdots W_o^{(H)}]$ turns the concatenation into a sum, $\mathrm{MHA}(X) = \sum_h A_h X W_v^{(h)\top}W_o^{(h)\top}$.</p></div>
+
+<p>The summed form is the useful one. Head $h$ contributes an additive term whose feature-space action is the single matrix $W_o^{(h)}W_v^{(h)} \in \mathbb{R}^{d\times d}$ of rank at most $d_h$, and whose position-space action is $A_h$, determined by $W_q^{(h)\top}W_k^{(h)}$, also of rank at most $d_h$. Only these two products are identifiable: any invertible $R$ with $W_q \to RW_q$, $W_k \to R^{-\top}W_k$ leaves the layer unchanged. Reading individual $W_q$ entries is therefore meaningless; reading the products is not. <span class="tag tag-likely">Likely</span></p>
+
+<p>Because $d_h = d/H$, multi-head attention has exactly the parameter count of one-head attention at full width: $4d^2$ weights (plus $4d$ biases), independent of $H$. Heads buy not capacity but the ability to attend to several places at once &mdash; one head can track the syntactic subject while another tracks the previous token &mdash; which a single softmax, being one probability distribution per query, structurally cannot do. The cost is rank: at $H = 96$ and $d = 12288$, each head's OV circuit is rank $\leq 128$ out of $12288$. <span class="tag tag-certain">Certain</span></p>
+
+<h4>18.4 Masking and the Mask-Then-Softmax Ordering Bug</h4>
+
+<p>A decoder-only language model must not let position $i$ see position $j &gt; i$, or the next-token objective becomes trivial. The causal mask $M_{ij} = 0$ for $j \leq i$ and $-\infty$ otherwise is <em>added to the logits</em>, so that $\exp(-\infty) = 0$ and the masked entries drop out of both numerator and denominator. Padding masks work identically, with an extra column pattern per sequence.</p>
+
+<div class="warning-box"><div class="box-title">Common Pitfall</div><p><strong>Multiplying the mask into the probabilities instead of adding it to the logits.</strong> Writing <code>A = softmax(S) * mask</code> rather than <code>A = softmax(S + M)</code> produces rows that sum to less than one, because the normalizer $Z$ still contains the future tokens' $e^{s_j}$. The output is then a shrunken, position-dependently scaled convex combination &mdash; and crucially it is still a smooth function of the parameters with a plausible-looking gradient, so the model trains, the loss goes down, and nothing crashes. It merely converges to a worse optimum, and its outputs diverge from any reference implementation. The artifact's torch cross-check catches this in one line; a training run will not.</p>
+<p>Two companion bugs. First, using a large finite constant instead of $-\infty$: $-10^9$ overflows fp16's $65504$ maximum and becomes $-\infty$ or NaN on cast, while $-10^4$ is not large enough to suppress a logit of $10^3$. Use $-\infty$, or the dtype's most negative finite value. Second, an <em>entirely</em> masked row &mdash; which arises for padding query positions, not for causal masking, since the diagonal is always visible &mdash; makes softmax compute $0/0$ and emit NaN that propagates through the whole batch on the backward pass. Zero those output rows explicitly.</p></div>
+
+<h4>18.5 The Full Block: Residual Stream, Feed-Forward, Norms</h4>
+
+<p>A transformer block is two sublayers, each wrapped in a residual connection. In the modern <em>pre-norm</em> arrangement,</p>
+
+$$h = x + \mathrm{MHA}\big(\mathrm{LN}(x)\big), \qquad y = h + W_2\,\phi\big(W_1\,\mathrm{LN}(h) + c_1\big) + c_2,$$
+
+<p>with $W_1 \in \mathbb{R}^{d_{\text{ff}} \times d}$, $d_{\text{ff}} = 4d$ conventionally, and $\phi$ a GELU or a gated variant. The original post-norm form, $x \leftarrow \mathrm{LN}(x + \mathrm{Sublayer}(x))$, puts a normalization <em>on</em> the residual path; the gradient must then pass through every LayerNorm on its way back, and training a deep post-norm stack requires a learning-rate warmup to avoid divergence in the first few hundred steps. Pre-norm leaves an unobstructed identity path from the loss to every layer's input, needs no warmup to remain stable, and is what essentially every model since GPT-2 uses. Its cost is that the residual stream's variance grows roughly linearly with depth, since each block adds a roughly independent increment, so a final LayerNorm before the output head is mandatory. <span class="tag tag-certain">Certain</span></p>
+
+<p>Parameter count, exactly, with $d_{\text{ff}} = 4d$: attention contributes $4d^2 + 4d$, the FFN $8d^2 + 5d$, and the two LayerNorms $4d$, for $12d^2 + 13d$ per block &mdash; the $12d^2$ per layer that Chapter 24's scaling laws take as given. For GPT-2 small ($d = 768$, $L = 12$, vocabulary $50257$, context $1024$): $7{,}087{,}872$ parameters per block, $85{,}054{,}464$ across 12 blocks, plus $38{,}597{,}376$ token embeddings, $786{,}432$ position embeddings and $1{,}536$ for the final LayerNorm, totalling $124{,}439{,}808$ &mdash; the familiar 124M, with the output head tied to the embedding matrix. <span class="tag tag-certain">Certain</span></p>
+
+<h4>18.6 MQA, GQA, and KV-Cache Economics</h4>
+
+<p>During autoregressive decoding, each new token's keys and values are appended to a cache so that previously computed ones are never recomputed. The cache holds</p>
+
+$$\text{bytes} \;=\; 2\,L\,n\,H_{kv}\,d_h\,b ,$$
+
+<p>two tensors per layer, $L$ layers, $n$ positions, $H_{kv}$ key/value heads of width $d_h$, at $b$ bytes per element. This is per sequence, and it scales with batch size, which is what makes it the binding constraint on serving throughput (Chapter 33). For $d = 4096$, $H = 32$, $L = 32$, $n = 8192$, fp16, the artifact computes $4.000$ GiB &mdash; comparable to a quarter of the 13B-class model's own weights, for a single conversation.</p>
+
+<p>Multi-query attention (Shazeer) keeps $H$ query heads but shares one key/value head, $H_{kv} = 1$, cutting the cache by $32\times$ to $0.125$ GiB in that configuration. Grouped-query attention interpolates: $H_{kv}$ groups, each shared by $H/H_{kv}$ query heads, so $H_{kv} = 8$ gives $1.000$ GiB at $4\times$ reduction. The reason the reduction matters more than the FLOP saving is arithmetic intensity: in the decode step each cached KV element is read once and used in a handful of multiply&ndash;adds, so the attention step is purely memory-bandwidth-bound and its wall-clock is proportional to cache bytes moved, not FLOPs (Chapter 30).</p>
+
+<p>The empirical claim &mdash; that GQA at $H_{kv} = 8$ recovers essentially all of MHA's quality while MQA at $H_{kv} = 1$ measurably loses some, and that an existing MHA checkpoint can be converted by mean-pooling each group's KV projections and uptraining on a few percent of the original tokens &mdash; comes from Ainslie et al. (2023) and has been reproduced at scale by the Llama-2/3 and Mistral families. Whether the loss at $H_{kv}=1$ is intrinsic or a training-budget artifact is not settled; DeepSeek's multi-head latent attention, which caches a low-rank joint projection instead of reducing head count, reports beating MHA quality at a smaller cache than GQA, which would suggest the head-count axis was never the right one. <span class="tag tag-contested">Contested</span> The experiment that settles it is a matched-compute sweep of $H_{kv}$ and latent rank at fixed cache bytes; published comparisons vary too many things at once.</p>
+
+<h4>18.7 Complexity Accounting and the Quadratic Wall</h4>
+
+<p>Count a multiply&ndash;add as 2 FLOPs. One block's forward pass over $n$ tokens costs</p>
+
+$$\underbrace{8nd^2}_{Q,K,V,O \text{ projections}} \;+\; \underbrace{4n\,d\,d_{\text{ff}}}_{\text{FFN}} \;+\; \underbrace{4n^2d}_{QK^{\top} \text{ and } AV} .$$
+
+<p>The quadratic term overtakes the FFN term when $4n^2d = 4nd\,d_{\text{ff}}$, i.e. at</p>
+
+$$n^{*} = d_{\text{ff}} = 4d \quad(\text{conventional expansion}),$$
+
+<p>and it overtakes all three linear terms combined at $n = 2d + d_{\text{ff}} = 6d$. This is the crossover stated in terms of model width: attention is a minor cost below a sequence length of about four times the residual width and the dominant cost above it. For $d = 768$ that is $n^{*} = 3072$; for $d = 12288$ it is $49152$. Equivalently, the standard training-compute estimate $C \approx 6ND$ (Chapter 24), which counts only the linear terms, is short by a factor $1 + n/(6d)$ &mdash; under 3% for GPT-3's $n=2048$, $d=12288$, but a factor of $6.3$ for a 128K context at $d = 4096$. <span class="tag tag-certain">Certain</span></p>
+
+<p>Two honest qualifications. FLOPs are not time: the two attention matmuls have far lower arithmetic intensity than the projections, and before FlashAttention the real limit was materializing the $n \times n$ matrix in HBM, not multiplying by it. And the wall is quadratic in <em>compute</em>, not memory, once attention is tiled &mdash; which is why 1M-token contexts exist at all despite $4n^2d$ being astronomically large.</p>
+
+<h4>18.8 The Residual Stream as a Communication Channel</h4>
+
+<p>Reading the pre-norm block as $x^{(l+1)} = x^{(l)} + (\text{increment})$ makes the residual stream the object of interest: a $d$-dimensional bus that every layer reads from and adds to, and the <em>only</em> channel between layers. Anything layer 20 needs from layer 3 was written into that bus and not overwritten &mdash; there is no other path. Two consequences follow. First, the bus has finite bandwidth: $d$ dimensions shared by all $L$ layers' worth of features, so features must either occupy near-orthogonal subspaces or tolerate interference, and the number of features a network represents far exceeds $d$ (Chapter 37's superposition). Second, the division of labour is clean: attention is the only operation that moves information <em>between positions</em>, and the FFN is the only one that transforms information <em>within</em> a position. Every subsequent architecture in Part IV &mdash; state space models included (Chapter 21) &mdash; keeps this factorization and replaces only the mixer. <span class="tag tag-likely">Likely</span></p>
+
+<div class="artifact-box"><div class="box-title">Artifact 18.1 &mdash; Multi-head attention and a pre-norm transformer block in NumPy</div>
+<p>A complete block from scratch, with four independent verifications: the forward pass against <code>torch.nn.MultiheadAttention</code> with transplanted weights, the analytic backward pass against central finite differences on every parameter tensor and on the input, and token-at-a-time KV-cached decoding against full recomputation &mdash; the assertion that catches real cache bugs, since an off-by-one in the mask offset or a stale cache still produces plausible text. It closes with the FLOP and cache tables of Sections 18.6 and 18.7.</p>
+<pre><code>&quot;&quot;&quot;
+Artifact 18.1 -- Multi-head attention and a pre-norm transformer block, from scratch.
+Verifies: (1) logit variance is d_k unscaled and ~1 after dividing by sqrt(d_k);
+(2) NumPy MHA forward == torch.nn.MultiheadAttention with transplanted weights;
+(3) analytic backward (incl. softmax Jacobian) == central finite differences;
+(4) incremental KV-cached decoding == full recomputation;
+(5) FLOP and KV-cache tables locating where quadratic attention overtakes the FFN.
+Pure NumPy core; torch is a guarded cross-check only.
+&quot;&quot;&quot;
+import numpy as np
+try:
+    import torch
+    import torch.nn as nn
+except ImportError:                      # the artifact must run without torch
+    torch = None
+
+# --------------------------------------------------------------------- primitives
+
+def softmax(z, axis=-1):
+    &quot;&quot;&quot;Max-subtracted softmax: the shift is exact (softmax is shift-invariant) and
+    is the only thing keeping exp() out of overflow. See Chapter 5.&quot;&quot;&quot;
+    e = np.exp(z - np.max(z, axis=axis, keepdims=True))
+    return e / np.sum(e, axis=axis, keepdims=True)
+
+def softmax_backward(dA, A, axis=-1):
+    &quot;&quot;&quot;JVP for p = softmax(s): ds = p * (dp - &lt;dp, p&gt;). This is J = diag(p) - p p^T
+    contracted with dp, done without ever forming the T x T Jacobian.&quot;&quot;&quot;
+    return A * (dA - np.sum(dA * A, axis=axis, keepdims=True))
+
+def gelu(x):
+    c = np.sqrt(2.0 / np.pi)
+    return 0.5 * x * (1.0 + np.tanh(c * (x + 0.044715 * x ** 3)))
+
+def gelu_grad(x):
+    c = np.sqrt(2.0 / np.pi)
+    t = np.tanh(c * (x + 0.044715 * x ** 3))
+    return 0.5 * (1 + t) + 0.5 * x * (1 - t * t) * c * (1 + 3 * 0.044715 * x ** 2)
+
+def layernorm(x, g, b, eps=1e-5):
+    inv = 1.0 / np.sqrt(x.var(-1, keepdims=True) + eps)
+    xhat = (x - x.mean(-1, keepdims=True)) * inv
+    return g * xhat + b, (xhat, inv, g)
+
+def layernorm_backward(dy, cache):
+    xhat, inv, g = cache
+    d = xhat.shape[-1]
+    dg = (dy * xhat).reshape(-1, d).sum(0)
+    db = dy.reshape(-1, d).sum(0)
+    dxhat = dy * g
+    dx = inv * (dxhat - dxhat.mean(-1, keepdims=True)
+                - xhat * (dxhat * xhat).mean(-1, keepdims=True))
+    return dx, dg, db
+
+# --------------------------------------------------------------------- attention
+
+class MHA:
+    &quot;&quot;&quot;Weights act as y = W x on column vectors, so row-of-tokens code is X @ W.T.&quot;&quot;&quot;
+
+    def __init__(self, d, H, rng):
+        self.d, self.H, self.dh = d, H, d // H
+        s = d ** -0.5
+        self.p = dict(Wq=rng.normal(0, s, (d, d)), Wk=rng.normal(0, s, (d, d)),
+                      Wv=rng.normal(0, s, (d, d)), Wo=rng.normal(0, s, (d, d)),
+                      bq=rng.normal(0, .1, d), bk=rng.normal(0, .1, d),
+                      bv=rng.normal(0, .1, d), bo=rng.normal(0, .1, d))
+
+    def _split(self, Z):                 # (T,d) -&gt; (H,T,dh)
+        return Z.reshape(Z.shape[0], self.H, self.dh).transpose(1, 0, 2)
+
+    def _merge(self, Z):                 # (H,T,dh) -&gt; (T,d)
+        return Z.transpose(1, 0, 2).reshape(-1, self.d)
+
+    def forward(self, X, causal=True, cache=None, offset=0):
+        &quot;&quot;&quot;cache=None: full forward. cache={&#x27;K&#x27;:...,&#x27;V&#x27;:...}: append this step&#x27;s K,V
+        and attend over everything stored. offset = absolute index of X[0].&quot;&quot;&quot;
+        p = self.p
+        Q = self._split(X @ p[&quot;Wq&quot;].T + p[&quot;bq&quot;])
+        K = self._split(X @ p[&quot;Wk&quot;].T + p[&quot;bk&quot;])
+        V = self._split(X @ p[&quot;Wv&quot;].T + p[&quot;bv&quot;])
+        if cache is not None:
+            if cache[&quot;K&quot;] is not None:
+                K = np.concatenate([cache[&quot;K&quot;], K], axis=1)
+                V = np.concatenate([cache[&quot;V&quot;], V], axis=1)
+            cache[&quot;K&quot;], cache[&quot;V&quot;] = K, V
+        S = (Q @ K.transpose(0, 2, 1)) / np.sqrt(self.dh)        # (H,Tq,Tk)
+        if causal:
+            i = np.arange(S.shape[1])[:, None] + offset
+            j = np.arange(S.shape[2])[None, :]
+            # MASK THEN SOFTMAX: additive -inf on logits, never a multiply on the
+            # probabilities. Zeroing after softmax leaves the denominator wrong.
+            S = np.where(j &lt;= i, S, -np.inf)
+        A = softmax(S)
+        Ctx = self._merge(A @ V)
+        self.cache = (X, Q, K, V, A, Ctx)
+        return Ctx @ p[&quot;Wo&quot;].T + p[&quot;bo&quot;]
+
+    def backward(self, dO):
+        X, Q, K, V, A, Ctx = self.cache
+        p, g = self.p, {}
+        g[&quot;Wo&quot;], g[&quot;bo&quot;] = dO.T @ Ctx, dO.sum(0)
+        dCtx = self._split(dO @ p[&quot;Wo&quot;])
+        dA = dCtx @ V.transpose(0, 2, 1)
+        dV = A.transpose(0, 2, 1) @ dCtx
+        dS = softmax_backward(dA, A) / np.sqrt(self.dh)
+        dQ, dK = dS @ K, dS.transpose(0, 2, 1) @ Q
+        dX = np.zeros_like(X)
+        for nm, dZ in ((&quot;q&quot;, self._merge(dQ)), (&quot;k&quot;, self._merge(dK)),
+                       (&quot;v&quot;, self._merge(dV))):
+            g[&quot;W&quot; + nm], g[&quot;b&quot; + nm] = dZ.T @ X, dZ.sum(0)
+            dX = dX + dZ @ p[&quot;W&quot; + nm]
+        return dX, g
+
+class Block:
+    &quot;&quot;&quot;Pre-norm: h = x + Attn(LN(x)); y = h + FFN(LN(h)). The residual stream is never
+    normalized in place -- each sublayer reads a normalized copy of it and writes back
+    an unnormalized increment.&quot;&quot;&quot;
+
+    def __init__(self, d, H, dff, rng):
+        self.attn = MHA(d, H, rng)
+        self.p = dict(g1=np.ones(d), b1=np.zeros(d), g2=np.ones(d), b2=np.zeros(d),
+                      W1=rng.normal(0, d ** -0.5, (dff, d)), c1=np.zeros(dff),
+                      W2=rng.normal(0, dff ** -0.5, (d, dff)), c2=np.zeros(d))
+
+    def forward(self, X, cache=None, offset=0):
+        p = self.p
+        n1, c1 = layernorm(X, p[&quot;g1&quot;], p[&quot;b1&quot;])
+        h = X + self.attn.forward(n1, cache=cache, offset=offset)
+        n2, c2 = layernorm(h, p[&quot;g2&quot;], p[&quot;b2&quot;])
+        u = n2 @ p[&quot;W1&quot;].T + p[&quot;c1&quot;]
+        a = gelu(u)
+        self.cache = (c1, c2, n2, u, a)
+        return h + a @ p[&quot;W2&quot;].T + p[&quot;c2&quot;]
+
+    def backward(self, dY):
+        p, (c1, c2, n2, u, a) = self.p, self.cache
+        g = {&quot;W2&quot;: dY.T @ a, &quot;c2&quot;: dY.sum(0)}
+        du = (dY @ p[&quot;W2&quot;]) * gelu_grad(u)
+        g[&quot;W1&quot;], g[&quot;c1&quot;] = du.T @ n2, du.sum(0)
+        dh, g[&quot;g2&quot;], g[&quot;b2&quot;] = layernorm_backward(du @ p[&quot;W1&quot;], c2)
+        dh = dh + dY                                   # residual around the FFN
+        dn1, ga = self.attn.backward(dh)
+        dX, g[&quot;g1&quot;], g[&quot;b1&quot;] = layernorm_backward(dn1, c1)
+        return dX + dh, {**g, **{&quot;attn.&quot; + k: v for k, v in ga.items()}}
+
+    def params(self):
+        return {**self.p, **{&quot;attn.&quot; + k: v for k, v in self.attn.p.items()}}
+
+# --------------------------------------------------------------------- checks
+
+def check_scaling(rng, dk=64, n=200_000):
+    q, k = rng.normal(size=(n, dk)), rng.normal(size=(n, dk))
+    raw = (q * k).sum(1)
+    print(f&quot;  Var(q.k)          = {raw.var():8.3f}   (predicted d_k = {dk})&quot;)
+    print(f&quot;  Var(q.k/sqrt(dk)) = {(raw / np.sqrt(dk)).var():8.3f}   (predicted 1.000)&quot;)
+    lo = softmax(raw[:8][None, :])[0].max()
+    hi = softmax(raw[:8][None, :] / np.sqrt(dk))[0].max()
+    print(f&quot;  max prob over 8 keys: unscaled {lo:.4f}  scaled {hi:.4f}&quot;)
+
+def check_torch(blk, X, d, H):
+    if torch is None:
+        print(&quot;  [skipped: torch not installed]&quot;)
+        return
+    m = nn.MultiheadAttention(d, H, batch_first=True, dtype=torch.float64)
+    p, T = blk.attn.p, X.shape[0]
+    with torch.no_grad():
+        m.in_proj_weight.copy_(torch.tensor(np.concatenate([p[&quot;Wq&quot;], p[&quot;Wk&quot;], p[&quot;Wv&quot;]])))
+        m.in_proj_bias.copy_(torch.tensor(np.concatenate([p[&quot;bq&quot;], p[&quot;bk&quot;], p[&quot;bv&quot;]])))
+        m.out_proj.weight.copy_(torch.tensor(p[&quot;Wo&quot;]))
+        m.out_proj.bias.copy_(torch.tensor(p[&quot;bo&quot;]))
+        mask = torch.triu(torch.full((T, T), float(&quot;-inf&quot;), dtype=torch.float64), 1)
+        t = torch.tensor(X)[None]
+        ref, _ = m(t, t, t, attn_mask=mask, need_weights=False)
+    err = np.abs(blk.attn.forward(X) - ref[0].numpy()).max()
+    print(f&quot;  max|numpy - torch.nn.MultiheadAttention| = {err:.3e}&quot;)
+    assert err &lt; 1e-9, err
+
+def check_backward(blk, X, G, rng, k=4, eps=1e-6):
+    Y = blk.forward(X)
+    dX, grads = blk.backward(G)
+    def loss():
+        return np.sum(blk.forward(X) * G)
+    worst = 0.0
+    targets = [(P, grads[nm]) for nm, P in blk.params().items()] + [(X, dX)]
+    for P, gm in targets:
+        for _ in range(k):
+            ix = tuple(rng.integers(0, s) for s in P.shape)
+            old = P[ix]
+            P[ix] = old + eps; lp = loss()
+            P[ix] = old - eps; lm = loss()
+            P[ix] = old
+            num = (lp - lm) / (2 * eps)
+            worst = max(worst, abs(num - gm[ix]) / max(1.0, abs(num)))
+    print(f&quot;  worst relative grad error, {k} coords per tensor = {worst:.3e}&quot;)
+    assert worst &lt; 1e-6, worst
+    return Y
+
+def check_kv_cache(blk, X, Y_full):
+    &quot;&quot;&quot;The assertion that catches real cache bugs: token-at-a-time decoding must
+    reproduce the full-sequence forward exactly, offset in the causal mask included.&quot;&quot;&quot;
+    cache, rows = {&quot;K&quot;: None, &quot;V&quot;: None}, []
+    for t in range(X.shape[0]):
+        rows.append(blk.forward(X[t:t + 1], cache=cache, offset=t)[0])
+    err = np.abs(np.stack(rows) - Y_full).max()
+    print(f&quot;  max|cached decode - full recompute| = {err:.3e}&quot;)
+    assert err &lt; 1e-6, err
+
+def flop_table(d=768, H=12, dff=None):
+    dff = dff or 4 * d
+    print(f&quot;  d_model={d} heads={H} d_head={d//H} d_ff={dff}  (one block, fwd, 2 FLOP/MAC)&quot;)
+    print(f&quot;  {&#x27;n&#x27;:&gt;6} {&#x27;QKVO 8nd^2&#x27;:&gt;14} {&#x27;FFN 4n d dff&#x27;:&gt;15} {&#x27;attn 4n^2 d&#x27;:&gt;15} {&#x27;ratio&#x27;:&gt;7}&quot;)
+    for n in (128, 512, 1024, 2048, 3072, 4096, 8192, 16384):
+        qkvo, ffn, att = 8 * n * d * d, 4 * n * d * dff, 4 * n * n * d
+        print(f&quot;  {n:&gt;6} {qkvo:&gt;14,} {ffn:&gt;15,} {att:&gt;15,} {att/ffn:&gt;7.3f}&quot;)
+    print(f&quot;  attn == FFN at n = d_ff = {dff} = {dff//d}*d_model&quot;)
+    print(f&quot;  attn == all linear terms at n = 2d + d_ff = {2*d + dff}&quot;)
+
+def kv_cache_table(d=4096, H=32, L=32, n=8192, bytes_per=2):
+    dh = d // H
+    print(f&quot;  d={d} H={H} d_head={dh} L={L} n={n}  fp16 KV cache, one sequence&quot;)
+    for name, Hkv in ((&quot;MHA (H_kv=32)&quot;, 32), (&quot;GQA (H_kv=8)&quot;, 8), (&quot;GQA (H_kv=4)&quot;, 4),
+                      (&quot;MQA (H_kv=1)&quot;, 1)):
+        b = 2 * L * n * Hkv * dh * bytes_per
+        print(f&quot;  {name:&lt;16} {b/2**30:8.3f} GiB   reduction {H/Hkv:5.1f}x&quot;)
+
+def main():
+    rng = np.random.default_rng(0)
+    d, H, dff, T = 32, 4, 64, 12
+    blk = Block(d, H, dff, rng)
+    X, G = rng.normal(size=(T, d)), rng.normal(size=(T, d))
+    print(&quot;[1] scaling factor and logit variance&quot;)
+    check_scaling(rng)
+    print(&quot;[2] forward vs torch.nn.MultiheadAttention (transplanted weights)&quot;)
+    check_torch(blk, X, d, H)
+    print(&quot;[3] backward vs central finite differences&quot;)
+    Y = check_backward(blk, X, G, rng)
+    print(&quot;[4] KV-cached incremental decode vs full recompute&quot;)
+    check_kv_cache(blk, X, Y)
+    print(&quot;[5] FLOP accounting&quot;)
+    flop_table()
+    print(&quot;[6] KV-cache economics&quot;)
+    kv_cache_table()
+    print(&quot;all checks passed&quot;)
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+<p>Running it: the empirical logit variance is $63.770$ against the predicted $d_k = 64$, and $0.996$ after scaling; the largest of 8 attention weights falls from $0.9998$ to $0.5119$, which is the saturation argument of Section 18.2.1 measured. The forward pass matches torch to $8.882\times10^{-16}$ in float64, the worst relative gradient error over four sampled coordinates per tensor is $6.474\times10^{-9}$, and cached decoding reproduces the full forward to $8.882\times10^{-16}$ &mdash; exactly, not approximately, because the arithmetic is identical, just reordered. The FLOP table crosses over at $n = 3072 = 4d$ for $d = 768$, with the attention/FFN ratio running $0.042$ at $n=128$, $1.000$ at $n=3072$, and $5.333$ at $n=16384$.</p></div>
+
+<div class="encrypted-note"><div class="box-title">Under Encryption</div><p>Softmax is the hardest single operation in an encrypted transformer, and it is hard three times over. It needs an exponential, which is not a polynomial and must be approximated on a bounded range; a division by a data-dependent sum, which under CKKS means an iterative inverse (Goldschmidt or Newton) costing several multiplicative levels; and a maximum subtraction for numerical stability, which is a comparison &mdash; the single most expensive primitive in homomorphic arithmetic, since comparison is a step function and needs a deep composite-polynomial approximation. The matmuls on either side, $QK^{\top}$ and $AV$, are the one thing FHE does well.</p>
+<p>This is why every system in Chapter 40 is structurally a different answer to the same question about softmax: approximate it polynomially, hand it to a garbled circuit or a secure two-party protocol, or abandon it. Some abandon it &mdash; replacing $\mathrm{softmax}(s)$ with a normalized $\mathrm{ReLU}(s)$ or a plain quadratic, both worse in the clear but evaluable under encryption at a fraction of the depth. Note that the mask is free: adding $-\infty$ (in practice, a large negative plaintext constant) to a ciphertext logit is a plaintext addition, depth zero. Chapter 38 does the depth arithmetic for one attention block, and Chapter 39 takes up the approximation problem in detail.</p></div>
+
+<div class="key-takeaways"><div class="kt-title">Key Takeaways</div>
+<ul>
+<li>Attention is soft dictionary lookup: $\mathrm{softmax}(QK^{\top}/\sqrt{d_k})V$ produces a convex combination of value rows, so it can interpolate among stored values but never extrapolate beyond them. <span class="tag tag-certain">Certain</span></li>
+<li>The $1/\sqrt{d_k}$ factor exists solely to keep logit variance at $\Theta(1)$ at initialization, because $\mathrm{Var}(q^{\top}k) = d_k$ and a saturated softmax has a vanishing Jacobian $\mathrm{diag}(p) - pp^{\top}$. <span class="tag tag-certain">Certain</span></li>
+<li>Mask by adding $-\infty$ to logits, never by multiplying the probabilities: the second version leaves the softmax denominator wrong, trains anyway, and silently converges worse. <span class="tag tag-certain">Certain</span></li>
+<li>A block costs $12d^2 + 13d$ parameters and $8nd^2 + 4nd\,d_{\text{ff}} + 4n^2d$ forward FLOPs; the quadratic term overtakes the FFN at $n = d_{\text{ff}} = 4d$ and all linear terms at $n = 6d$. <span class="tag tag-certain">Certain</span></li>
+<li>GQA at $H_{kv} = 8$ cuts the KV cache $4\times$ (MQA, $32\times$) at little measured quality cost, but whether head-count reduction or low-rank latent caching is the right axis is unsettled and needs a matched-cache-byte comparison. <span class="tag tag-contested">Contested</span></li>
+</ul>
+</div>
+</div>
