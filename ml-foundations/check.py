@@ -60,7 +60,12 @@ def _as_flat_list(x):
 
 
 def _close(got, expected, tol):
-    """|got - expected| < tol, elementwise for array-likes."""
+    """|got - expected| < tol, elementwise for array-likes.
+
+    tol=0.0 means "bit-exact" and is compared with <=, not <; otherwise a
+    request for exact equality could never be satisfied by any input.
+    """
+    cmp = (lambda d: d <= tol) if tol == 0 else (lambda d: d < tol)
     g_flat = _as_flat_list(got)
     e_flat = _as_flat_list(expected)
 
@@ -70,7 +75,7 @@ def _close(got, expected, tol):
         worst = 0.0
         for a, b in zip(g_flat, e_flat):
             worst = max(worst, abs(a - b))
-        return worst < tol, f"max|diff| = {worst:.3e}"
+        return cmp(worst), f"max|diff| = {worst:.3e}"
 
     if g_flat is not None or e_flat is not None:
         return False, "one side is array-like and the other is not"
@@ -79,7 +84,7 @@ def _close(got, expected, tol):
         diff = abs(float(got) - float(expected))
     except (TypeError, ValueError):
         return False, "not numeric"
-    return diff < tol, f"|diff| = {diff:.3e}"
+    return cmp(diff), f"|diff| = {diff:.3e}"
 
 
 def check(name, got, expected=True, tol=None):
