@@ -23,8 +23,8 @@ def softmax(z, axis=-1):
     return e / np.sum(e, axis=axis, keepdims=True)
 
 def softmax_backward(dA, A, axis=-1):
-    """JVP for p = softmax(s): ds = p * (dp - <dp, p>). This is J = diag(p) - p p^T
-    contracted with dp, done without ever forming the T x T Jacobian."""
+    """VJP for p = softmax(s): ds = p * (dp - <dp, p>). This is dp contracted with
+    J = diag(p) - p p^T, done without ever forming the T x T Jacobian."""
     return A * (dA - np.sum(dA * A, axis=axis, keepdims=True))
 
 def gelu(x):
