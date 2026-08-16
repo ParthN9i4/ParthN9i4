@@ -27,7 +27,16 @@ _pass = _fail = 0
 
 
 def _as_flat_list(x):
-    """Flatten anything array-like to a plain list of floats. Returns None if it isn't."""
+    """Flatten anything array-like to a plain list of floats. Returns None if it isn't.
+
+    Numpy SCALARS (np.float64, and any 0-d array) must be treated as scalars, not
+    as one-element arrays: they carry .ravel() and .tolist() just like a real
+    array, so a naive duck-type check classifies np.float64(1.5) as array-like
+    while the plain float 1.5 is not, and every comparison between the two then
+    fails with "one side is array-like and the other is not".
+    """
+    if getattr(x, "ndim", None) == 0:
+        return None
     # numpy array (or anything with .ravel()/.tolist()) without importing numpy
     if hasattr(x, "ravel") and hasattr(x, "tolist"):
         try:
