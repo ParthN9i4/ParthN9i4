@@ -36,3 +36,9 @@ activations, `tier4_fherma/ex17-18` for challenge preparation.
 This file is only useful if it is pushed. A session that cannot push must not end
 quietly: it should say so plainly and send the updated log back through the chat so the
 day's record survives outside the repository.
+
+## 2026-08-21 — Chapter 1: Modular Arithmetic and Algebraic Structures
+Exercise assigned: tier0_math/ex01_modular_arith.py (reference solutions present; task = blank and re-derive ntt(), watch the psi=2 rejection test and the schoolbook-convolution cross-check)
+Answers: pending — three checking questions posed (RNS vs comparison; why omega^(N/2)=-1 is needed in the butterfly; discrete Gaussian vs bounded-uniform noise). Parth had not yet answered when the day's Routine fired.
+Weak spots: unknown yet — first recorded session. Parth confirmed starting from Chapter 1 (no reliable coverage from the lost 2026-08-07..18 sessions).
+Revisit next time: open with his answers to the three Ch1 questions before starting Chapter 2 (Polynomial Rings and Cyclotomic Fields).
