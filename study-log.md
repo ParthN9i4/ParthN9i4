@@ -48,3 +48,9 @@ Exercise assigned: tier0_math/ex02_ring_poly.py (re-derive poly_mul_ntt; watch t
 Answers: pending — 3 new questions (NTT domain vs plaintext slots; canonical vs coefficient norm; psi-twist sign mechanism). Ch1's 3 questions still open, carried forward.
 Weak spots: none observable yet (no answers received in two sessions).
 Revisit next time: all six open questions (Ch1 Q1-3, Ch2 Q1-3) before starting Ch3 (Lattices and Hard Problems).
+
+## 2026-08-23 — Chapter 3: Lattices and Hard Problems
+Exercise assigned: implement LLL from scratch (book Artifact 3.1) — verify reduced norms ~33.3/59.7 and det 1957 on bad basis [(1731,512),(1264,375)]. Note: ex03_lwe.py is Ch4 material, deferred to next session.
+Answers: pending — day 3, no answers received. Nine questions open (Ch1 Q1-3, Ch2 Q1-3, Ch3 Q1-3).
+Weak spots: none observable (no responses yet).
+Revisit next time: if still no answers, pause new material and run a consolidated Ch1-3 review instead of teaching Ch4.
