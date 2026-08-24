@@ -54,3 +54,9 @@ Exercise assigned: implement LLL from scratch (book Artifact 3.1) — verify red
 Answers: pending — day 3, no answers received. Nine questions open (Ch1 Q1-3, Ch2 Q1-3, Ch3 Q1-3).
 Weak spots: none observable (no responses yet).
 Revisit next time: if still no answers, pause new material and run a consolidated Ch1-3 review instead of teaching Ch4.
+
+## 2026-08-24 — Consolidated review of Ch1-3 (no new chapter)
+Exercise assigned: none new; invited pushing partial ex01/ex02/LLL work for code review.
+Answers: pending, day 4. Nine open questions compressed into a six-item quick-reply check in chat.
+Weak spots: engagement is the risk; no misconception observable yet.
+Revisit next time: the six-item check. Resume Ch4 (LWE, ex03_lwe.py) once any answers arrive; if silence persists two more sessions, propose restructuring the format (weekly quiz / exercises-only / teach-only) before continuing.
