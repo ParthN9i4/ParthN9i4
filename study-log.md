@@ -60,3 +60,9 @@ Exercise assigned: none new; invited pushing partial ex01/ex02/LLL work for code
 Answers: pending, day 4. Nine open questions compressed into a six-item quick-reply check in chat.
 Weak spots: engagement is the risk; no misconception observable yet.
 Revisit next time: the six-item check. Resume Ch4 (LWE, ex03_lwe.py) once any answers arrive; if silence persists two more sessions, propose restructuring the format (weekly quiz / exercises-only / teach-only) before continuing.
+
+## 2026-08-25 — Chapter 4: Learning With Errors
+Exercise assigned: tier0_math/ex03_lwe.py (re-derive encrypt_lwe/decrypt_lwe; watch the 100/100 safe-regime test and the 39% broken-regime demo; try the wrong number-line decryption once deliberately)
+Answers: pending — day 5 of silence. Open: six-item Ch1-3 consolidated check + Ch4 Q1-3.
+Weak spots: none observable (no responses yet).
+Revisit next time: all open items. If next session is also silent, propose format restructuring (weekly quiz / exercises-only / teach-only) before teaching Ch5 (Ring-LWE).
