@@ -77,3 +77,16 @@ Verified numerically: canonical vs coefficient norm for a=1+X+X^2+X^3 at N=4 —
 Weak spots: still unmeasured — answers were supplied by me, not produced by Parth. Next session should spot-check
   retention with one or two quick questions before teaching, rather than assuming Ch1-4 is consolidated.
 Revisit next time: start Ch5 (Ring-LWE) with a brief retention check on the psi-twist sign and on alpha=sigma/q.
+
+## 2026-08-27 — Chapter 5: Ring-LWE and the Path to Practicality
+Exercise assigned: tier0_math/ex04_rlwe.py (re-derive encrypt_rlwe/decrypt_rlwe; watch fresh noise 3 -> 18 after addition;
+  also read Artifact 5.1's he_mul for the exact-integer tensor product before t/q rescale)
+Verified numerically: f(5)=x^2+x mod 8 = 6; depth formula d ~ [log(q/2t)-log B]/log(tN) gives 3.5 / 12.0 / 25.3
+  at log2 q = 60 / 200 / 438 (N=2^12/2^13/2^14, t=8, B=10) — consistent with "real deployments reach depth 20+".
+Asked: two retention checks (A: psi^N = -1 as source of negacyclic sign; B: which of q=2^27 vs 2^54 at n=1024 is
+  more secure and what the other buys) plus Ch5 Q1-3 (lost independence -> ideal-lattice assumption; why the t/q
+  rescale leaves one delta and makes C ~ tN independent of q; why raising q is a poor route to depth 30).
+Answers: pending.
+Weak spots: still unmeasured — Ch1-4 was delivered as model answers, never tested against Parth's own reasoning.
+  The retention checks A/B are the first real signal; prioritize them over the Ch5 questions if his time is short.
+Revisit next time: A/B first, then Ch5 Q1-3. Next chapter: Ch6 (The Arc of Homomorphic Encryption), opening Part II.
