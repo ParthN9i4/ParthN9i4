@@ -90,3 +90,13 @@ Answers: pending.
 Weak spots: still unmeasured — Ch1-4 was delivered as model answers, never tested against Parth's own reasoning.
   The retention checks A/B are the first real signal; prioritize them over the Ch5 questions if his time is short.
 Revisit next time: A/B first, then Ch5 Q1-3. Next chapter: Ch6 (The Arc of Homomorphic Encryption), opening Part II.
+
+## 2026-08-28 — Chapter 6: The Arc of Homomorphic Encryption
+No ring-arithmetic exercise pairs with this chapter (historical/conceptual). Assigned a written comparison
+  (Paillier vs Ch5 RLWE SHE noise walls, per book's Artifact 6.1) — doubles as a second attempt at Ch5 Q1.
+Housekeeping: installed tenseal in this environment; verified tier1_ckks/ex06_first_encrypt.py runs 4/4 —
+  ready for when the daily sessions reach real CKKS material (~Ch10).
+Answers: pending. Open backlog: retention checks A (psi^N sign) / B (alpha=sigma/q), Ch5 Q1-3, Ch6 Q1-3.
+Weak spots: unmeasured across seven sessions — the accumulating backlog is itself the primary signal now.
+Revisit next time: full backlog above. If next session is also silent despite the 2026-08-26 "catch up now,
+  continue daily" decision, raise the format question again explicitly rather than silently repeating the pattern.
