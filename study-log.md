@@ -100,3 +100,15 @@ Answers: pending. Open backlog: retention checks A (psi^N sign) / B (alpha=sigma
 Weak spots: unmeasured across seven sessions — the accumulating backlog is itself the primary signal now.
 Revisit next time: full backlog above. If next session is also silent despite the 2026-08-26 "catch up now,
   continue daily" decision, raise the format question again explicitly rather than silently repeating the pattern.
+
+## 2026-08-29 — Chapter 7: The Noise Barrier
+Exercise: ran tier1_ckks/ex09_depth_limit.py live (5/5) — depth-1 CKKS context squares once, second squaring
+  raises "ValueError: scale out of bounds" (the noise-budget-crosses-zero moment, concretely). Also pointed to
+  the book's own Artifact 7.1 (instruments Ch5's toy RLWE scheme, logs noise budget bit-by-bit across levels).
+Verified numerically: log2(tn) = log2(1024*4096) = 22 exactly, matching Result 7.1's per-level cost claim.
+Format adjustment (own initiative, not confirmed by Parth): eight sessions with no answers. Reduced today to
+  ONE focused checking question instead of the usual three, and stopped re-listing the full accumulated backlog
+  verbatim each session (it was burying the current question). Backlog still exists but isn't restated in full.
+Answers: pending.
+Weak spots: unmeasured across eight sessions.
+Revisit next time: the one Ch7 question takes priority over older backlog. Next chapter: Ch8 (BFV).
