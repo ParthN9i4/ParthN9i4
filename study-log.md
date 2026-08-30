@@ -112,3 +112,17 @@ Format adjustment (own initiative, not confirmed by Parth): eight sessions with 
 Answers: pending.
 Weak spots: unmeasured across eight sessions.
 Revisit next time: the one Ch7 question takes priority over older backlog. Next chapter: Ch8 (BFV).
+
+## 2026-08-30 — Chapter 8: BFV — Exact Arithmetic, Scale-Invariant
+No dedicated exercise file pairs with Ch8/BFV in fhe-foundations (SEAL not installed in this environment).
+Built and ran a from-scratch toy BFV (N=16, q=12289, t=8) verifying: fresh encrypt/decrypt round-trip on all
+  8 messages; tensor->rescale-and-round->decrypt gives exactly 5*3=7 mod 8; noise budget 7.00 bits fresh ->
+  1.88 bits after one multiplication (pre-relinearization) — confirms Result 8.1's shape at toy scale.
+  Deliberately did NOT implement relinearization (Definition 8.5), which makes the point concrete: chaining
+  a second multiplication is literally undefined without it (no degree-3 decrypt path).
+Asked: one question (why ring dimension n is simultaneously the price of security and the driver of a larger
+  per-multiplication noise cost O(tn) — same design choice or unrelated?).
+Answers: pending.
+Weak spots: unmeasured.
+Revisit next time: today's question; Ch1-7 backlog held but not restated in full. Next: Ch9 (BGV), direct
+  point-by-point comparison to today's BFV derivation (modulus switching vs scale-invariance).
