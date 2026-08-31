@@ -126,3 +126,21 @@ Answers: pending.
 Weak spots: unmeasured.
 Revisit next time: today's question; Ch1-7 backlog held but not restated in full. Next: Ch9 (BGV), direct
   point-by-point comparison to today's BFV derivation (modulus switching vs scale-invariance).
+
+## 2026-08-31 — Chapter 9: BGV — Exact Arithmetic, Modulus Switching
+No dedicated exercise file for BGV either (OpenFHE not installed). Built a toy BGV implementation structurally
+  parallel to Ch8's BFV toy (same N=16, t=8) for direct A/B comparison. Verified: fresh round-trip on all 8
+  messages under m+te relation; homomorphic 5*3=7 mod 8 with NO rescale-and-round step (contrast BFV, which
+  needs one); modulus switching q=2^60 -> q'=2^38 (22-bit drop) preserves message, noise budget 53.42 -> 34.00
+  bits (consistent with Prop 9.1's "budget falls by ~log2(kappa) bits, permanently").
+Taught: why BGV's pre-switch t^2*e*e' term survives (no rescale to kill it) making growth proportional to
+  current noise E, vs BFV's constant-factor tn growth — the actual reason modulus switching is MANDATORY for
+  BGV but optional for BFV, not just a different API for the same math.
+Asked: one question — at what point (what condition on E relative to t/n/q) does BGV's proportional growth
+  actually diverge from BFV's constant growth; toy's tiny error bound (+-1) made the two look similar (53.4->49.4,
+  only 4 bits) since t^2*E*E' was negligible at that noise scale.
+Answers: pending.
+Weak spots: unmeasured.
+Revisit next time: today's question + Ch8's question (why n is both security's price and noise-cost's driver) —
+  these pair naturally. Next: Ch10 (CKKS) — most directly relevant to Parth's stated research focus
+  (depth-optimal polynomial approximation of activations).
