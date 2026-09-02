@@ -163,3 +163,24 @@ Answers: pending.
 Weak spots: unmeasured across eleven sessions.
 Revisit next time: today's question + Ch8/9's paired question on ring dimension n (still open). Next: Ch11
   (TFHE and Programmable Bootstrapping) — flag as a genuine architectural detour from the CKKS track.
+
+## 2026-09-02 — Chapter 11: TFHE and Programmable Bootstrapping
+Genuine architectural detour from the BFV/BGV/CKKS lineage, flagged as such. Installed concrete-ml v1.9.0 fresh
+  in this environment (worked cleanly) and ran the book's own Artifact 11.1 for real, not just described:
+  XGBoost (n_estimators=20, max_depth=3, n_bits=6) on sklearn breast-cancer data. compile() took 5.8s.
+  clear-quantized acc 97.37%, simulate acc 97.37% (match), FHE-execute acc 100% on n=5 (~4s/sample),
+  simulate vs FHE-execute predictions IDENTICAL on the tested slice — confirms book's claim that TFHE/PBS is
+  exact w.r.t. the quantized model (not approximate like CKKS); all accuracy loss vs full-precision XGBoost
+  comes from quantization, not FHE evaluation.
+Taught: programmable bootstrapping evaluates arbitrary LUTs (not just polynomials) — the capability CKKS
+  structurally lacks, which is *why* polynomial-approximation research (Parth's focus) is necessary for CKKS
+  specifically; TFHE's compile-time bit-width failure vs CKKS's silent scale-mismatch failure, contrasted
+  directly against last session's Ch10 content; the CKKS-vs-TFHE-vs-mixed workload decision procedure.
+Asked: one question connecting TFHE's LUT capability to Parth's own research value proposition directly —
+  is activation evaluation a "summing many products" or "many small decisions" problem in TFHE's terms, and
+  what does his polynomial-approximation work let a CKKS pipeline avoid that isn't already solved by just
+  switching to TFHE for that one piece.
+Answers: pending.
+Weak spots: unmeasured across twelve sessions.
+Revisit next time: today's question + Ch8/9 (ring dimension n) + Ch10 (CKKS vs BFV/BGV noise-handling) — all
+  still open. Next: Ch12 (Bootstrapping — turning leveled HE into fully HE), completes the CKKS/TFHE contrast.
