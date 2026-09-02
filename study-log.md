@@ -144,3 +144,22 @@ Weak spots: unmeasured.
 Revisit next time: today's question + Ch8's question (why n is both security's price and noise-cost's driver) —
   these pair naturally. Next: Ch10 (CKKS) — most directly relevant to Parth's stated research focus
   (depth-optimal polynomial approximation of activations).
+
+## 2026-09-01 — Chapter 10: CKKS — Approximate Arithmetic, the ML Workhorse
+Most directly relevant chapter yet to Parth's stated research (depth-optimal polynomial approximation of
+  activations). Verified numerically rather than just asserted:
+  - canonical embedding slot pairing: zeta^15 = conj(zeta^1) exactly at N=8, confirming slot 0 pairs with N-1
+  - book's own Artifact 10.1 (ax^2+bx+c, N=8192, chain [60,40,40,60], Delta=2^40) reproduced exactly:
+    max abs error 1.93e-6, mean abs error 5.39e-7 (within book's stated 1e-3..1e-5 "expect" range, actually better)
+  - deliberately exceeded a 2-level TenSEAL context's depth budget (3rd squaring) -> "ValueError: scale out of
+    bounds", same error class as Ch7's ex09_depth_limit.py, now from CKKS's dual-purpose rescale specifically
+Exercise: ran tier1_ckks/ex07_dot_product.py (4/4, error 1.64e-6) and ex08_polynomial.py (6/6) live.
+  Assigned Parth a hands-on task: construct the depth-imbalanced-branch bug pattern himself (x*x*x at 2 levels
+  vs a fresh constant at 0 levels, try adding directly) and observe whether TenSEAL errors, auto-aligns, or
+  misbehaves silently.
+Asked: one question — what decryption's final step does DIFFERENTLY to noise in CKKS vs BFV/BGV (not "how much"
+  noise), and why that specific difference makes a wrong CKKS answer look plausible rather than obviously broken.
+Answers: pending.
+Weak spots: unmeasured across eleven sessions.
+Revisit next time: today's question + Ch8/9's paired question on ring dimension n (still open). Next: Ch11
+  (TFHE and Programmable Bootstrapping) — flag as a genuine architectural detour from the CKKS track.
