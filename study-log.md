@@ -210,3 +210,29 @@ Weak spots: unmeasured across thirteen sessions.
 Revisit next time: today's question + Ch8/9 (ring dimension n) + Ch10 (CKKS vs BFV/BGV noise handling) +
   Ch11 (TFHE-vs-CKKS value prop for his research) — all still open. Next: Ch13 (Packing, SIMD, Rotations,
   Relinearization, and Key Switching) — completes Part II.
+
+## 2026-09-04 — Chapter 13: Packing, SIMD, Rotations, Relinearization, Key Switching
+Part II complete. Verified live with TenSEAL (already installed):
+  - .matmul() on a 16x16 random W: initially got max error 10.8 assuming W@x convention — WRONG. TenSEAL's
+    matmul uses x^T@W (row-vector convention). Corrected: max abs error 1.42e-06, 43.3ms. Genuinely useful
+    self-caught bug, presented to Parth as a debugging-habit lesson (verify library matmul convention on a
+    tiny known case before trusting it on real weights).
+  - .sum() (TenSEAL's hidden rotate-and-sum): decrypted -9.256611 vs true sum -9.256610; confirmed the
+    defining broadcast property (every slot holds the total, not just slot 0).
+Taught: SIMD packing as the primary throughput lever; row/column-major vs diagonal (Halevi-Shoup) packing for
+  matvec, O(n) vs O(m log n) rotations; BSGS reducing to O(sqrt(n)); Galois automorphisms as rotation's
+  mechanism and the runtime-not-compile-time Galois-key trap (OpenFHE requires naming offsets in advance,
+  TenSEAL/SEAL default to power-of-two only); relinearization corrected as a COST choice not a correctness
+  requirement (SEAL's own basics example decrypts un-relinearized size-3 ciphertexts); key switching as the
+  single primitive unifying relinearization (s^2->s) and rotation's correction (s(X^k)->s); gadget-decomposition
+  digit count coupling to the RNS chain; FHERMA/polycircuit flagged explicitly as directly relevant to Parth's
+  stated FHERMA prep.
+Exercise: ran both verifications live; assigned extension — repeat with a rectangular (non-square) W.
+Asked: one question on whether "more depth" (bigger modulus chain) and "rotation/relin cost" are actually
+  independent knobs, given Section 13.6.1's digit-count/RNS-chain coupling.
+Answers: pending.
+Weak spots: unmeasured across fourteen sessions. Full backlog (Ch8/9 ring dimension n; Ch10 CKKS vs BFV/BGV
+  noise handling; Ch11 TFHE-vs-CKKS research value; Ch12 EvalSine/EvalCos transfer; Ch13 depth/rotation coupling)
+  all still open — none blocking, all carried forward per standing instructions.
+Revisit next time: Part II is done. Next: Ch14 (Parameter Selection and Security Standards), opening Part III —
+  FHE Engineering, the most directly practical material yet for FHERMA prep.
