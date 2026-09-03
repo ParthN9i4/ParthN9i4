@@ -184,3 +184,29 @@ Answers: pending.
 Weak spots: unmeasured across twelve sessions.
 Revisit next time: today's question + Ch8/9 (ring dimension n) + Ch10 (CKKS vs BFV/BGV noise-handling) — all
   still open. Next: Ch12 (Bootstrapping — turning leveled HE into fully HE), completes the CKKS/TFHE contrast.
+
+## 2026-09-03 — Chapter 12: Bootstrapping — Turning Leveled HE into Fully HE
+Attempted `pip install openfhe` (matches book's v1.5.1) to run Artifact 12.1 for real — package metadata
+  installs but the compiled C++ extension (openfhe.openfhe) is non-functional in this environment. Flagged
+  honestly rather than faking output. Substituted two direct verifications instead:
+  - Artifact 12.1's own depth-budget arithmetic: levelsAvailableAfterBootstrap=10, approxBootstrapDepth=8,
+    levelBudget=[4,4] -> total parameter depth 26, of which bootstrap OVERHEAD is 16 levels (62%), exceeding
+    the 10-level (38%) useful-circuit budget. Bootstrap cost is not abstract — it structurally outweighs the
+    circuit it's meant to serve at these example parameters.
+  - Confirmed live on TenSEAL: no bootstrap-shaped method exists anywhere on context or ciphertext objects;
+    a 3rd multiplication past a 2-level budget fails permanently ("scale out of bounds") — Section 12.7's
+    "SEAL/TenSEAL has no escape hatch, for any scheme" claim, verified rather than just quoted.
+Taught: Gentry's theorem precisely; bootstrappability vs circular security (Ch6 callback); CKKS's
+  ModRaise/CoeffToSlot/EvalSine-EvalCos/SlotToCoeff pipeline and why modular reduction forces a sine/cosine
+  polynomial approximation — explicitly named as structurally the SAME KIND of problem as Parth's own research
+  (polynomial approximation of activations), just applied to sin/cos instead of ReLU/GELU/sigmoid; CKKS-vs-TFHE
+  bootstrap cost table; bootstrap-vs-deepen decision checklist; library support matrix.
+Asked: one question — does Parth's polynomial-approximation research (if it yields better degree/accuracy
+  tradeoffs in general) transfer to improving CKKS's own EvalSine/EvalCos bootstrap step, or is the domain/
+  accuracy-metric different enough to block reuse? Points him at a concrete, high-value connection between his
+  research and the chapter just taught.
+Answers: pending.
+Weak spots: unmeasured across thirteen sessions.
+Revisit next time: today's question + Ch8/9 (ring dimension n) + Ch10 (CKKS vs BFV/BGV noise handling) +
+  Ch11 (TFHE-vs-CKKS value prop for his research) — all still open. Next: Ch13 (Packing, SIMD, Rotations,
+  Relinearization, and Key Switching) — completes Part II.
