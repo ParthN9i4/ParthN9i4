@@ -236,3 +236,27 @@ Weak spots: unmeasured across fourteen sessions. Full backlog (Ch8/9 ring dimens
   all still open — none blocking, all carried forward per standing instructions.
 Revisit next time: Part II is done. Next: Ch14 (Parameter Selection and Security Standards), opening Part III —
   FHE Engineering, the most directly practical material yet for FHERMA prep.
+
+## 2026-09-04 (2nd session same day, routine re-fired) — Chapter 14: Parameter Selection and Security Standards
+Verified live rather than just cited: fed TenSEAL/SEAL the book's own depth-5 example chain (320 bits total:
+  [60,40,40,40,40,40,60]) at N=8192 -> hard REJECTION ("ValueError: encryption parameters are not set correctly"),
+  matching book's claim that N=2^13 maxes at 218 bits (insufficient for 320). Same chain at N=16384 -> builds
+  fine, matching book's claim of 438-bit budget (sufficient). SEAL enforces the HomomorphicEncryption.org table
+  internally, at least for sufficiently-bad cases — genuinely useful thing to know for real deployments.
+Verified arithmetic: both worked examples exactly — depth-5 chain sums to 320 bits (5 usable levels), 3-layer
+  NN artifact chain sums to 400 bits (7 usable levels); table's N-doubling -> log2(q)-budget-doubling pattern
+  confirmed at ratio 2.00-2.02 across all five steps (2^10 through 2^15).
+Taught: parameters as a JOINT security/functionality solve (not independent knobs); the tradeoff triangle;
+  the special-prime-is-never-a-compute-level trap and the q0-is-the-END-not-the-start direction trap; full
+  CKKS parameter derivation recipe; RNS/CRT as why the API is a prime-bit-size list (triple duty: log2(q),
+  level count, scale trajectory); lattice-estimator for non-standard secret distributions (flagged as relevant
+  to Ch12's sparse-secret CKKS bootstrapping).
+Exercise: ran the security-boundary test live on the depth-5 example; assigned reproducing it on the book's
+  3-layer NN example (N=16384 chain should build, same chain at N=8192 should reject).
+Asked: one question connecting Parth's own research directly to today's material — does shaving one level off
+  activation-polynomial degree (3->2) actually move a real deployment down a full N bracket, or usually just
+  add slack within the same bracket; what property of total circuit depth determines which case applies.
+Answers: pending.
+Weak spots: unmeasured across fifteen sessions. Full Ch8-13 backlog still open, not restated verbatim.
+Revisit next time: today's question. Next: Ch15 (The Library Landscape) — likely a lighter survey chapter;
+  good natural point for a consolidated backlog check-in if silence continues.
