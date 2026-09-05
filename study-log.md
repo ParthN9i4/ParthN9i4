@@ -260,3 +260,21 @@ Answers: pending.
 Weak spots: unmeasured across fifteen sessions. Full Ch8-13 backlog still open, not restated verbatim.
 Revisit next time: today's question. Next: Ch15 (The Library Landscape) — likely a lighter survey chapter;
   good natural point for a consolidated backlog check-in if silence continues.
+
+## 2026-09-05 — Chapter 15: The Library Landscape
+Survey chapter, light session as flagged last time. Verified live: TenSEAL's 5-line dot-product artifact
+  (poly_modulus_degree=8192, chain [60,40,40,60], vectors [1,2,3,4].[5,6,7,8]) -> decrypted 70.00000891 vs
+  exact 70. Matches book's claim exactly.
+Taught: library map by scheme/bootstrap/niche; OpenFHE bootstraps CKKS+FHEW/TFHE only (NOT BGV/BFV, which
+  stay leveled even there); scheme-switching as the practical escape hatch when polynomial approximation
+  genuinely can't reach required accuracy for one function (switch that piece to TFHE); Enable(...) and
+  accumulator-overflow gotchas; TenSEAL/SEAL/OpenFHE three-way verbosity comparison on the same dot product.
+Did the consolidated check-in flagged in the 2026-09-04 log entry: compressed the growing backlog down to the
+  THREE most research-relevant open questions instead of re-listing everything (Ch12 EvalSine/EvalCos transfer;
+  Ch14 N-bracket sensitivity to shaving activation-polynomial degree; Ch8/9 ring dimension n's dual role as
+  security's price and noise-cost's driver). Full question history remains in this log's earlier entries,
+  not discarded, just not repeated verbatim each session.
+Answers: pending. Sixteen sessions running with no responses.
+Weak spots: unmeasured.
+Revisit next time: the three consolidated questions above, whenever Parth engages. Next: Ch16 (CKKS Scale and
+  Level Management in Practice) — the hands-on payoff of Ch14's parameter-selection theory.
