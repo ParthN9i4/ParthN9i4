@@ -278,3 +278,27 @@ Answers: pending. Sixteen sessions running with no responses.
 Weak spots: unmeasured.
 Revisit next time: the three consolidated questions above, whenever Parth engages. Next: Ch16 (CKKS Scale and
   Level Management in Practice) — the hands-on payoff of Ch14's parameter-selection theory.
+
+## 2026-09-06 — Chapter 16: CKKS Scale and Level Management in Practice
+Verified live, two clean results:
+  - Bug 3 (undersized Delta): Delta=2^20 -> max abs error 0.747 on ax^2+bx+c; Delta=2^40 (book default) ->
+    1.93e-06. Ratio: 386,747x worse with undersized Delta, ZERO exceptions in either case — confirms the
+    book's warning that precision-loss bugs are genuinely silent (decrypts cleanly, just wrong).
+  - Bug 2 (level mismatch): tested (x*x*x) + d where d is a fresh 0-level ciphertext vs main path at 2 levels.
+    TenSEAL AUTO-ALIGNS the levels silently, giving exact result (3.875 vs expected 3.875, no error/exception).
+    This RESOLVES the exercise assigned back in the 2026-09-01 (Ch10) session, where I speculated without
+    testing whether TenSEAL errors/auto-aligns/misbehaves — now tested: it auto-aligns. TenSEAL structurally
+    eliminates Bug 2 the same way it eliminates Bug 1 (rescale-hiding), which SEAL's explicit API does NOT do
+    (would need manual mod_switch_to_inplace).
+Taught: the three governing rules; Bug1/2/3 symptom-to-cause mapping; level diagrams as pre-implementation
+  verification (the diagram IS the Ch14 depth derivation, read backwards); OpenFHE's FIXEDMANUAL -> FLEXIBLEAUTO
+  scaling-technique ladder ("learn on manual, deploy on flexible-auto").
+Exercise: both bugs demonstrated with real measured numbers; suggested OpenFHE deliberate-bug reproduction
+  (values off by a factor of Delta, ~10^12) as a follow-up once OpenFHE is buildable in this environment.
+Asked: one question — where must TenSEAL's auto-alignment logic live relative to SEAL's explicit (non-aligning)
+  API, and what would that imply about mixing raw SEAL calls with TenSEAL objects.
+Answers: pending.
+Weak spots: unmeasured across seventeen sessions.
+Revisit next time: today's question + the three consolidated questions from 2026-09-05 (Ch12 EvalSine transfer,
+  Ch14 N-bracket sensitivity, Ch8/9 ring dimension n). Next: Ch17 (Performance Profiling and Optimization) —
+  closes out Part III's practical-engineering run before Part IV (ML applications) begins.
