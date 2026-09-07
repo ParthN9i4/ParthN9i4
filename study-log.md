@@ -302,3 +302,28 @@ Weak spots: unmeasured across seventeen sessions.
 Revisit next time: today's question + the three consolidated questions from 2026-09-05 (Ch12 EvalSine transfer,
   Ch14 N-bracket sensitivity, Ch8/9 ring dimension n). Next: Ch17 (Performance Profiling and Optimization) —
   closes out Part III's practical-engineering run before Part IV (ML applications) begins.
+
+## 2026-09-07 — Chapter 17: Performance Profiling and Optimization
+Part III complete. Most directly research-relevant chapter yet. Verified live: implemented Paterson-Stockmeyer
+  polynomial evaluation with explicit multiplicative-depth tracking (a Val wrapper incrementing .lvl on every
+  mult, mirroring Ch16's rescale-per-multiply rule), tested at degree 15 against numpy.polyval ground truth:
+  naive Horner = 15 sequential levels, Paterson-Stockmeyer = 6 levels, BOTH exactly match true value (0.400815).
+  Confirms O(d)->O(log d) depth reduction by actual execution. Noted honestly: my 6 levels doesn't hit the
+  book's tighter ~4-5 estimate for this case, likely non-minimal baby-step power scheduling in my construction —
+  flagged as an open implementation detail rather than claimed as optimal.
+Taught: cost hierarchy (multiply > rotation > encrypt/decrypt > keygen, bootstrap dwarfing all per-call);
+  Paterson-Stockmeyer's REFRAME — the real value isn't "faster fixed approximation" but "changes what degree
+  is affordable at all" at fixed depth budget, directly reframing how to think about the practical value of
+  Parth's own polynomial-approximation research; BSGS and tree-reduction as callbacks to Ch13's already-verified
+  TenSEAL behavior; rotation-key over-provisioning (gigabytes from "generate every offset just in case") as the
+  dominant memory trap; Intel HEXL (free 2-5x AVX-512 accel, build flag only) and FHERMA as concrete levers.
+Exercise: full working Paterson-Stockmeyer implementation with depth tracking in scratchpad; suggested tuning
+  block size toward book's tighter estimate, or pushing to d=31/63 to watch the gap widen.
+Asked: one question designed to make Parth revise his OWN prior Ch14 answer with new information — given that
+  PS makes high-degree affordable at near-constant depth, does that make N-bracket crossings from his research's
+  improvements MORE likely (achievable degree so much higher that small gains compound) or LESS likely (PS
+  already absorbs most of the degree increase into log-depth, little room left to reduce further)?
+Answers: pending.
+Weak spots: unmeasured across eighteen sessions.
+Revisit next time: today's question. Part III (FHE Engineering) is DONE. Next: Ch18 (The Non-Polynomial
+  Barrier), opening Part IV — Privacy-Preserving Machine Learning, where Parth's actual research area begins.
