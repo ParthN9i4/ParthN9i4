@@ -327,3 +327,30 @@ Answers: pending.
 Weak spots: unmeasured across eighteen sessions.
 Revisit next time: today's question. Part III (FHE Engineering) is DONE. Next: Ch18 (The Non-Polynomial
   Barrier), opening Part IV — Privacy-Preserving Machine Learning, where Parth's actual research area begins.
+
+## 2026-09-08 — Chapter 18: The Non-Polynomial Barrier (opens Part IV)
+THE chapter Parth's research question comes from. Ran the book's own Artifact 18.A live, exactly as specified
+  (N=16384, chain [60]+[35]*8+[60], Delta=2^35, x in linspace(-6,6,16)):
+  - Step 1: confirmed hasattr(enc_x, 'relu') == False — structural absence, not a missing convenience method.
+  - Step 2: degree-4 least-squares ReLU fit, max abs error in-range [-6,6] = 0.1806 (book: ~1.8e-1, exact match)
+  - Step 3: degree-8 fit, max abs error = 0.0880 (book: ~9e-2, exact match). Ratio 2.05x — book's "factor of two,
+    not an order of magnitude" confirmed precisely.
+  - Out-of-range: degree-8 poly at x=9 (true ReLU=9) -> -64.56 (wrong SIGN and magnitude). At x=-9 (true=0) ->
+    -73.56. Observation 18.2 (approximation quality is a statement about an interval, not a function) made
+    fully concrete with real numbers, not just cited.
+Taught: the structural (CKKS) vs economic (BFV/BGV finite-domain) distinction in why non-polynomial functions
+  are unreachable; "matmul isn't the hard part, activations are" as the central misconception to kill; x^2 as
+  the one activation CKKS was "made for"; the three crossing strategies (polynomial approx / TFHE-PBS / scheme
+  switching) and their one-line tradeoffs — "there is no strategy that avoids paying somewhere"; ReLU's corner
+  as the reason doubling degree only bought 2x accuracy, not an order of magnitude.
+Exercise: full artifact run live; assigned extending to sigmoid (smooth, no corner) as contrast, with a stated
+  prediction (smooth functions should show much better degree-4->degree-8 improvement ratio than ReLU's 2x) for
+  Parth to verify himself.
+Asked: one question reframing Parth's own research strategy directly — given degree-8's only-2x in-range gain
+  despite Paterson-Stockmeyer making its depth cost nearly free (Ch17), is pushing degree higher actually the
+  right lever for corner-shaped (ReLU-like) activations, or does the diminishing-returns pattern argue for a
+  different approach (smoothing the target, piecewise calibration, accepting Strategy 2/3 for corners)?
+Answers: pending.
+Weak spots: unmeasured across nineteen sessions.
+Revisit next time: today's question. Next: Ch19 (Polynomial Activation Approximation) — almost literally
+  Parth's thesis topic; expect this to be the highest-value session yet.
