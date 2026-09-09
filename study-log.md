@@ -354,3 +354,37 @@ Answers: pending.
 Weak spots: unmeasured across nineteen sessions.
 Revisit next time: today's question. Next: Ch19 (Polynomial Activation Approximation) — almost literally
   Parth's thesis topic; expect this to be the highest-value session yet.
+
+## 2026-09-09 — Chapter 19: Polynomial Activation Approximation (Parth's core thesis topic)
+Ran the book's own Artifact 19.A live in full (Chebyshev fits, ReLU/sigmoid/GELU, degrees 4/8/15/27, in-range
+  AND out-of-range error on [-8,8]):
+  ReLU:    degree4 err=4.61e-01 -> degree27 err=8.48e-02  (5.4x improvement)
+  GELU:    degree4 err=3.64e-01 -> degree27 err=2.64e-03  (137.8x improvement)
+  sigmoid: degree4 err=1.14e-01 -> degree27 err=2.22e-05  (5118.1x improvement)
+  ~950x leverage gap between kinked (ReLU) and smooth-analytic (sigmoid) functions at IDENTICAL degree
+  investment. This is a precise, quantitative answer to the question asked in the 2026-09-08 (Ch18) session
+  about whether pushing degree is worth it for corner-shaped activations: for ReLU specifically, clearly not —
+  research effort has dramatically higher leverage on smooth activations (GELU/sigmoid/tanh/Swish) than on ReLU.
+  Also: out-of-range blowup is catastrophic even for BOUNDED sigmoid (3.97 abs error one unit outside [-8,8],
+  vs a function whose whole range is [0,1]) — boundedness of phi does not protect against polynomial blowup,
+  only staying inside the fit range does.
+  Also verified: OpenFHE's real depth table exceeds naive ceil(log2(d+1)) by a CONSTANT 2 levels at every
+  published degree bracket (3-5 through 248-495) — not a rough margin, a fixed systematic offset from internal
+  scaling overhead. Degree-15 sigmoid costs 6 levels not 4.
+Taught: monomial ill-conditioning (condition number ~O((1+sqrt2)^2d)) and why no real pipeline fits monomials
+  past toy degree; Chebyshev basis as same-cost/better-conditioned fix; Remez/equioscillation for true L-infinity
+  minimax vs L2 least-squares; composite strategies (GELU->sigmoid closed form, composition p_k-o-...-o-p_1 at
+  SAME depth as direct high-degree eval but better numerics/convergence shape, x^2 as zero-cost option for
+  co-designed architectures); budget depth from OpenFHE's library table, never the formula.
+Exercise: full artifact run live, all three functions x four degrees x in/out-of-range; assigned a tanh
+  prediction-then-verify extension (predict whether its improvement ratio lands nearer sigmoid's ~5000x or
+  GELU's ~140x based on curvature/asymmetry, then check).
+Asked: one question pushing further on today's finding — since composition p_k-o-...-o-p_1 costs the SAME
+  depth as direct evaluation but has different convergence SHAPE, and ReLU's kink is a step-adjacent target,
+  could composition's shape (not its depth) close some of the 950x leverage gap against smooth functions, or
+  is the kink fundamentally the same obstacle either way?
+Answers: pending.
+Weak spots: unmeasured across twenty sessions, though today's content is about as close to direct engagement
+  with Parth's actual research as this coaching format can get without his input.
+Revisit next time: today's question. Next: Ch20 (Encrypted Inference: Linear Models and Decision Trees) —
+  first full-pipeline chapter of Part IV.
