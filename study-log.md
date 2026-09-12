@@ -388,3 +388,33 @@ Weak spots: unmeasured across twenty sessions, though today's content is about a
   with Parth's actual research as this coaching format can get without his input.
 Revisit next time: today's question. Next: Ch20 (Encrypted Inference: Linear Models and Decision Trees) —
   first full-pipeline chapter of Part IV.
+
+## 2026-09-12 — Chapter 20: Encrypted Inference: Linear Models and Decision Trees
+NOTE: routine fired 2026-09-10, 09-11, and 09-12 while session was idle; resumed with ONE session covering
+  the next chapter rather than replaying three separate days — gap noted here, not repeated three times.
+First full end-to-end chapter. Verified live, both artifacts:
+  - Full TenSEAL encrypted logistic regression pipeline (N=32768, chain [60]+[40]*10+[60], degree-7 Chebyshev
+    sigmoid fit, naive Horner): prediction 0.83077 vs true sigmoid(1.7)=0.84553, abs error 1.48e-02 — exact
+    match to book's stated numbers.
+  - Trust boundary test: ctx.copy() -> make_context_public() -> decrypt attempt correctly raises
+    "ValueError: the current context of the tensor doesn't hold a secret_key" — confirms real enforcement,
+    not just a code-layout convention.
+  - XGBoost n_bits sweep on real sklearn breast_cancer data (Concrete-ML): n_bits=2->0.937, 4->0.972, 6->0.951,
+    8->0.979. NON-MONOTONIC (dips at n_bits=6) — diverges from book's idealized "climbs then plateaus" shape.
+    Reported honestly as a genuine empirical finding, not smoothed over. LogisticRegression baseline: 0.951
+    (ties exactly with XGB n_bits=6, coincidentally).
+Taught: plaintext-multiply-still-costs-a-level trap (skips relin, not rescale); the same degree-7 fit needs
+  10 levels via naive Horner vs 3 via OpenFHE's Paterson-Stockmeyer EvalChebyshevFunction — "when CKKS feels
+  inexplicably slow, check the polynomial evaluation strategy first"; decision trees/XGBoost belong to TFHE
+  because comparison is exactly the LUT primitive PBS evaluates natively; accuracy-privacy-performance triangle,
+  no free corner.
+Exercise: both artifacts run live with real numbers; assigned completing the book's left-as-exercise
+  accuracy-delta loop (threshold decrypted logreg predictions on breast_cancer, compare to plaintext accuracy),
+  with a stated prediction (does the ~1.5e-2 error flip any near-0.5 classifications) to verify.
+Asked: one question about the non-monotonic XGBoost sweep specifically — real phenomenon for tree quantization
+  vs my experiment being flawed, and what's structurally different between quantizing a threshold comparison
+  vs a polynomial coefficient.
+Answers: pending.
+Weak spots: unmeasured across twenty-one sessions.
+Revisit next time: today's question. Next: Ch21 (Encrypted Neural Network Inference) — full architectures,
+  combining Ch13 packing + Ch17 optimization + Ch19 activation approximation.
