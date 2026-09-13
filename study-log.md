@@ -418,3 +418,33 @@ Answers: pending.
 Weak spots: unmeasured across twenty-one sessions.
 Revisit next time: today's question. Next: Ch21 (Encrypted Neural Network Inference) — full architectures,
   combining Ch13 packing + Ch17 optimization + Ch19 activation approximation.
+
+## 2026-09-13 — Chapter 21: Encrypted Neural Network Inference
+Where Ch13 packing + Ch17 Paterson-Stockmeyer + Ch19 calibrated fitting converge into full architectures.
+Verified live:
+  - Recomputed Table 21.5's worked depth budget independently against OpenFHE's real degree table (Ch19,
+    Fact 19.3), not taken on faith: degree15->6/activation->22 total; degree13->5/activation->19 total;
+    degree5->4/activation->16 total. Exact match to book on all three.
+  - PROVED (not just cited) BatchNorm folding as an exact algebraic identity: unfolded (linear then separate
+    BN) vs folded (single affine W'=gamma*W/sqrt(sigma2+eps), b'=gamma*(b-mu)/sqrt(sigma2+eps)+beta) — max
+    abs diff 1.665e-16 (floating point noise only).
+  - PROVED argmax(softmax(z)) == argmax(z) across 5 random trials, always exact — confirms the softmax-removal
+    shortcut is mathematically exact, not a heuristic that usually works.
+Taught: three architecture-adaptation steps (activation replacement per-layer not globally, BatchNorm folding
+  as mandatory not optional since CKKS can't do the raw division anyway, softmax->argmax shortcut); CryptoNets'
+  x^2/avg-pool conservative 2016 baseline and the field's subsequent relaxation (P-S + bootstrapping + Chebyshev
+  calibration arriving together); im2col reducing convolution to the same diagonal-matmul machinery; the KEY
+  ratio — at degree 15, activations consume 18 of 22 total levels (~82%), linear layers only 4 — meaning every
+  degree reduction in Parth's own fitting research multiplies its savings by activation COUNT in a real network;
+  CryptoLab/Niobium hardware partnership as a signal the field expects hardware, not just algorithms, for
+  transformer-scale encrypted inference.
+Exercise: both algebraic proofs run live; assigned extending the depth table to a 7-activation (5-conv+2-FC)
+  network at degree 15 vs 5, with a stated prediction that activation dominance INCREASES with network depth
+  (linear layers stay flat at 1 level each, activation cost scales with count).
+Asked: one question connecting the 82% activation-dominance ratio to whether CKKS bootstrapping (resetting
+  depth mid-network) changes the RELATIVE value of Parth's polynomial-approximation research, or just changes
+  how often the activation-depth cost is paid rather than how much per occurrence.
+Answers: pending.
+Weak spots: unmeasured across twenty-two sessions.
+Revisit next time: today's question. Next: Ch22 (Quantization-Aware Training for FHE) — the TFHE-side
+  counterpart to this chapter's CKKS-side depth budgeting.
