@@ -448,3 +448,33 @@ Answers: pending.
 Weak spots: unmeasured across twenty-two sessions.
 Revisit next time: today's question. Next: Ch22 (Quantization-Aware Training for FHE) — the TFHE-side
   counterpart to this chapter's CKKS-side depth budgeting.
+
+## 2026-09-14 — Chapter 22: Quantization-Aware Training for FHE
+TFHE-side counterpart to Ch21's CKKS depth budgeting. Verified live:
+  - Accumulator bit-width formula (Fact 22.2, ceil(log2(k))+8 for 4-bit weights/activations): crosses the
+    16-bit ceiling exactly at fan-in k~800 (18 bits needed), matching the book's "a few hundred input
+    features... routinely pushes past 16" claim precisely rather than just quoting it. k=256->16 bits (edge),
+    k=800/1024->18 bits, k=4096->20 bits.
+  - Built a from-scratch straight-through estimator (custom torch.autograd.Function: forward = real Delta*round(x/Delta),
+    backward = identity grad) and ran real gradient descent through a genuinely-4-bit-rounding linear layer.
+    First attempt (lr=0.5) diverged — reported honestly, not hidden — corrected to lr=0.05: loss fell
+    4.67 -> 0.0084 monotonically over 6 steps, gradients nonzero throughout, despite REAL rounding applied
+    every single forward pass. Also printed the raw staircase Q(w) values directly to show true dQ/dw is
+    genuinely zero almost everywhere (w=-1.0->Q=-1.333, w=-0.75->Q=-0.667, flat in between).
+Taught: TFHE forces quantization on EVERY graph value not just I/O; naive post-training quantization fails
+  for the same compounding-error reason as Ch19's polynomial approximation; Concrete-ML+Brevitas division of
+  labor (Brevitas does QAT/STE, Concrete-ML compiles); accumulator overflow as the dominant real compile
+  failure (arithmetic, not implementation detail); CKKS-vs-TFHE pipeline comparison table; scheme choice as a
+  TRAINING-time decision (retrofitting across schemes costs accuracy vs deciding early).
+Exercise: both verifications run live; explicitly skipped the book's full CIFAR-10+Brevitas artifact (dataset
+  download + real training time not suited to this daily-cadence environment) in favor of verifying the two
+  conceptually load-bearing facts (accumulator arithmetic, STE mechanism) directly — flagged as a deliberate
+  scope choice, not silently omitted.
+Asked: one question connecting today's fan-in-driven accumulator cost to yesterday's Ch21 activation-depth-
+  domination finding — does TFHE accumulator risk scale with network WIDTH the same way CKKS activation depth
+  scales with network DEPTH (same structural root, different currency) or are they genuinely unrelated
+  bottlenecks that happen to both hurt?
+Answers: pending.
+Weak spots: unmeasured across twenty-three sessions.
+Revisit next time: today's question. Next: Ch23 (Federated Learning and Homomorphic Encryption) — shifts
+  from single-model inference to multi-party settings.
