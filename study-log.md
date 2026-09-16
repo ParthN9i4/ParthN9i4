@@ -478,3 +478,29 @@ Answers: pending.
 Weak spots: unmeasured across twenty-three sessions.
 Revisit next time: today's question. Next: Ch23 (Federated Learning and Homomorphic Encryption) — shifts
   from single-model inference to multi-party settings.
+
+## 2026-09-16 — Chapter 23: Federated Learning and Homomorphic Encryption
+NOTE: routine fired 2026-09-15 and 09-16 while session was idle; resumed with ONE session rather than
+  replaying both days — gap noted, not repeated.
+Verified live: full 2-client FedAvg secure-aggregation pipeline in TenSEAL (N=8192, chain [60,40,60] — only
+  1 inner level needed since aggregation never multiplies). Encrypted aggregate matched TRUE plaintext FedAvg
+  weighted average to max abs error 2.1e-11 — confirms Observation 23.1 (aggregation is pure depth-0 addition)
+  essentially exactly. Also ran the book's own suggested security exercise: server attempts to decrypt an
+  individual client's update directly -> correctly refused ("ValueError: ...doesn't hold a secret_key") —
+  concrete demonstration of what HE protects here (individual updates) vs what it does NOT (see below).
+Taught: FL and HE solve adjacent-not-identical problems; secure aggregation needs only additive homomorphism
+  (why Paillier suffices, CKKS chosen mainly for infrastructure reuse not necessity); the chapter's real
+  payload — HE-protected aggregation defeats a curious SERVER seeing individual updates, but says NOTHING
+  about gradient inversion (mitigated only by cohort size, not cryptography) or membership inference against
+  the final aggregate MODEL (leak is in the output artifact itself, HE never touches this); DP-SGD as the
+  necessary complement — HE protects the channel, DP protects the information content, not substitutes;
+  encrypted model evaluation / PSI / threshold HE as the broader design space; OpenMined PySyft/Datasites/NAIRR.
+Exercise: both artifacts run live; assigned scaling the simulation to 20 clients and reasoning about how
+  gradient-inversion resistance changes with cohort size (cryptography stays identical, privacy property does not).
+Asked: one question directly raised by my own 2-client demo — is there a minimum cohort size below which HE
+  secure aggregation provides NO meaningful practical protection at all, even with perfect cryptography (what
+  can a server infer from just the sum of 2 known-n updates)?
+Answers: pending.
+Weak spots: unmeasured across twenty-four sessions.
+Revisit next time: today's question. Next: Ch24 (Encrypted Training: The Frontier) — training rather than
+  inference under encryption, the hardest remaining problem in the book.
