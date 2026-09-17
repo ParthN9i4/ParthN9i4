@@ -504,3 +504,34 @@ Answers: pending.
 Weak spots: unmeasured across twenty-four sessions.
 Revisit next time: today's question. Next: Ch24 (Encrypted Training: The Frontier) — training rather than
   inference under encryption, the hardest remaining problem in the book.
+
+## 2026-09-17 — Chapter 24: Encrypted Training: The Frontier (Part IV complete)
+Verified live, the capstone demo of this closing chapter:
+  - Recomputed Sec 24.3's per-iteration depth arithmetic exactly: 1(Xw)+5(OpenFHE P-S degree-7 sigmoid table)
+    +1(backward matmul)+1(update rescale, lr=0.1 is non-integer so NOT free)=8 levels/iter, x10=80 total. Match.
+  - Built and ran a REAL scalar encrypted logistic regression training loop in TenSEAL (naive Horner, no P-S
+    available in TenSEAL), deliberately budgeted for exactly 1 iteration's depth (11 levels via Horner:
+    1+8+1+1). Iteration 0: SUCCESS, encrypted w=0.0600 exactly matching plaintext w=0.0600. Iteration 1: FAILED,
+    "ValueError: scale out of bounds" — Observation 24.1 (depth accumulates monotonically, no bootstrap =
+    training cannot continue) reproduced as an EXECUTED failure, not just described. First attempt hit an
+    unrelated packing-shape bug (vector-size mismatch from per-row gradient accumulation); simplified to scalar
+    (n=1 feature) logistic regression to isolate the actual point (depth exhaustion) from packing mechanics —
+    noted honestly as a debugging step, not hidden.
+Taught: training multiplies inference's FIXED depth by iteration count (the whole chapter in one sentence);
+  backprop roughly doubles per-iteration depth without introducing new non-polynomial barriers (polynomials
+  differentiate to polynomials); three honestly-costed approaches (full-bootstrap/theoretically complete but
+  prohibitive; hybrid — the field's actual pragmatic answer, exactly Ch22's LoRA pattern; shallow-bounded — the
+  one corner solidly practical today); Concrete-ML's ACTUAL scope is narrower than marketing — fit_encrypted
+  works only for logistic-regression-shaped SGDClassifier, NOT neural nets/forests/arbitrary PyTorch, and the
+  v1.8 hybrid LLM feature is NOT an exception (still frozen-base-encrypted-inference + plaintext adapter
+  training); open problems named precisely (training-time BN needs encrypted rsqrt, no clean shortcut like
+  inference folding; encrypted attention backward; full transformer training not close to feasible).
+Exercise: full failure-mode demo run live; assigned widening to a 2-iteration budget (22 levels) and confirming
+  the failure point moves to iteration 2 exactly as predicted.
+Asked: one question probing whether Paterson-Stockmeyer (8 vs 11 levels/iter) changes WHICH training approach
+  becomes viable for deeper networks, or only extends approach (c)'s iteration ceiling — i.e. does the T-multiplier
+  in Observation 24.1 dominate regardless of per-activation cost.
+Answers: pending.
+Weak spots: unmeasured across twenty-five sessions.
+Revisit next time: today's question. PART IV (Privacy-Preserving Machine Learning) IS COMPLETE. Next: Ch25
+  (Multi-Party Homomorphic Encryption), opening Part V — Advanced Topics and the Frontier.
