@@ -535,3 +535,33 @@ Answers: pending.
 Weak spots: unmeasured across twenty-five sessions.
 Revisit next time: today's question. PART IV (Privacy-Preserving Machine Learning) IS COMPLETE. Next: Ch25
   (Multi-Party Homomorphic Encryption), opening Part V — Advanced Topics and the Frontier.
+
+## 2026-09-18 — Chapter 25: Multi-Party Homomorphic Encryption (opens Part V)
+OpenFHE's actual Multiparty* API not runnable in this environment (same C++ build limitation as prior
+  sessions) — verified the two underlying mathematical claims directly instead of describing the skeleton
+  uncritically:
+  - Simulated full-threshold (N=5-of-5) additive secret sharing: shares sum to true secret exactly (82=82).
+    A coalition of N-1=4 parties (missing one share) is consistent with ALL 97 possible secret values with
+    EQUAL probability — genuine information-theoretic zero-knowledge, not just "hard to guess." Demonstrates
+    Definition 25.1's security claim directly rather than asserting it.
+  - Combinatorially verified Property 25.1's MKHE cost scaling: k+1 ciphertext components, addition cost k+1
+    (linear), multiplication cost (k+1)^2 (quadratic, from full cross-terms before relinearization-across-keys).
+    k=2->10: addition grew 3.67x, multiplication grew 13.44x — matches O(k) vs O(k^2) exactly. This is the
+    concrete combinatorial reason MKHE tops out around a handful of parties while threshold FHE's evaluation
+    cost stays entirely flat in N.
+Taught: threshold FHE (one shared key, evaluation completely untouched, ALL Part II-IV optimizations carry
+  over unchanged — only keygen/decryption differ) vs MKHE (independent keys, no advance agreement, cost grows
+  with distinct keys touched); noise flooding/smudging (2^40-2^80x ciphertext noise) as a security-critical,
+  easy-to-miss parameter in hand-rolled threshold decryption; proxy re-encryption as a DISTINCT narrower
+  primitive (moves a ciphertext between single-owner keys, does NOT enable joint computation); trust-model
+  decision rule — threshold for standing federations with known membership, MKHE for ad hoc/session-based
+  collaboration; OpenFHE (mature threshold) vs Lattigo (deepest multiparty feature set, WASM-friendly,
+  collective bootstrapping).
+Exercise: both simulations run live with exact numerical confirmation; assigned extending to genuine Shamir
+  t-of-N (not just full N-of-N) secret sharing via polynomial interpolation.
+Asked: one question connecting today's "threshold evaluation cost flat in N" property back to Ch23's FedAvg
+  depth-0 aggregation — does THRESHOLD DECRYPTION itself (not evaluation) scale with participant count, or
+  is a threshold-FHE FedAvg genuinely free to scale to hundreds of hospitals the way MKHE could never be?
+Answers: pending.
+Weak spots: unmeasured across twenty-six sessions.
+Revisit next time: today's question. Next: Ch26 (Scheme Switching and Hybrid Computation).
