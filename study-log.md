@@ -565,3 +565,31 @@ Asked: one question connecting today's "threshold evaluation cost flat in N" pro
 Answers: pending.
 Weak spots: unmeasured across twenty-six sessions.
 Revisit next time: today's question. Next: Ch26 (Scheme Switching and Hybrid Computation).
+
+## 2026-09-19 — Chapter 26: Scheme Switching and Hybrid Computation
+Closes the CKKS<->TFHE thread forward-referenced since Ch11. Quantified Rule of Thumb 26.1 with an explicit
+  crossover cost model rather than leaving it qualitative, using order-of-magnitude figures already established
+  in this course (Ch11's 1-10ms PBS latency range, Ch17's "10-100x a single multiply" rule applied to a
+  degree-15 Chebyshev activation ~25ms packed): switching_cost(n) = n*(pbs_ms + extraction_overhead),
+  ckks_cost(n) = flat ~25ms regardless of n (packed). Crossover at n ~= 7.1 active slots — switching cheaper
+  below, CKKS-polynomial cheaper above (n=1:3.5 vs 25ms switching wins; n=8:28 vs 25ms CKKS-poly wins; n=32:
+  112 vs 25ms CKKS-poly wins decisively). Explicitly flagged as illustrative order-of-magnitude reasoning, not
+  a measured benchmark, matching the book's own hedging style for unverified latency claims.
+Taught: why CKKS and TFHE are complementary (bounded-by-degree approximation error vs exact-regardless-of-
+  sharpness PBS, directly connecting to Ch18/19's ReLU-vs-sigmoid ~950x leverage gap finding); the five-step
+  OpenFHE pipeline (slot extraction -> EvalCKKStoFHEW -> FHEW EvalFunc/PBS -> EvalFHEWtoCKKS -> repacking);
+  v1.4+ ConvertRLWEToCKKS/ConvertCKKSToRLWE for functional bootstrapping and EvalFastRotation; the sequential
+  slot-extraction bottleneck as THE open problem (no packed/SIMD way to hand n values to FHEW's bootstrap at
+  once, unlike CKKS's one-op-per-n-slots) — batched vs selective switching as the two unresolved research
+  directions, neither closing the gap yet.
+Exercise: crossover model run live; assigned re-running under different PBS-latency (GPU ~1ms) and polynomial-
+  degree assumptions with a stated prediction (faster PBS pushes crossover UP, cheaper CKKS poly pushes it
+  DOWN — the two levers pull the threshold in opposite directions).
+Asked: one question connecting directly to Parth's own research — does better polynomial approximation (his
+  work) push the switching/CKKS-poly crossover DOWN, shrinking switching's addressable territory, and was
+  switching ever actually competing with his approach for smooth functions, or is its real competition confined
+  to genuine kinks/discontinuities his techniques structurally can't help regardless?
+Answers: pending.
+Weak spots: unmeasured across twenty-seven sessions.
+Revisit next time: today's question. Next: Ch27 (FHE for Computer Vision, NLP, and Large Language Models) —
+  domain applications, Part V continues.
