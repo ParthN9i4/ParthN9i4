@@ -593,3 +593,38 @@ Answers: pending.
 Weak spots: unmeasured across twenty-seven sessions.
 Revisit next time: today's question. Next: Ch27 (FHE for Computer Vision, NLP, and Large Language Models) —
   domain applications, Part V continues.
+
+## 2026-09-20 — Chapter 27: FHE for CV, NLP, and LLMs
+ENVIRONMENT NOTE: fresh container this session (repo and Python packages both gone). Re-cloned repo via
+  add_repo/register_repo_root flow, reinstalled tenseal (now 0.3.18, was 0.3.16) and concrete-ml, verified
+  both import correctly before proceeding. Same recovery procedure as the original session setup.
+Verified live:
+  - CryptoNets throughput/latency: 250s / 4096-image batch = 61.04 ms/image amortized, exact match to book's
+    "~60ms" claim. Confirmed the throughput-vs-latency gap is structural to SIMD packing, not a 2016 artifact.
+  - Built Artifact 27.A's exact softmax strategy (polynomial exp + Newton-Raphson reciprocal, NO division
+    primitive anywhere). FIRST ATTEMPT FAILED HONESTLY: fit exp(z) on R=10 with degree-10 Chebyshev -> max
+    error 0.15, NEGATIVE probabilities in output. Diagnosed: exp(10)/exp(-10) ~= 485 million dynamic range,
+    untrackable by any bounded-degree polynomial over that wide a domain — a sharper instance of Ch18
+    Observation 18.2 (calibrate the fitting range) than seen before, since exp's exponential growth makes
+    bad-range mistakes catastrophic rather than gradual. FIXED: recalibrated to R=4 (realistic post-sqrt(d_k)-
+    scaling attention-logit magnitude), same degree -> max error 1.1e-05, all-positive, sums to 0.99998.
+  - Newton-Raphson reciprocal (x_{n+1}=x_n*(2-d*x_n)) verified converging QUADRATICALLY in isolation:
+    iters 0-5 error 6.85e-02 -> 3.42e-02 -> 8.56e-03 -> 5.35e-04 -> 2.09e-06 -> 3.19e-11.
+Taught: the CryptoNets throughput/latency gap as permanent to SIMD-packed FHE; the three transformer-specific
+  obstacles (softmax's exp+division, layer norm's 1/sqrt, depth x sequentiality in autoregressive generation
+  compounding per-token); the honest capability-vs-roadmap gap (small models published/shipped today, hybrid
+  architectures production-shipped today, full frontier LLM encrypted end-to-end still roadmap); explicit
+  warning about Zama's "500-1000 TPS" being confidential BLOCKCHAIN transactions, not LLM tokens/sec — three
+  different metrics routinely conflated; walked through Artifact 27.A's full encrypted-transformer-classifier
+  design (CKKS primary + scheme-switched layer-norm rsqrt only, per Ch26's cost model).
+Exercise: both softmax pieces run live, INCLUDING the honest failure-then-diagnosis-then-fix rather than a
+  clean first try; assigned implementing the analogous Newton-Raphson inverse-square-root for layer norm
+  (x_{n+1}=x_n*(1.5-0.5*d*x_n^2)) and verifying similarly fast convergence.
+Asked: one question connecting my own R-calibration mistake directly to Parth's research — does calibration
+  discipline differ meaningfully between bounded functions (sigmoid/tanh) and unbounded fast-growing ones
+  (exp), or is "measure empirical range" always sufficient regardless; what reasoning tool from Ch18-19 alone
+  would have caught the R=10 mistake before running any code.
+Answers: pending.
+Weak spots: unmeasured across twenty-eight sessions.
+Revisit next time: today's question. Next: Ch28 (Hardware Acceleration, Standardization, and Open Problems) —
+  closing chapter of the main text before the appendices.
