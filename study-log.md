@@ -628,3 +628,54 @@ Answers: pending.
 Weak spots: unmeasured across twenty-eight sessions.
 Revisit next time: today's question. Next: Ch28 (Hardware Acceleration, Standardization, and Open Problems) —
   closing chapter of the main text before the appendices.
+
+## 2026-09-21 — Chapter 28: Hardware Acceleration, Standardization, and Open Problems
+Carried over from Ch27's assigned exercise (Newton-Raphson inverse-sqrt for layer norm), run before
+  starting today's chapter:
+  - First attempt used seed x0=1/d over a wide test range d in [0.1,50] -> FAILED to converge quadratically
+    (error crept down only linearly, 0.217->0.024 over 5 iters). Diagnosed: the rsqrt Newton basin of
+    convergence requires x0*sqrt(d) in (0, sqrt(3)); x0=1/d violates this for d<0.33.
+  - Second attempt "fixed" with a single global constant seed over the SAME wide range -> catastrophic
+    divergence (error exploded past 1e116 by iter 5) — the rsqrt basin is far narrower than the reciprocal
+    iteration's, so one seed cannot cover a 500x dynamic range the way it could for exp/reciprocal.
+  - Correct fix: recognized layer-norm variance is not naturally as wide-ranging as an arbitrary softmax
+    logit range — restricted to a realistic post-normalization band d in [0.5,2.0], single constant seed
+    (geometric mean) -> clean quadratic convergence, error 0.49 -> 1.0e-10 over 5 iterations.
+  - This is a stronger, self-discovered instance of the same calibration lesson from Ch27: rsqrt's
+    convergence basin is narrower than reciprocal's, so "measure the empirical range" is necessary but for
+    rsqrt specifically the range ALSO has to be narrow enough for one global seed to work, which reciprocal
+    Newton-Raphson tolerates much better.
+Chapter 28 is a landscape/survey chapter, structurally different from the rest of the book — most claims
+  (company figures, dollar amounts, conference dates) are explicitly tagged Verify/Likely by the book itself,
+  meaning they are snapshot business facts as of mid-2026, not derivable/checkable by computation the way
+  Parts I-IV's math is. No python3 verification was possible or appropriate here; taught the chapter's
+  actual content and structure instead of running code.
+Taught: DARPA DPRIVE's explicit "within 10x of unencrypted" target and three performers' reported kernel
+  speedups (Intel HERACLES 1,074x-5,547x, Duality TREBUCHET, SRI CraterLake-lineage) — three-to-four-orders-
+  of-magnitude speedups now demonstrated in silicon/near-silicon, but on FHE-internal kernels (NTT, modmul,
+  key-switching), not necessarily end-to-end application latency; three hardware tiers (photonic/Optalysys,
+  ASIC/Niobium+Cornami, GPU+vector/HEXL+FIDESlib); compiler efforts (Google HEIR, Zama Concrete v2.10)
+  attacking engineering cost rather than raw speed; standardization via HomomorphicEncryption.org's Security
+  Standard v1.1 underpinning every library's parameter tables referenced since Ch6/Ch17; the critical epistemic
+  tool of the chapter — three maturity tiers (production deployment, enterprise pilot, funding/roadmap
+  announcement) and why conflating them is the single most common calibration error in FHE industry commentary;
+  the six open problems (bootstrapping cost, encrypted training, batch scheme switching, FHE-friendly
+  architectures, FHE+MPC+ZKP composition, compiler auto-optimization) and Artifact 28.A's feasibility ranking
+  of the top three on a 2-3yr horizon.
+Exercise: mapped Parth's own research (depth-optimal polynomial approximation of activations) onto Artifact
+  28.A's open-problems table myself as a worked example, since no code applies here: it sits primarily under
+  "FHE-friendly architectures" (designing around what FHE evaluates cheaply, rather than approximating
+  ReLU/softmax after the fact) with a secondary connection to bootstrapping cost reduction (fewer/lower-degree
+  polynomial terms -> shallower circuits -> less bootstrapping pressure, tying back to Ch17's Paterson-
+  Stockmeyer depth argument and Ch19's approximation theory).
+Asked: (1) of the six open problems, which would a genuinely depth-optimal activation-approximation result
+  move the needle on most directly, and does it change the Artifact 28.A feasibility rating for any of the
+  three ranked problems; (2) the chapter's three-tier maturity framework (production/pilot/roadmap) — is there
+  an analogous three-tier distinction worth applying to research claims themselves (a proven bound, a
+  numerically-verified-but-unproven claim, a conjectured-but-untested claim), and where would Parth currently
+  place his own depth-optimality result on that scale; (3) is there a natural FHERMA challenge that maps onto
+  Artifact 28.A's #1-ranked problem (batch scheme switching) as a testable near-term project.
+Answers: pending.
+Weak spots: unmeasured across twenty-nine sessions.
+Revisit next time: today's three questions. Next: Appendix A (Notation and Prerequisites) — main text (Ch1-28)
+  now complete; entering the appendices, first session to judge how much teaching-style treatment they warrant.
