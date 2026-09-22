@@ -679,3 +679,49 @@ Answers: pending.
 Weak spots: unmeasured across twenty-nine sessions.
 Revisit next time: today's three questions. Next: Appendix A (Notation and Prerequisites) — main text (Ch1-28)
   now complete; entering the appendices, first session to judge how much teaching-style treatment they warrant.
+
+## 2026-09-22 — Appendix A: Notation and Mathematical Prerequisites
+First appendix session. Judgment call: Appendix A is a genuine reference (symbol table + probability/linear-
+  algebra/complexity-theory background used throughout Parts I-V), not new content, so treated it as a lighter
+  consolidation-and-verify session rather than a full chapter lecture — read the actual appendix text as
+  required, but taught by connecting each piece to where it was already used across Ch1-28 rather than
+  introducing it as new material.
+Verified live (three checks, one per subsection):
+  - A.2 discrete Gaussian tail bound P(|X|>t*sigma) ~ e^{-t^2/2}: computed true Gaussian tail vs the bound for
+    t=1..6. Bound holds as a valid upper bound throughout (ratio true/bound shrinks from 0.52 at t=1 to 0.13 at
+    t=6) -- confirms the "concentrates sharply, noise stays below threshold except with negligible probability"
+    claim underlying every noise-budget argument since Ch7.
+  - A.3 centered representative convention: naive x%q on a small negative value (x=-3, q=97) gives 94 (looks
+    LARGE, would falsely trip a noise-growth bound); centered representative in [-q/2,q/2) correctly recovers
+    -3. Concrete demonstration of why the book's convention choice isn't cosmetic -- an implementation using
+    naive Python-style mod throughout would misjudge noise growth.
+  - A.4 negligible vs non-negligible crossover: at the book's standard lambda=128, 1/lambda^100 (1.9e-211) is
+    actually SMALLER than negl(128)=2^-128 (2.9e-39) -- i.e. negl has NOT yet overtaken a degree-100
+    polynomial bound at the standard security parameter. Found the actual crossover (where 2^-lambda first
+    drops below 1/lambda^100 for all larger lambda) at lambda=997, far past 128. Correct and useful
+    illustration that "negligible" is an asymptotic, eventually-true statement (Definition A.2's "there exists
+    lambda_0"), not an assertion that automatically holds at any specific practical lambda for arbitrary
+    polynomial degree.
+Taught: the symbol table as a cross-reference to notation used since Ch1 (N, q, t, R_q, chi, Delta, L/ell,
+  lambda); A.2's Gaussian-tail-to-noise-budget connection (Ch7); A.3's CRT double-duty (plaintext batching,
+  Ch2/Ch10; RNS ciphertext modulus, Ch4) as "the single most load-bearing piece of algebra in the book" per
+  the text itself, and the centered-representative convention as the reason "small stays small" through every
+  noise-growth argument; A.4's PPT/negligible/advantage formal vocabulary underlying every IND-CPA reduction
+  since Part I, with the concrete crossover computation above as a corrective to reading "negligible" as a
+  loose qualifier.
+Exercise: none newly assigned -- A.3's CRT/RNS mechanics were already exercised directly in earlier sessions
+  (Ch1, Ch4); this session's three verification scripts stand in as the appendix's own "exercise."
+Asked: (1) does the negl(128) vs 1/lambda^100 crossover result change how Parth would read a security proof
+  that reduces to "advantage is negligible" without stating an explicit lambda_0 -- should a careful reader
+  always ask what lambda_0 a given reduction actually needs; (2) the centered-representative bug pattern (naive
+  mod silently inflating a small negative noise term) -- has Parth's own FHERMA/CKKS code been audited for this
+  specific class of representation bug, given TenSEAL/OpenFHE both handle it internally but any of his own
+  from-scratch toy implementations across earlier sessions would not have; (3) still-open from Ch28: which of
+  the six open problems his depth-optimal-approximation work moves most directly, carried forward unanswered.
+Answers: pending.
+Weak spots: unmeasured across thirty sessions.
+Revisit next time: today's three questions, plus Ch28's three carried-forward questions (still unanswered).
+  Next: Appendix B (Installation and Environment Setup) -- likely an even lighter session than today's, since
+  it's setup instructions rather than conceptual content; will assess and probably fold B+C+D (Installation,
+  Code Index, Further Reading) into a single short closing session rather than three more daily slots, given
+  none of them carry new teachable ideas the way A did.
