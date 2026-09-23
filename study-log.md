@@ -725,3 +725,56 @@ Revisit next time: today's three questions, plus Ch28's three carried-forward qu
   it's setup instructions rather than conceptual content; will assess and probably fold B+C+D (Installation,
   Code Index, Further Reading) into a single short closing session rather than three more daily slots, given
   none of them carry new teachable ideas the way A did.
+
+## 2026-09-23 — Appendices B, C, D: Installation, Code Index, Sources — MAIN TEXT + APPENDICES COMPLETE
+Folded B+C+D into one closing session as flagged last time -- none carry new conceptual content (setup
+  instructions, artifact index, bibliography), so treated as a single wrap-up rather than three more daily
+  slots.
+Verified live against this environment's actually-installed (newer-than-pinned) versions, directly testing
+  the book's own closing claim ("API surfaces move faster than any book, verify against current docs"):
+  - B.3 TenSEAL: book pins v0.3.16, this environment has v0.3.18. Ran the book's exact hello-world (CKKS
+    context, v+v, decrypt) verbatim -> [2.0000000028, 4.0000000054, 5.9999999990], correct despite the two
+    minor-version gap. Matches Appendix C.3's specific claim that TenSEAL's Python bindings are more stable
+    across versions than OpenFHE's C++ surface.
+  - B.4 Concrete ML: book pins v1.8, this environment has v1.9.0. Confirmed the exact documented footgun:
+    model.compile(X) returns a bare concrete.fhe.Circuit with NO .predict() method
+    ("'Circuit' object has no attribute 'predict'", reproduced verbatim) -- the caller must call
+    model.predict(X, fhe='execute') on the ORIGINAL model object, not the compile() return value. Confirmed
+    correct and still true two minor versions past the pin.
+Taught: B's version-pinning discipline and the specific per-library friction points (OpenFHE has NO official
+  Docker image despite guides implying otherwise -- direct instance of the book's own "verify company/tooling
+  claims" ethic turned inward on itself; SEAL's HEXL linking gotcha; Lattigo's v4->v5->v6 import-path churn);
+  C's artifact index by Part and the three build conventions (SKELETON C++ = illustrative not drop-in, Python
+  artifacts = directly runnable, design-document artifacts = intentionally not code, e.g. 27.A); D's source
+  list, with two standouts flagged as directly useful beyond citation-list value: (1) Ko's arXiv beginner
+  textbook unifies LWE/RLWE/GLWE/GLev/GGSW under one $(A_0,...,A_{k-1},B)$ form with $B=\sum A_iS_i+\Delta M+E$,
+  which reframes this book's Part II "four separate schemes" presentation as one construction at different
+  parameter choices; (2) Ko's explicit note that BOTH encryption sign conventions ($B=+\sum A_iS_i+...$ vs
+  $B=-\sum A_iS_i+...$) are in live use across the literature, proven equivalent -- flagged as directly
+  relevant to Parth given the real convention-mismatch bug hit firsthand in the Ch13 session (TenSEAL's x^T@W
+  vs assumed W@x), same failure mode one level up the stack (sign convention vs multiplication-order
+  convention) -- worth checking explicitly the next time a formula from a paper doesn't match this book's or a
+  library's output.
+Exercise: the two live version-drift verifications above stood in as this closing session's exercise, directly
+  exercising Appendix D.3's own instruction ("How to use these: for what to actually type, the library
+  documentation, always").
+Asked: (1) given Ko's GLWE unification, does reframing Part II's four schemes as one construction change how
+  Parth would explain his own depth-optimal-approximation result's scheme-independence (or lack thereof) --
+  does the polynomial-approximation result depend on CKKS specifically or transfer to the GLWE frame generally;
+  (2) the sign-convention warning -- worth an explicit audit pass over any of Parth's own from-scratch formulas
+  against whichever convention his primary reference paper uses, given the Ch13 near-miss was a structurally
+  identical class of bug; (3) STRUCTURAL, not carried from a specific chapter: the entire main text (Ch1-28)
+  and all four appendices are now complete after 32 sessions -- proposing the daily slot pivot from "next
+  chapter" to either (a) FHERMA challenge practice applying the material directly, (b) a spaced-repetition pass
+  revisiting the weakest/most error-prone sessions (Ch13's convention bug, Ch18-19's calibration-range
+  mistakes, Ch24's depth-exhaustion demo), or (c) close focus on the depth-optimal-approximation research
+  question itself using the book's Part III/IV toolkit -- Parth's call, and absent an answer, next session
+  will default to (a) FHERMA practice as the most concrete, since it's this book's own D.3 recommendation for
+  "research directions... open engineering problems with measurable scoring."
+Answers: pending.
+Weak spots: unmeasured across thirty-one sessions (zero of ~35+ questions answered across the full curriculum
+  to date).
+Revisit next time: the structural pivot question above takes priority; also still carrying Ch28's open-problem
+  question and Appendix A's crossover/audit questions if useful. CURRICULUM STATUS: main text and appendices
+  complete. Next session defaults to FHERMA challenge practice (tier4_fherma exercises in fhe-foundations/)
+  absent a redirect from Parth.
