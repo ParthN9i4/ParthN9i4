@@ -778,3 +778,54 @@ Revisit next time: the structural pivot question above takes priority; also stil
   question and Appendix A's crossover/audit questions if useful. CURRICULUM STATUS: main text and appendices
   complete. Next session defaults to FHERMA challenge practice (tier4_fherma exercises in fhe-foundations/)
   absent a redirect from Parth.
+
+## 2026-09-24 — FHERMA Practice: ex18 Activation Optimization + fherma_config Depth Budgeting
+Default path taken absent a redirect from Parth (proposed last session): pivoted the daily slot from "next
+  chapter" (book is complete) to FHERMA challenge practice, starting with tier4_fherma/ex18 and
+  fherma_config.py -- the exact workflow this book's own D.3 flags for "research directions... open
+  engineering problems with measurable scoring," and squarely inside Parth's depth-optimal-approximation focus.
+Ran live and verified:
+  - ex18_activation_challenge.py: 7/7 checks pass. Sigmoid[-8,8]@0.05 -> degree 7 (error 0.0296); ReLU[-5,5]@0.3
+    -> degree 6 (error 0.2166); GELU[-5,5]@0.1 -> degree 6 (error 0.0901). Noted the search log's error is NOT
+    monotonically decreasing in degree (deg 3->0.116, deg 4->0.133 WORSE, deg 5->0.062, deg 6->0.069 WORSE
+    again, then monotone from 7 on) -- a real Chebyshev-interpolation-vs-parity artifact, not a bug; worth
+    remembering that a "first degree that passes" search can be mildly lucky/unlucky depending on exactly
+    where the threshold falls relative to a local bump.
+  - fherma_config.py: 16/16 checks pass. Confirmed OpenFHE's real EvalChebyshevFunction depth table
+    (CHEBYSHEV_DEPTH) against the naive ceil(log2(d+1)) formula: degree 7 costs 5 levels (formula says 3,
+    understating by 2); degree 15 costs 6 (formula says 4). Table is a step function: (5,4),(13,5),(27,6)...
+    meaning e.g. EVERY degree from 6 through 13 costs exactly the same 5 multiplicative levels.
+  - MAIN FINDING (built and verified myself, not in the original exercise): ex18's stated objective is
+    "minimize degree subject to accuracy," but the real FHE cost is DEPTH, and degree->depth is a many-to-one
+    step function -- so minimizing degree is not the same objective as minimizing depth, and stopping at the
+    first passing degree leaves accuracy on the table for free. Concretely: sigmoid's degree-7 pick costs
+    depth 5 and gets error 0.0296, but degree 13 costs the IDENTICAL depth 5 and gets error 0.00296 -- a ~10x
+    accuracy improvement at ZERO additional multiplicative depth, simply by searching to the top of the depth
+    plateau rather than stopping at the first passing degree. Verified the same free win for ReLU and GELU
+    (both jump degree 6 -> degree 12 within the same depth-5 plateau). Wrote and ran a corrected
+    optimize_activation_depth_correct() implementing "minimize depth, then maximize accuracy within that
+    depth's plateau" as the two-phase search, confirmed against all three activations.
+Taught: FHERMA's challenge structure and scoring axes (accuracy vs performance/depth); the ex18 capstone
+  workflow (Chebyshev at increasing degree, stop at threshold); why depth, not degree, is the real FHE cost
+  (ties directly to Ch17's Paterson-Stockmeyer material); the plateau-exploitation insight above as a concrete,
+  actionable refinement to how Parth's own depth-optimal-approximation work should frame its objective
+  function -- "minimize degree" and "minimize depth" are NOT interchangeable once OpenFHE's real (non-injective,
+  step-function) degree->depth cost is used instead of the textbook ceil(log2(d+1)) formula.
+Exercise: built and verified the corrected two-phase optimizer myself (see MAIN FINDING above) since Parth
+  hasn't been answering; this is the natural next exercise for tier4_fherma if he wants to extend ex18 for
+  real, alongside fherma_config's plaintext-multiply and ring-selection gotchas (a plaintext multiply costs a
+  level; forgetting the HYBRID key-switching auxiliary modulus P predicts one ring dimension too small).
+Asked: (1) does Parth's own depth-optimal-approximation research already optimize against a real per-library
+  depth table (OpenFHE's step function, or SEAL/TenSEAL's equivalent) or against the smooth
+  ceil(log2(degree+1)) idealization -- if the latter, the plateau-exploitation finding above may be directly
+  applicable free accuracy in his own results; (2) is the non-monotonic Chebyshev error-vs-degree pattern
+  (worse at some even degrees than the preceding odd one) something his approximation-theory background
+  expects generically, or specific to interpolation-vs-least-squares/parity effects for this class of function;
+  (3) still open from Ch28/Appendix A: which open problem his work moves most directly, and the GLWE-framing
+  question from the closing session.
+Answers: pending.
+Weak spots: unmeasured across thirty-two sessions (zero of ~38+ questions answered to date).
+Revisit next time: today's plateau-exploitation question is the highest-value one to get an answer on, given
+  direct relevance to Parth's actual research. Next: continue FHERMA practice track -- likely ex14 (Chebyshev/
+  Remez, explicitly the prerequisite tier4 flags for activation challenges) if not already solid, or move to
+  submission/ (the real OpenFHE C++ contract) to see the CLI/config.json workflow end to end.
