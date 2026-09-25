@@ -829,3 +829,53 @@ Revisit next time: today's plateau-exploitation question is the highest-value on
   direct relevance to Parth's actual research. Next: continue FHERMA practice track -- likely ex14 (Chebyshev/
   Remez, explicitly the prerequisite tier4 flags for activation challenges) if not already solid, or move to
   submission/ (the real OpenFHE C++ contract) to see the CLI/config.json workflow end to end.
+
+## 2026-09-25 — FHERMA Practice: ex14 Chebyshev Fundamentals + a from-scratch Remez implementation
+Continued the FHERMA track per last session's plan. Ran ex14_poly_activation.py first (5/5 pass, sigmoid/ReLU
+  degree-vs-error table reproduces exactly the same numbers as ex18's search log, confirming the two exercises
+  use the same interpolation-based Chebyshev method under the hood).
+Gap noticed: tier4's own README explicitly recommends Remez ("gives the true minimax polynomial, which is
+  optimal... start with Chebyshev, try Remez if you need to shave off one more degree") but NO exercise or
+  file anywhere in the repo actually implements Remez (grep -ril "remez" across the whole repo: zero hits).
+  Given this is squarely Parth's stated research area (depth-optimal polynomial approximation), treated this
+  as today's real content: built a minimal Remez exchange algorithm from scratch rather than teaching from an
+  exercise that doesn't exist.
+Built and verified: a Remez exchange implementation (degree+2 reference points, alternation equations solved
+  exactly, extrema re-located on a fine grid each iteration, 20 iterations) for sigmoid on [-8,8], compared
+  against a LEAST-SQUARES Chebyshev-series truncation baseline (numpy chebfit, not the same construction as
+  ex14/ex18's interpolation-at-n-nodes method -- flagged explicitly as a different baseline, not a re-measurement
+  of yesterday's exact numbers, to avoid conflating two different approximation methods both loosely called
+  "Chebyshev").
+  - degree 7: Chebyshev-truncation err 0.031906, Remez err 0.029024 -> Remez wins by 1.10x
+  - degree 13: Chebyshev-truncation err 0.004068, Remez err 0.001892 -> Remez wins by 2.15x
+  Both results consistent with the standard approximation-theory fact that Chebyshev-series truncation is
+  within a factor of roughly (2/pi)ln(degree) of the true minimax error, so Remez's advantage should widen
+  (slowly) with degree -- which is exactly the direction observed (1.10x at deg 7, 2.15x at deg 13).
+Taught: the interpolation-vs-least-squares-vs-minimax distinction inside "Chebyshev approximation" as a
+  category (ex14/ex18 interpolate at exactly n=degree+1 Chebyshev nodes, which is fast and simple but not
+  provably minimax; a least-squares truncated series is a different construction again; Remez alone targets
+  the max-error objective directly via the equioscillation theorem: the true minimax degree-d polynomial's
+  error alternates sign exactly d+2 times at equal magnitude, which is what the exchange algorithm's
+  alternation-equation system directly encodes); connected this to yesterday's plateau-exploitation finding --
+  Remez is a second, independent, compounding lever on top of "search to the top of the depth plateau," since
+  both attack the same "get more accuracy for the same depth" objective from different angles (which degree to
+  use vs which polynomial of that degree to use).
+Exercise: the Remez implementation itself stands in as today's exercise (built and run live, not left
+  unverified); the natural extension if Parth picks this up is combining both levers -- Remez fit AT the top
+  of a depth plateau (e.g. degree 13 for the depth-5 budget) rather than at the first-passing degree -- which
+  was not run today for time but is a direct, mechanical combination of the last two sessions' findings.
+Asked: (1) does Parth's own approximation work use Chebyshev interpolation, least-squares truncation, or
+  Remez/minimax currently -- given the two independent free-accuracy levers found this week (plateau
+  exploitation + minimax fitting), which is more likely to already be captured in his existing pipeline vs
+  genuinely new; (2) the equioscillation theorem (minimax error alternates sign exactly d+2 times at equal
+  magnitude) is a NECESSARY AND SUFFICIENT condition for optimality -- does this give a cheap way to check
+  whether an already-computed polynomial (from any method) is minimax-optimal, without re-running Remez, just
+  by counting sign alternations of its error curve; (3) still carrying forward the plateau-exploitation
+  question from yesterday and the GLWE/open-problems questions from the closing sessions, all still
+  unanswered.
+Answers: pending.
+Weak spots: unmeasured across thirty-three sessions (zero of ~41+ questions answered to date).
+Revisit next time: today's equioscillation-counting question is cheap to verify and worth prioritizing if
+  Parth engages. Next: combine the two found levers (Remez at the top of the depth plateau) as a concrete
+  worked example, or move to submission/ (the real OpenFHE C++ contract) if the algorithmic side feels
+  sufficiently covered.
