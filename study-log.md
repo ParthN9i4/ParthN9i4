@@ -879,3 +879,52 @@ Revisit next time: today's equioscillation-counting question is cheap to verify 
   Parth engages. Next: combine the two found levers (Remez at the top of the depth plateau) as a concrete
   worked example, or move to submission/ (the real OpenFHE C++ contract) if the algorithmic side feels
   sufficiently covered.
+
+## 2026-09-26 — FHERMA Practice: combining both levers (Remez fit at the top of the depth plateau)
+Combined the two independent free-accuracy levers found this week: (Tue) search to the top of the
+  OpenFHE depth plateau rather than stopping at the first passing degree, and (Fri) use Remez minimax instead
+  of Chebyshev truncation/interpolation for a given degree. Ran both together, comparing against ex18's naive
+  baseline (first-passing-degree Chebyshev interpolation) at the SAME multiplicative depth (5 levels) for all
+  three activations:
+  - Sigmoid[-8,8]: ex18 naive (degree 7, Chebyshev interp) = 0.029640; Remez at plateau-top (degree 13) =
+    0.001892 -> 15.7x more accurate, zero extra depth.
+  - GELU[-5,5]: ex18 naive (degree 6, Chebyshev interp) = 0.090143; Remez at plateau-top (degree 13) =
+    0.003672 -> 24.5x more accurate, zero extra depth.
+  - ReLU[-5,5]: did NOT reproduce the clean pattern -- Remez at degree 13 gave 0.057898, notably worse than
+    the plateau-exploited CHEBYSHEV interpolation result from Tuesday (degree 12, error 0.008027), and
+    non-monotonic within Remez itself (degree 12 Remez error 0.411106, degree 13 Remez error 0.057898 --
+    a huge jump). Diagnosed: NOT a broken exchange loop -- verified the final reference-point errors DO
+    alternate sign correctly (a genuine equioscillating set), so the algorithm converged to *a* local
+    equioscillating solution, just an unstable/poor one for this case. Read this as ReLU's kink at x=0 making
+    the exchange algorithm's convergence landscape much rougher than for the two smooth functions (sigmoid,
+    GELU), where Remez converged cleanly and fast. Did not fully resolve within today's session -- flagged
+    explicitly as unresolved rather than glossed over.
+Taught: this is the same structural fact as the ~950x kinked-vs-smooth leverage gap surfaced many sessions
+  ago (Ch18-19 calibration work) showing up in a completely different guise -- there, it was about how many
+  polynomial terms a kink costs relative to a smooth function for the SAME error target; here, it is that even
+  the OPTIMIZATION PROCEDURE (Remez exchange) for finding the minimax polynomial behaves qualitatively
+  differently -- clean, fast, monotonic convergence for smooth targets vs rough, non-monotonic, possibly
+  poorly-converged behavior for a kinked target -- suggesting kinked activations may be doubly disadvantaged
+  in a real optimization pipeline (harder to approximate well AND harder to reliably fit optimally).
+Exercise: today's combined-lever comparison IS the exercise, run and reported honestly including the ReLU
+  anomaly; the natural follow-up (not done today) is either a more careful/correct Remez implementation
+  (proper alternation-preserving reference update, not just "top-m |error| points sorted by x") to check
+  whether the ReLU anomaly is a real optimization-landscape difficulty or an artifact of my simplified
+  exchange loop, or switching to a smoothed/clipped ReLU variant (as real CKKS-friendly architectures often
+  do) to sidestep the kink entirely.
+Asked: (1) is Parth's own activation-approximation work targeting smooth functions (GELU/sigmoid/swish-style,
+  where today's combined levers gave clean 15-25x free-accuracy wins) or kinked ones (ReLU-style, where the
+  same procedure broke down) -- this matters a lot for which of this week's findings actually transfers to his
+  pipeline; (2) given the ReLU anomaly might be a bug in my simplified reference-point selection rather than a
+  fundamental optimization-landscape fact, does Parth have a reference (his own code, a paper, or a library
+  like Remez/minimax packages) to cross-check whether Remez genuinely struggles with ReLU-class kinks or my
+  implementation is just weak; (3) still carrying the equioscillation-counting diagnostic question and the
+  plateau/GLWE/open-problems questions from earlier sessions, all still unanswered.
+Answers: pending.
+Weak spots: unmeasured across thirty-four sessions (zero of ~44+ questions answered to date). Also a genuine
+  open technical loose end from today (ReLU Remez anomaly) rather than just an unanswered question -- worth
+  resolving before trusting the Remez lever for kinked activations specifically.
+Revisit next time: resolve the ReLU Remez anomaly (better exchange implementation or a clipped/smoothed ReLU
+  variant) before extending the combined-lever approach further; otherwise move to submission/ (the real
+  OpenFHE C++ contract) since the algorithmic FHERMA-practice track has now covered its core techniques
+  (plateau exploitation, Remez, and their combination/limits).
