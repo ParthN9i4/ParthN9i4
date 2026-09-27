@@ -928,3 +928,56 @@ Revisit next time: resolve the ReLU Remez anomaly (better exchange implementatio
   variant) before extending the combined-lever approach further; otherwise move to submission/ (the real
   OpenFHE C++ contract) since the algorithmic FHERMA-practice track has now covered its core techniques
   (plateau exploitation, Remez, and their combination/limits).
+
+## 2026-09-27 — FHERMA Practice: attempting to fix the ReLU Remez anomaly, finding a second bug instead
+Followed up on Friday's flagged loose end: implemented a v2 Remez with a proper alternation-enforcing
+  reference-point update (single left-to-right pass merging same-sign consecutive extrema into the
+  larger-magnitude one, THEN downselecting to exactly m=degree+2 points), rather than yesterday's crude
+  "top-m |error| points sorted by x" heuristic that could silently select a non-alternating set.
+Result: did NOT resolve the ReLU anomaly. relu degree 13 max error stayed at 0.058008 (vs yesterday's
+  0.057898 -- essentially unchanged); degree 12 broke even earlier (iteration 0 found only 13 alternating
+  extrema when 14 are needed, so no exchange happened at all, coeffs are just the very first linear solve --
+  0.191995). This is informative: it suggests ReLU's Remez difficulty is NOT primarily an artifact of the
+  naive reference-selection heuristic -- something more structural about the kink is making convergence
+  genuinely hard, consistent with Friday's hypothesis, though still not conclusively proven (a correctly
+  implemented Remez might still behave better than either of my two attempts).
+SECOND, unrelated bug found via the sigmoid sanity check (run specifically to confirm v2 didn't regress the
+  cases that worked cleanly Friday): sigmoid degree 13 error REGRESSED from Friday's clean 0.001892 to
+  0.012702 under v2. Root cause identified: the "downselect to exactly m points by repeatedly removing the
+  globally smallest-magnitude point" step is WRONG -- removing an INTERIOR point from a strictly alternating
+  sequence merges its two same-sign neighbors (which sit two positions apart, same parity, same sign) into new
+  adjacency, silently breaking the alternation the first step had just enforced. Removing only endpoints is
+  safe; removing interior points is not, and my greedy "always remove the globally smallest" rule has no way
+  to know which case it's in. This is a genuine implementation-correctness lesson, not a research result: the
+  classical Remez exchange algorithm's exact reference-point-update rule is more subtle than the equioscillation
+  theorem's statement suggests, and both of my two homebrew attempts this week have real, distinct bugs in that
+  update step specifically -- the theorem is a clean necessary-and-sufficient CONDITION for optimality, but
+  turning it into a convergent, correct ITERATIVE ALGORITHM is a separate and harder engineering problem.
+Taught: the gap between "I can state the optimality condition" (equioscillation) and "I can reliably compute
+  the optimum" (a correct exchange algorithm) -- directly relevant given Friday's proposed diagnostic
+  ("count sign alternations to check optimality") is still valid and cheap, but this week showed twice over
+  that COMPUTING a correctly-alternating minimax fit is the harder direction. Recommended, rather than continue
+  patching a homebrew implementation for research-grade numbers, using a validated library (e.g. Sollya's
+  native Remez implementation, or a maintained Python minimax/Remez package) for anything beyond this week's
+  teaching purposes -- exactly Appendix D.3's closing advice ("for what to actually type, the library
+  documentation, always") applied to algorithms as much as APIs.
+Exercise: today's v2 implementation attempt and its diagnosis (both the non-fix for ReLU and the new sigmoid
+  regression) stood in as the exercise; no further homebrew Remez debugging planned -- next practical step
+  if Parth wants a working Remez for his own research is identifying and testing an established library rather
+  than continuing to patch this week's toy versions.
+Asked: (1) does Parth already have access to a validated Remez/minimax implementation (Sollya is the standard
+  in the floating-point/polynomial-approximation literature) for his own depth-optimal work, or has this week's
+  toy-implementation experience changed how he'd budget time between "derive the approach" and "find/verify an
+  existing correct implementation"; (2) unresolved from Friday, still relevant: is ReLU-class kinked-activation
+  approximation actually in scope for his research, or is the target smooth (in which case this week's
+  Remez difficulties are a genuinely interesting side-quest but not blocking); (3) all earlier carried-forward
+  questions (equioscillation-counting diagnostic, plateau exploitation, GLWE framing, open problems) remain
+  unanswered and are carried forward again without repeating the full list here.
+Answers: pending.
+Weak spots: unmeasured across thirty-five sessions (zero of ~47+ questions answered to date). Two genuine
+  unresolved technical loose ends now (ReLU Remez convergence; correct alternation-preserving downselection),
+  both flagged rather than papered over, and both pointing toward the same resolution (use a validated library).
+Revisit next time: FHERMA algorithmic practice track has now run its course for this round (plateau
+  exploitation, Remez, their combination, and the limits of a homebrew Remez implementation all covered
+  honestly, including where it broke). Next: move to submission/ (the real OpenFHE C++ contract: CLI flags,
+  solver class, config.json workflow) to close the loop from algorithm to actual FHERMA submission shape.
