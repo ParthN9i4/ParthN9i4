@@ -981,3 +981,55 @@ Revisit next time: FHERMA algorithmic practice track has now run its course for 
   exploitation, Remez, their combination, and the limits of a homebrew Remez implementation all covered
   honestly, including where it broke). Next: move to submission/ (the real OpenFHE C++ contract: CLI flags,
   solver class, config.json workflow) to close the loop from algorithm to actual FHERMA submission shape.
+
+## 2026-09-28 — FHERMA Practice: the real submission/ contract, closing this week's arc
+Moved from algorithmic practice (plateau exploitation, Remez) into submission/ -- the actual OpenFHE C++
+  FHERMA contract. Read main.cpp, yourSolution.h/.cpp, config.json, and the submission README rather than
+  teaching from memory of what a FHERMA submission "probably" looks like.
+Contract as actually specified: evaluator invokes the binary with six paths to OpenFHE BINARY-serialized
+  objects (--cc, --key_pub, --key_mult, --key_rot, --input, --output). NO secret key anywhere in the process --
+  the whole submission threat model is that eval() cannot decrypt, branch on plaintext, or otherwise depend on
+  seeing cleartext at any point; if an approach needs that, "it needs redesigning, not debugging" (README's own
+  words, correctly blunt). yourSolution.cpp's worked example applies EvalChebyshevFunction(sigmoid, degree=7,
+  [-8,8]) as the shape "most activation challenges take."
+Direct, submission-shape application of this week's finding: the skeleton's own worked example uses degree=7
+  -- literally the naive first-passing-degree pick this week's Tuesday session showed leaves accuracy on the
+  table. Verified via fherma_config.py: degree 7 and degree 13 cost the IDENTICAL mult_depth=5 and the
+  IDENTICAL ring_dimension=16384 (config.json's already-declared values, unchanged either way) -- so swapping
+  the skeleton's degree constant from 7 to 13 is a literal one-line code change, zero re-declaration of
+  config.json needed, for the same ~10x accuracy improvement found Tuesday. This is as close to "submission-
+  ready" as this week's finding gets without an actual FHERMA challenge to submit against.
+Found a precise, worth-noting disagreement with the repo's own pre-submission checklist: its last item reads
+  "degree is the *lowest* that meets the accuracy bar, not the first that worked" -- i.e. it explicitly
+  endorses degree-minimization via systematic search as the target metric. This week's plateau finding shows
+  that's not quite right once OpenFHE's real (step-function, non-injective) depth table is used: the correct
+  guidance is "lowest DEPTH that meets the bar, then highest degree free within that depth," since degree and
+  depth are not interchangeable. Framed as a specific, actionable correction to a specific, existing document
+  rather than a vague critique.
+Taught: the six-argument CLI contract and the no-secret-key threat model; why config.json is "where most
+  submissions fail" (mult_depth from the real table not the formula; every rotation offset must be declared or
+  EvalRotate throws at runtime; ring dimension must account for HYBRID key-switching's auxiliary modulus P);
+  the SKELETON-labeling convention from Appendix C applied concretely here (this C++ is illustrative, cross-
+  check EvalChebyshevFunction's exact signature against the pinned OpenFHE version's own examples/ tree before
+  trusting it verbatim); could not compile or run this harness live, since OpenFHE remains non-functional in
+  this environment (a standing, previously-flagged constraint) -- said so plainly rather than claiming a build
+  that didn't happen.
+Exercise: the fherma_config.py verification above (degree 7 vs 13, identical depth/ring) stood in as today's
+  exercise, directly applied to the actual submission skeleton's own example rather than an abstract case.
+Asked: (1) does Parth have OpenFHE building successfully wherever he actually develops (unlike this sandboxed
+  environment), and if so would he be willing to compile this submission skeleton with the degree-13 patch and
+  confirm the predicted accuracy improvement holds under real CKKS noise/rescaling, not just the noiseless
+  Python approximation used all week; (2) the checklist-correction above -- worth a one-line edit to the
+  repo's own submission/README.md checklist item, or does the "lowest degree" phrasing already implicitly
+  assume plateau-awareness that just wasn't spelled out; (3) all earlier carried-forward questions (Remez
+  library validation, kinked-vs-smooth research scope, equioscillation diagnostic, GLWE framing, open
+  problems) remain unanswered and are carried forward without repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across thirty-six sessions (zero of ~50+ questions answered to date).
+Revisit next time: this closes the FHERMA-practice arc that started Wednesday (plateau exploitation -> Remez ->
+  Remez debugging -> real submission contract, ending on a concrete, verified, submission-shape recommendation).
+  Open for redirect: continue deeper into FHERMA (a specific real challenge from fherma.io, if Parth names one),
+  return to spaced-repetition review of earlier weak spots (the Ch13 convention bug, Ch18-19 calibration
+  mistakes, Ch24 depth-exhaustion demo), or Parth's own research question directly. Absent a redirect, default
+  next session: a spaced-repetition review pass, since the algorithmic FHERMA track has reached a natural
+  stopping point and revisiting weak spots is the one branch not yet tried this cycle.
