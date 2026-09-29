@@ -1033,3 +1033,54 @@ Revisit next time: this closes the FHERMA-practice arc that started Wednesday (p
   mistakes, Ch24 depth-exhaustion demo), or Parth's own research question directly. Absent a redirect, default
   next session: a spaced-repetition review pass, since the algorithmic FHERMA track has reached a natural
   stopping point and revisiting weak spots is the one branch not yet tried this cycle.
+
+## 2026-09-29 — Spaced-Repetition Review: Ch13 convention bug, Ch24 depth-exhaustion, Ch18-19 calibration
+Default path taken per last session's proposal absent a redirect from Parth: first review-cycle pass over
+  earlier weak spots rather than continuing straight FHERMA practice, to check these findings still hold and
+  are genuinely retained rather than one-off session artifacts.
+Re-verified live, independently reconstructed (not copy-pasted from old scratchpad, since scratchpads don't
+  persist across sessions -- this forced a genuine from-scratch re-derivation, arguably a better test of
+  retention than replaying old code would have been):
+  - Ch13 convention bug: re-ran TenSEAL's enc_x.matmul(W) for a 3x2 asymmetric W, confirmed AGAIN it computes
+    x^T @ W (row-vector convention), matching x@W exactly ([22, 28] both ways) -- re-derived the original
+    finding without needing to recall the exact numbers, only the shape of the fact ("TenSEAL is row-vector,
+    not W@x"), which is the right level for retention (concept over exact digits).
+  - Ch24 depth-exhaustion demo: had to rebuild the parameter budget from scratch and hit a real, useful
+    speed bump doing so -- first attempt at N=8192 with 11 scale primes overflowed the 218-bit security cap
+    immediately (ValueError before any computation ran); realized the fix required recalling Ch14's ring-
+    dimension/security-cap relationship (RING_CAPS-style table, reused all week in fherma_config.py), not just
+    Ch24 content -- a good sign the material connects across chapters rather than sitting in isolated silos.
+    Fixed with N=16384 (cap 438 bits) and 11 scale primes of 28 bits (60+60+11*28=428, fits). Reproduced the
+    exact original result: iteration 0 succeeds (w updates to 0.5887), iteration 1 fails with "end of modulus
+    switching chain reached" -- Observation 24.1 (naive-Horner training exhausts its depth budget almost
+    immediately) held up under independent re-derivation.
+  - Ch18-19 calibration-range lesson: NOT re-run today (time budget), but noted this one has already had
+    organic, unplanned spaced repetition multiple times since the original session -- most directly in the
+    Ch27 softmax R=10-vs-R=4 exp-fitting failure, and again implicitly in this week's Remez/plateau work
+    (both explicitly framed as instances of the same "calibrate the domain, don't assume it" principle). Given
+    it has already resurfaced organically at least twice without prompting, judged lower-priority for today's
+    dedicated review slot than the two that hadn't been touched since their original session.
+Taught: the value of reconstructing a past finding from the underlying concept rather than replaying saved
+  code -- both re-derivations required real (if small) new problem-solving (choosing a correct W shape to
+  distinguish the two conventions; rebuilding a valid parameter budget from Ch14's security-cap relationship),
+  which is a more honest test of whether prior sessions actually built durable understanding versus session-
+  local pattern matching.
+Exercise: both re-derivations above stood in as today's exercise.
+Asked: (1) does reconstructing Ch24's parameter budget requiring a recalled security-cap relationship from
+  Ch14 (rather than Ch24 itself) match how Parth would expect FHE knowledge to organize in his own head --
+  cross-chapter dependency rather than per-chapter silos -- or does his own mental model of the material look
+  different; (2) is there a specific earlier session's finding Parth would flag as HIGH priority for a review
+  pass, as opposed to my own guess (Ch13, Ch18-19, Ch24) from three-plus weeks ago; (3) all earlier carried-
+  forward questions (FHERMA/Remez library validation, kinked-vs-smooth research scope, equioscillation
+  diagnostic, GLWE framing, open problems, submission checklist correction) remain unanswered and are carried
+  forward without repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across thirty-seven sessions (zero of ~53+ questions answered to date). Positive
+  signal, though: today's independent re-derivations both succeeded, which is closer to direct evidence of
+  retention than anything a verbal check-in could provide -- worth noting explicitly since Parth has never
+  confirmed retention any other way.
+Revisit next time: open for redirect (continue spaced-repetition review of other sessions, return to FHERMA
+  with a specific real challenge, or focus directly on Parth's research question). Absent a redirect, default
+  next session: pick 1-2 more candidate weak spots from mid-conversation (the Ch4 "39% ~ chance" self-correction,
+  the Ch10/Ch16 TenSEAL level-mismatch speculation-then-correction, or the Ch22 STE divergence-then-fix) for the
+  same live re-derivation treatment.
