@@ -1084,3 +1084,48 @@ Revisit next time: open for redirect (continue spaced-repetition review of other
   next session: pick 1-2 more candidate weak spots from mid-conversation (the Ch4 "39% ~ chance" self-correction,
   the Ch10/Ch16 TenSEAL level-mismatch speculation-then-correction, or the Ch22 STE divergence-then-fix) for the
   same live re-derivation treatment.
+
+## 2026-09-30 — Spaced-Repetition Review Round 2: TenSEAL level auto-alignment confirmed; STE divergence NOT reproduced
+Continued the review-pass default from last session, picking two more candidates: the Ch10/16 TenSEAL
+  level-mismatch auto-alignment finding, and the Ch22 STE divergence-then-fix.
+  - TenSEAL level-mismatch: re-verified cleanly. Built a fresh mismatch (a*a consumes a rescale/level, b left
+    untouched) and added the two directly -- succeeded without error, result [11.0, 24.0, 39.0] exactly
+    matching plain addition, confirming again TenSEAL auto-mod-switches to align levels on add rather than
+    throwing. Second clean re-derivation of this one (first was the original Ch16 session; this is now
+    re-confirmed independently a second time).
+  - Ch22 STE divergence-then-fix: did NOT reproduce. Built a fresh, deliberately simple scalar test (single
+    weight w, 4-bit STE quantizer, MSE toward a fixed target) at both lr=0.5 and lr=0.05. Result was the
+    OPPOSITE of the original finding: lr=0.5 converged FASTER (loss 0.253 -> 0.0009 by step 1) than lr=0.05
+    (0.253 -> only 0.092 after 6 steps), with no divergence at either rate. The original session's numbers
+    (loss exploding to 43636 at lr=0.5, then clean convergence 4.67->0.0084 at lr=0.05) describe a much larger-
+    scale blowup than anything a single-scalar toy can produce -- almost certainly the original exercise used a
+    real weight tensor/multi-parameter layer, where STE's identity-gradient approximation can compound
+    divergently ACROSS parameters/layers in a way a single scalar has no mechanism to reproduce (there is
+    nothing here for error to compound through). Reported this plainly rather than forcing a false
+    confirmation or quietly dropping the mismatch.
+Taught (about the review process itself, not new FHE content): this is exactly the kind of honest gap spaced
+  repetition is supposed to surface -- I could recall the QUALITATIVE lesson (STE + high learning rate can
+  diverge because the identity-gradient approximation doesn't track the quantizer's true, mostly-flat loss
+  landscape) but could not reconstruct the specific setup that produced it, and my simplified stand-in didn't
+  reproduce the phenomenon. This is a genuine limitation of memory-based review versus having the original
+  artifact: a qualitative fact ("STE can diverge at high lr") survived; the quantitative instance (the specific
+  setup that demonstrated it) did not, and manufacturing a fake replay would have been worse than admitting
+  that directly.
+Exercise: both re-verification attempts above stood in as the exercise, including the inconclusive one,
+  reported as inconclusive rather than papered over.
+Asked: (1) does Parth still have the original Ch22 STE exercise setup (or can reconstruct it) to check whether
+  it really was a multi-parameter/tensor case, confirming or correcting today's hypothesis about why the
+  scalar reconstruction didn't reproduce the divergence; (2) more generally -- given two spaced-repetition
+  sessions now (Ch13/Ch24 fully reproduced; Ch10-16 reproduced twice; Ch22 NOT reproduced) -- does this pattern
+  (concrete numerical/library facts hold up under reconstruction, but a specific dynamical/training-instability
+  result does not) match what Parth would expect for which KINDS of FHE facts are safe to recall from memory
+  in his own work versus which need re-verification every time; (3) all earlier carried-forward questions
+  remain unanswered and are carried forward without repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across thirty-eight sessions (zero of ~56+ questions answered to date). Notably: this
+  is the first review-pass item that did NOT survive reconstruction, a useful data point in itself about which
+  categories of past findings are robust.
+Revisit next time: open for redirect. Absent one, default next session: continue the review cycle with the
+  Ch4 probability self-correction (39% vs the correct 25% chance baseline for a t=4 exercise) as a quick,
+  low-cost arithmetic re-check, then consider whether the review cycle has covered enough ground to return to
+  either FHERMA practice or Parth's research question directly.
