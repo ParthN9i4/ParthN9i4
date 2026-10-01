@@ -1129,3 +1129,67 @@ Revisit next time: open for redirect. Absent one, default next session: continue
   Ch4 probability self-correction (39% vs the correct 25% chance baseline for a t=4 exercise) as a quick,
   low-cost arithmetic re-check, then consider whether the review cycle has covered enough ground to return to
   either FHERMA practice or Parth's research question directly.
+
+## 2026-10-01 — Ch4 review (confirmed) + fresh Ch19 re-read: this week's FHERMA work was already in the book
+Quick Ch4 review first: re-ran ex03_lwe.py's large-noise decryption test fresh. Confirmed t=4 (plaintext
+  modulus) exactly as before, large-noise accuracy exactly 39.00% again (deterministic script, same seed
+  behavior). The original correction holds: chance baseline for t=4 is 25%, not the 50% I wrongly asserted in
+  the Ch4 catch-up session months ago; 39% sits meaningfully above the 25% chance floor, meaning large-noise
+  decryption in this toy LWE instance retains weak residual signal rather than being pure noise -- a precise
+  point worth keeping, not just "it's broken."
+Then, rather than a third weak-spot replay, did something more valuable: re-read Ch19 (Polynomial Activation
+  Approximation) FRESH from fhe-book.html for the first time since it was originally taught, specifically to
+  check it against everything built ad hoc this week (plateau exploitation, Remez, the submission skeleton).
+  Result: most of this week's "findings" were already explicit in Ch19's own content, which I apparently didn't
+  connect back to at the time:
+  - Ch19 Table 19.5 (Paterson-Stockmeyer depth budget) is EXACTLY fherma_config.py's CHEBYSHEV_DEPTH table --
+    verified programmatically, both give [(5,4),(13,5),(27,6),(59,7),(119,8),(247,9),(495,10)], a literal match.
+    This means the depth plateau structure (degrees 6-13 all costing 5 levels) that took a dedicated session
+    this week to notice was sitting directly in Ch19's own table the whole time -- the book just didn't spell
+    out the optimization IMPLICATION (search to the top of a plateau) the way this week's live exploration did.
+    Worth being honest about: this week added the optimization INSIGHT on top of a fact the book already stated,
+    it didn't discover a new fact.
+  - Ch19 Section 19.3 states Theorem 19.2 (Chebyshev equioscillation, d+2 alternating extrema) in exactly the
+    form used to diagnose both Remez bugs this week -- confirms the diagnostic tool used was the textbook-
+    correct one, independently re-derived under pressure rather than looked up, which is a good retention sign.
+  - Ch19 Section 19.3 explicitly recommends this week's exact workflow for chasing extra accuracy: "if you are
+    chasing the last bit of tail robustness, run Remez explicitly in cleartext and hand OpenFHE the resulting
+    coefficients via EvalChebyshevSeries" -- i.e. the book already anticipates that EvalChebyshevFunction (used
+    in yesterday's submission skeleton) may only be near-minimax, not true minimax, and tells you to precompute
+    real Remez coefficients yourself if you want the extra accuracy. This week's homebrew Remez attempt was
+    the right instinct, just under-executed (both exchange-loop bugs found Friday/Saturday).
+  - Ch19 Section 19.4's GELU closed-form reduction (GELU(x) ~ x*sigmoid(1.702x), reusing a single sigmoid
+    polynomial rather than fitting GELU's Gaussian-CDF shape from scratch) is NOT a strict improvement on this
+    week's from-scratch erf-based GELU fit, contrary to my first assumption when I found this passage --
+    verified live: the Swish-based approximation itself has a 0.0203 floor error on [-5,5] BEFORE even applying
+    sigmoid's own polynomial-fitting error on top, which is worse than this week's achieved degree-13
+    Remez/Chebyshev erf-fit error of 0.00367. So the closed-form reduction trades accuracy for engineering
+    simplicity (one polynomial to build and verify instead of two) -- a real tradeoff, not a free lunch, and
+    whether it's worth taking depends on whether 0.02 clears the challenge's accuracy bar. Caught my own
+    overclaim here mid-session (first framed this as "this week duplicated work," corrected to "this week's
+    extra work bought real accuracy the shortcut doesn't give") rather than letting the overstated version
+    stand.
+Taught: the value of occasionally re-reading SOURCE material fresh rather than only reviewing one's own derived
+  exercises -- today's Ch19 re-read surfaced that an entire week of "discoveries" was mostly reconnecting
+  already-taught facts to their optimization implications, which is a different (still valuable, but more
+  modest) kind of progress than net-new discovery, and worth being honest about rather than overselling the
+  week's novelty.
+Exercise: the depth-table reconciliation and the GELU tradeoff verification above stood in as today's exercise.
+Asked: (1) given today's finding that the plateau-exploitation insight was implicit in Ch19's own table, does
+  Parth's own research track findings against the literature carefully enough to know when a result is genuinely
+  novel versus a known fact rediscovered under a new framing -- is there a standard practice (lit review pass,
+  explicit "what's new here" section) worth adopting given how easily this happened even with the SOURCE
+  material already read once; (2) the GELU tradeoff (0.02 floor from the closed-form reduction vs 0.0037 from
+  a from-scratch fit) -- does Parth's own FHERMA/research work have a stated accuracy bar that would make this
+  decision concrete (i.e. is 0.02 good enough for his use case, making the engineering savings worth it) rather
+  than an abstract comparison; (3) all earlier carried-forward questions remain unanswered and are carried
+  forward without repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across thirty-nine sessions (zero of ~59+ questions answered to date).
+Revisit next time: open for redirect. The spaced-repetition review cycle plus today's fresh-source-reread both
+  suggest a useful pattern worth continuing periodically (review old exercises AND periodically re-read
+  original chapters fresh, not just once). Absent a redirect, default next session: return to generative work
+  -- apply today's GELU/Remez-coefficient findings to update the combined-levers results from earlier this
+  week (swap in real Remez coefficients for sigmoid/GELU via EvalChebyshevSeries-style precomputation, and
+  re-run the depth-plateau comparison with the corrected, book-recommended workflow instead of this week's
+  under-executed homebrew Remez).
