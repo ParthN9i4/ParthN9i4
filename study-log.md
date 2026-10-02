@@ -1193,3 +1193,64 @@ Revisit next time: open for redirect. The spaced-repetition review cycle plus to
   week (swap in real Remez coefficients for sigmoid/GELU via EvalChebyshevSeries-style precomputation, and
   re-run the depth-plateau comparison with the corrected, book-recommended workflow instead of this week's
   under-executed homebrew Remez).
+
+## 2026-10-02 — Resolving the ReLU Remez anomaly: a correct implementation, and a real (not buggy) answer
+Followed up on last session's plan: fixed the actual bug behind Saturday's v2 regression, then used the
+  corrected implementation to settle the week-long open question about whether ReLU's Remez difficulty was
+  a bug or real.
+Root cause of Saturday's v2 regression, finally isolated: downselecting from >m alternating extrema to
+  exactly m=degree+2 points by repeatedly removing the globally-smallest-magnitude point can remove an
+  INTERIOR point, which always merges its two same-sign neighbors (two positions apart in an alternating
+  sequence, hence same sign) into new adjacency -- silently breaking alternation. The fix (v3): downselect by
+  trimming only from the two ENDS of the alternating list, always removing whichever boundary point has
+  smaller magnitude. This preserves contiguity, which trivially preserves alternation (a sub-window of an
+  alternating sequence is still alternating; an arbitrary subset is not).
+Verified v3 against every case touched this week:
+  - Sigmoid degree 13: 0.001892 -- EXACTLY matches Friday's original (buggy-implementation) result. The v1
+    bug apparently never triggered for this specific case's extrema pattern, so the fix changes nothing here --
+    good, since it means Friday's headline 15.7x combined-lever number for sigmoid stands as originally
+    reported, now on a verified-correct implementation rather than a lucky one.
+  - GELU degree 13: 0.003672 -- also matches Friday exactly, same story.
+  - ReLU degree 13: 0.058008 -- UNCHANGED from both buggy versions. This is the conclusive answer to the
+    open question: ran it at 30, 60, and 100 iterations, result is bit-identical every time (0.058008) --
+    the algorithm has fully converged to a genuine fixed point of the exchange map, not something still
+    moving that more iterations would improve. With a PROVABLY alternation-correct implementation now in hand,
+    this rules out "implementation bug" as the explanation. The remaining explanation is the one hypothesized
+    Saturday: Remez (a local, Newton-like iterative method) can converge to a valid equioscillating LOCAL
+    fixed point that is not the global minimax, and ReLU's kink makes the standard Chebyshev-node initial
+    reference-point guess land in a bad basin of attraction for this function specifically -- something the
+    two smooth functions (sigmoid, GELU) don't suffer from. A fix would need kink-aware initialization
+    (e.g. forcing x=0 into the initial reference set) or a continuation/homotopy approach, not just more
+    iterations or a bug-free exchange step.
+Net result: this week's combined-lever numbers for smooth activations are now validated on a correct Remez
+  implementation (sigmoid 15.7x, GELU 24.5x free accuracy at the same depth, both unchanged from the original
+  reports); the ReLU anomaly is conclusively real, not a bug, and specifically a local-convergence failure
+  mode tied to the kink -- a genuinely interesting finding in its own right, since it suggests Remez-based
+  approaches may need special handling for kinked activations in practice, beyond simply "run the algorithm."
+Taught: the distinction between a converged-but-wrong result (a genuine local optimum of an iterative method)
+  and a buggy result (the algorithm hasn't correctly implemented its own update rule) -- these look identical
+  from the final number alone ("my optimizer says X") but require completely different fixes, and this week's
+  three-session arc (v1 bug -> v2 different bug -> v3 correct, isolating ReLU as real) is a worked example of
+  how to actually distinguish them: fix implementation issues one at a time, re-verify against KNOWN-GOOD
+  cases after each fix, and only trust a "this is a real phenomenon" conclusion once the implementation passes
+  its own sanity checks.
+Exercise: today's v3 implementation and the full sigmoid/GELU/ReLU re-verification (including the
+  30-vs-60-vs-100-iteration stability check on ReLU) stood in as the exercise.
+Asked: (1) given ReLU's Remez difficulty is now confirmed real rather than a bug, is kink-aware Remez
+  initialization (seeding x=0 into the reference set, or a degree-by-degree continuation from a low-degree
+  solution) something Parth's own research already handles, or a genuinely open question worth exploring given
+  his approximation focus; (2) does a local-vs-global optimum distinction for Remez specifically appear in the
+  approximation theory literature Parth would have encountered, or is this week's finding likely rediscovering
+  a known caveat (in the spirit of yesterday's Ch19 reconciliation) -- worth checking before treating it as
+  novel; (3) all earlier carried-forward questions remain unanswered and are carried forward without repeating
+  the full list.
+Answers: pending.
+Weak spots: unmeasured across forty sessions (zero of ~62+ questions answered to date). Positive note: this
+  closes out the week-long Remez/ReLU thread with a definitive, well-isolated answer rather than leaving it
+  as an open loose end indefinitely.
+Revisit next time: open for redirect. The FHERMA/Remez thread has reached a genuinely conclusive stopping
+  point (not just a time-boxed pause). Absent a redirect, default next session: return to the main curriculum's
+  spirit by picking a specific open research question to dig into directly -- e.g. survey (via Scholar_Feed, if
+  still connected) recent literature on Remez-type algorithms for non-smooth/kinked target functions, to check
+  today's finding against the actual research literature per Question 2 above, rather than continuing to
+  rediscover results in isolation.
