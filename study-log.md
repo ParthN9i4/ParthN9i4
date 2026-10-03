@@ -1254,3 +1254,68 @@ Revisit next time: open for redirect. The FHERMA/Remez thread has reached a genu
   still connected) recent literature on Remez-type algorithms for non-smooth/kinked target functions, to check
   today's finding against the actual research literature per Question 2 above, rather than continuing to
   rediscover results in isolation.
+
+## 2026-10-03 — Literature check on the ReLU Remez finding (via ppml-research-assistant + Scholar Feed)
+Followed through on Thursday's plan: checked the week's conclusive finding (Remez converges to a correctly-
+  equioscillating but non-global-optimal fixed point for ReLU, not for smooth sigmoid/GELU) against the actual
+  literature, using the newly-available ppml-research-assistant skill's Mode 1 (literature review) workflow
+  over Scholar Feed, rather than asserting from memory whether this is known or novel.
+Searched and read (abstract+introduction) three papers directly on point:
+  - Filip, Nakatsukasa, Trefethen, Beckermann, "Rational minimax approximation via adaptive barycentric
+    representations" (arXiv 1705.10132, SIAM J Sci Comput 2017) [Verified]. Central, highly relevant finding,
+    but it CUTS AGAINST my hypothesis as originally framed: this paper is about RATIONAL Remez struggling near
+    true singularities (discontinuities, poles, unbounded growth) -- their own text states "finding the best
+    POLYNOMIAL approximation...can usually be done robustly by a standard implementation of the linear Remez
+    algorithm," explicitly contrasting this with the rational case, which is the one that needs their new
+    adaptive-barycentric/AAA-Lawson machinery. ReLU is continuous (just non-differentiable at one point, not
+    discontinuous), so this paper's "difficult functions" (true discontinuities, poles, log singularities) are
+    a harder class than ReLU's kink -- meaning the literature's prevailing view is that POLYNOMIAL Remez on a
+    merely-kinked-but-continuous function like ReLU should generally be fine, which if anything predicts my
+    result should NOT have happened as a generic phenomenon.
+  - Garimella, Jha, Reagen, "Sisyphus: A Cautionary Tale of Using Low-Degree Polynomial Activations in
+    Privacy-Preserving Deep Learning" (arXiv 2107.12342, 2021) [Verified]. Documents a related but DISTINCT
+    failure mode -- the "escaping activation problem," where forward activations drift outside a polynomial's
+    well-fit region during TRAINING, causing blowup. This is a training-dynamics problem (closer to Ch27's
+    calibration-range lesson) not a one-shot Remez-convergence problem, so it doesn't directly confirm my
+    specific finding either, though it's the same broad neighborhood (ReLU-polynomial replacement is full of
+    known gotchas, just different ones than mine).
+  - "Decision-Aware Quadratic ReLU Replacement for HE-Friendly Inference" (arXiv 2605.22237, 2026) [Verified].
+    Confirms Remez-based ReLU replacement ("Remez-7") is cited as an established, standard baseline technique
+    in the current HE-friendly-inference literature (they benchmark their own method as 3.7-4.1x faster than
+    it) -- so the general approach of this week's exploration is mainstream, not naive. No mention of
+    convergence-to-local-optimum as a caveat of that baseline.
+Honest conclusion: the specific claim ("polynomial Remez can converge to a non-global local equioscillating
+  fixed point for ReLU specifically, due to kink-related bad initialization") is NOT confirmed as a known,
+  named result in what I could locate -- the closest adjacent literature (Filip et al.) is about a different,
+  harder problem (rational approximation near true singularities) and if anything suggests continuous-but-
+  kinked functions like ReLU should usually be fine for polynomial Remez, which is the opposite of what I
+  observed. This week's finding stands as a genuinely narrower, implementation/initialization-specific result
+  I have NOT found written up elsewhere, not a known textbook caveat -- a materially different conclusion than
+  the Ch19 reconciliation two sessions ago (where the plateau-exploitation insight WAS already in the book).
+  Correctly separating "rediscovered a known fact" from "found something not obviously in the literature I
+  checked" is itself the point of doing this check rather than guessing either way.
+Also worth separating (a clarification, not a new citation): Ch19's Theorem 19.2 states the equioscillation
+  characterization requires only continuity of the target function -- so there's no THEORETICAL reason
+  ReLU's kink should break the existence/characterization of a minimax polynomial. What's at issue is the
+  NUMERICAL behavior of the iterative exchange algorithm specifically, a separate, computational-practice-level
+  question from the underlying approximation-theory theorem, and the literature check above speaks to that
+  practical question, not the theorem.
+Taught: how to use the new ppml-research-assistant skill's literature-review mode properly -- search multiple
+  angles, fetch actual abstracts/introductions rather than trusting search snippets, tag every claim with a
+  verification status, and be willing to report "not confirmed, and the nearest literature actually points
+  the other way" rather than forcing a tidy "yes, known" or "no, novel" conclusion.
+Exercise: the literature search and honest reconciliation above stood in as today's exercise.
+Asked: (1) given the literature doesn't confirm my hypothesis as framed, would it be worth Parth (or me, with
+  more budget) actually investigating WHY the specific ReLU case got stuck -- e.g. checking whether a
+  different initial reference-point placement (seeding x=0 explicitly) resolves it, which would distinguish
+  "genuinely hard for any initialization" from "just this particular initialization was unlucky" -- the
+  literature check didn't resolve this, it just confirmed the literature doesn't already answer it; (2) does
+  Parth have Scholar Feed (or equivalent) access set up for his own ongoing lit-tracking, given how directly
+  useful today's three-paper check was for calibrating confidence in a week-old finding; (3) all earlier
+  carried-forward questions remain unanswered and are carried forward without repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across forty-one sessions (zero of ~65+ questions answered to date).
+Revisit next time: open for redirect. A natural next step if continuing this exact thread: actually test the
+  x=0-seeded-initialization hypothesis from Question 1 live, since the literature check raised it but didn't
+  answer it. Otherwise, open to returning to a different part of the curriculum, Parth's research directly, or
+  another spaced-repetition round.
