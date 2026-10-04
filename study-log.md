@@ -1319,3 +1319,63 @@ Revisit next time: open for redirect. A natural next step if continuing this exa
   x=0-seeded-initialization hypothesis from Question 1 live, since the literature check raised it but didn't
   answer it. Otherwise, open to returning to a different part of the curriculum, Parth's research directly, or
   another spaced-repetition round.
+
+## 2026-10-04 — Correction: the "ReLU Remez anomaly" was partly a bad reference number, not a real effect
+Set out to test yesterday's open question (does seeding x=0 into the initial reference set resolve ReLU's
+  Remez difficulty) and ended up finding something more important: the anomaly itself was significantly
+  overstated due to a mis-attributed number from over a week ago.
+Initialization-robustness test: ran v3 Remez for ReLU degree 13 on [-5,5] from EIGHT different starting
+  points -- the standard Chebyshev-node init, Chebyshev-node-with-x=0-forced-in, five randomly perturbed
+  Chebyshev inits, and an equispaced init. SEVEN of eight converged to the exact same value, 0.058008, bit-
+  for-bit. This is strong evidence 0.058008 is not a bad local optimum from an unlucky initialization -- it
+  looks like the actual global minimax error for a degree-13 polynomial fitting ReLU on [-5,5], robustly
+  reached from almost any reasonable starting point. (One perturbed trial landed worse, at 0.142663 --
+  consistent with occasional non-convergence within 30 iterations from a sufficiently bad start, not with a
+  competing, equally-good local optimum.)
+This directly contradicted the comparison that had been driving the whole week's "ReLU anomaly" narrative:
+  last Saturday's log claimed Remez's ~0.058 was "notably worse than the plateau-exploited CHEBYSHEV
+  INTERPOLATION result from Tuesday (degree 12, error 0.008027)". Traced that 0.008027 figure back to its
+  actual source today: it is SIGMOID's degree-12 Chebyshev-interpolation error on [-8,8] from Tuesday's
+  session, not ReLU's -- I mis-attributed a number from one activation function's results table to a
+  different activation function while writing that session's summary. Verified the ACTUAL ReLU Chebyshev-
+  interpolation errors directly: degree 6 -> 0.2166, degree 12 -> 0.1153, degree 13 -> 0.1785 (non-monotonic,
+  consistent with earlier observations, but nowhere near 0.008). Against the CORRECT baseline, Remez's 0.058
+  is roughly 2x BETTER than degree-12 interpolation and 3x better than degree-13 interpolation -- exactly
+  what minimax optimality guarantees (Remez's result must be <= any fixed-degree interpolation's error), not
+  a violation of it.
+Net correction to the week's record: there was no real "ReLU breaks Remez" phenomenon. There WERE two genuine
+  implementation bugs (the v1 interior-point-removal bug and v2's edge case), correctly found and fixed along
+  the way, and fixing them was worthwhile regardless -- but the specific conclusion drawn from the still-
+  nonzero v3 error (0.058 "anomalously high") rested on comparing it to the wrong number. Once compared
+  correctly, v3's Remez behaves exactly as approximation theory predicts, which also makes yesterday's
+  literature check land differently in retrospect: Filip et al.'s observation that polynomial Remez is
+  "usually robust" wasn't in tension with my finding after all -- it was correctly predicting today's result,
+  and I just hadn't caught my own error yet when I read it.
+Taught (about process, again): a week-long thread chasing a "finding" is itself a cautionary tale about re-
+  verifying OLD numbers pulled into a NEW comparison, not just re-deriving new ones -- the actual bugs (v1,
+  v2) were caught by careful re-verification; the bad REFERENCE number survived four separate sessions
+  (Tue write-up error -> Wed, Fri, Sat, Sun all built on it) because none of those sessions re-checked the
+  Tuesday number itself, only the new Remez numbers being compared against it. The fix going forward: when a
+  "surprising" result rests on comparing today's number to a past session's number, re-derive the OLD number
+  too, don't just trust the log.
+Exercise: today's eight-initialization robustness test, plus the direct recomputation of ReLU's actual
+  Chebyshev-interpolation errors at degrees 6/12/13, stood in as the exercise and is what surfaced the
+  correction.
+Asked: (1) this is a good concrete case study of exactly Question 2 from two sessions ago (proven/verified/
+  conjectured scale for research claims) -- a "verified-by-reproduction" finding (ReLU anomaly, reproduced
+  identically across three sessions) still turned out to rest on an unverified INPUT; does Parth's own
+  practice re-check cited baseline numbers from his own past notes/code before building new comparisons on
+  top of them, or is this a gap worth deliberately guarding against; (2) given the real, corrected picture is
+  now "Remez robustly and correctly outperforms Chebyshev interpolation for ReLU, consistent with theory, no
+  special kink-handling needed at degree 13 on this domain" -- does this change which of this week's
+  downstream claims (the FHERMA submission-skeleton recommendation, the Ch19 reconciliation) need revisiting,
+  or were those independent of the ReLU-specific error; (3) all earlier carried-forward questions remain
+  unanswered and are carried forward without repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across forty-two sessions (zero of ~68+ questions answered to date). This session is
+  itself the clearest evidence yet of why that matters: an error persisted uncorrected for five days purely
+  because nothing challenged it.
+Revisit next time: open for redirect. Given today's correction, worth briefly re-auditing whether the FHERMA
+  submission-skeleton recommendation (Wednesday) or the Ch19 reconciliation (Thursday) relied on the bad ReLU
+  number anywhere -- a quick check, not a full redo, since both were primarily about sigmoid/GELU plateau
+  exploitation, which never depended on the ReLU comparison.
