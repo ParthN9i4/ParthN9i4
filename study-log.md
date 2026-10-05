@@ -1379,3 +1379,67 @@ Revisit next time: open for redirect. Given today's correction, worth briefly re
   submission-skeleton recommendation (Wednesday) or the Ch19 reconciliation (Thursday) relied on the bad ReLU
   number anywhere -- a quick check, not a full redo, since both were primarily about sigmoid/GELU plateau
   exploitation, which never depended on the ReLU comparison.
+
+## 2026-10-05 — Research-gap-finder pass on Parth's actual thesis question (ppml-research-assistant, Mode 2)
+Curriculum (book), FHERMA arc, and review cycle have all reached natural closure points over the past two
+  weeks, so pivoted today's session to point the research tooling directly at Parth's stated PhD focus --
+  depth-optimal polynomial approximation of activations -- rather than another derived exercise, using the
+  ppml-research-assistant skill's Mode 2 (research gap finder) over Scholar Feed.
+Searched four angles: (1) multiplicative-depth-aware polynomial activation approximation generally, (2)
+  minimax/Remez + CKKS depth budget, (3) Paterson-Stockmeyer depth-table granularity/step-function degree
+  selection specifically, (4) joint degree/depth/accuracy optimization for HE activations. Read full
+  abstract+introduction+method+results for the single closest-matching paper found.
+MOST DIRECTLY RELEVANT: Woo, Ryu, Kim, "Degree-Constrained Interval Optimization for Minimax Polynomial
+  Approximation in Homomorphic Encryption" (arXiv 2607.08042, 2026) [Verified]. Confirms minimax/Remez IS the
+  standard tool for HE activation approximation (matching this week's own rediscovery), and explicitly names
+  the degree-vs-depth tension in its introduction ("a higher degree generally leads to a larger homomorphic
+  evaluation cost... governed by... multiplicative depth... reducing the minimax error solely by raising the
+  polynomial degree is often impractical"). BUT their actual method FIXES degree at a single value (degree 15,
+  stated explicitly: "for each candidate radius rho, we compute the degree-15 minimax polynomial") and
+  optimizes the approximation INTERVAL (a distribution-aware radius, connecting directly to this book's
+  Ch18/19/27 R-calibration material) against that fixed degree -- a different, complementary axis from degree
+  selection against a real per-library depth-cost table. No engagement found with the non-injective
+  (step-function) structure of an actual Paterson-Stockmeyer depth table.
+Also found and partially relevant but not on-point: Sisyphus (2107.12342, escaping-activation problem, a
+  training-time issue not a degree/depth optimization one) [Verified]; several ReLU-polynomial-replacement
+  papers (quadratic replacement, layerwise approximation, decision-aware replacement) that treat degree as a
+  design choice tuned empirically against accuracy, without reasoning explicitly about depth-table granularity
+  [Verified, surveyed abstracts only].
+Searched specifically for "Paterson-Stockmeyer depth granularity / step-function degree selection" and "joint
+  degree-depth-accuracy optimization" as direct, skeptical checks before concluding anything was missing
+  (per the skill's explicit instruction) -- neither search surfaced a paper engaging with this specific
+  framing; results were dominated by unrelated secure-computation/matrix-multiplication papers.
+HONEST CONCLUSION (gap assessment, not a final verdict -- stated with appropriate hedging per the verification
+  rules): across what was searched and read this session, no paper was found that explicitly treats a real
+  library's non-injective degree-to-multiplicative-depth cost table as an exploitable structure -- i.e.
+  "minimize degree" and "minimize depth" are treated as interchangeable (or depth is abstracted to the
+  idealized ceil(log2(d+1)) formula) in the papers surveyed, rather than distinguished via an actual
+  implementation's step-function table the way this week's direct experimentation did. This is consistent
+  with, not proof against, it being a genuine (if narrow) methodological contribution: combining (a) minimax
+  fitting (standard, per Woo et al.) with (b) explicit degree selection at the TOP of a real depth-table
+  plateau (apparently unaddressed) as a joint, two-part optimization specifically for HE deployment, layered
+  on top of interval optimization (Woo et al.'s axis) rather than replacing it. A more thorough check (full
+  related-work sections of the 15-20 nearest papers, not just abstracts) would be needed before treating this
+  as confirmed novel -- today's search was a Mode-2 scoping pass, not an exhaustive related-work section.
+Taught: the difference between "optimize the interval for a fixed degree" (Woo et al.'s axis, well-established
+  and directly continuous with this book's Ch18/19/27 calibration material) and "optimize the degree itself
+  against a real depth-cost table's granularity" (this week's own finding, not found addressed elsewhere) --
+  these are orthogonal levers on the same underlying problem, and a real contribution would likely need to
+  combine both rather than present the depth-plateau insight alone as sufficient.
+Exercise: the search-and-read process above, including the two skeptical "is this already solved" searches,
+  stood in as today's exercise.
+Asked: (1) does this gap assessment match what Parth already knows of the field -- is Woo et al. (very recent,
+  2026) already on his radar, and does his own related-work search turn up anything closer to the plateau-
+  exploitation idea that Scholar Feed's semantic search missed; (2) if this gap holds up under a fuller check,
+  the natural next step is a small controlled experiment -- combining Woo et al.'s interval optimization with
+  plateau-aware degree selection on a real OpenFHE depth table and measuring whether the combination beats
+  either lever alone -- is this worth scoping as an actual short paper/workshop contribution rather than a
+  curiosity; (3) all earlier carried-forward questions remain unanswered and are carried forward without
+  repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across forty-three sessions (zero of ~71+ questions answered to date).
+Revisit next time: open for redirect -- this is the first session in the whole 43-session run aimed squarely
+  at producing something potentially useful for Parth's actual thesis rather than teaching/reviewing the book,
+  so a response here (even a one-line "yes, already known" or "worth pursuing") would be unusually high-value
+  if it ever comes. Absent one, next session could deepen this specific gap check (full related-work sections,
+  not just abstracts) or return to the daily-habit format on a different thread.
