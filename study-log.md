@@ -1443,3 +1443,57 @@ Revisit next time: open for redirect -- this is the first session in the whole 4
   so a response here (even a one-line "yes, already known" or "worth pursuing") would be unusually high-value
   if it ever comes. Absent one, next session could deepen this specific gap check (full related-work sections,
   not just abstracts) or return to the daily-habit format on a different thread.
+
+## 2026-10-06 — Deepening the gap check: related-work section, citations, and foundational lineage
+Continued yesterday's scoping pass with the deeper check it called for: read Woo et al.'s (2607.08042) full
+  related-work and conclusion sections, checked its citation count (new paper, zero citations yet, as
+  expected), and pulled its foundational lineage (the niche-specific prior art the paper's neighborhood
+  actually builds on, not just generic HE landmarks).
+STRONGEST new evidence, directly from the paper's own conclusion [Verified]: Woo et al. explicitly name their
+  own open future work as "[i]ntegration of the proposed framework into end-to-end HE-based neural network
+  inference, including... actual HE evaluation costs under SPECIFIC CRYPTOGRAPHIC LIBRARY IMPLEMENTATIONS...
+  is an important direction for future investigation that builds upon the analytical foundation established
+  here." This is the paper closest to this week's finding explicitly stating that connecting their
+  (interval-optimization) framework to real per-library depth costs has NOT been done yet, by their own
+  account -- meaningfully stronger evidence for the gap than yesterday's inference from silence.
+Closest adjacent prior art found via foundational-lineage search: Ao & Boddeti, "AutoFHE: Automated Adaption
+  of CNNs for Efficient Evaluation over FHE" (arXiv 2310.08012, 2023, 53 citations, highest-lift niche root for
+  this specific sub-field) [Verified]. AutoFHE jointly optimizes LAYERWISE mixed-degree polynomials against
+  BOOTSTRAPPING-OPERATION COUNT via a multi-objective evolutionary search (NSGA-II-style Pareto fronts,
+  crossover/mutation over per-layer polynomial degree) across an entire CNN -- genuinely related (degree
+  selection jointly with a real HE cost proxy) but at a different granularity (whole-network bootstrap
+  scheduling, not a single activation's exact multiplicative-depth table) and with a different fitting method
+  (their own co-evolved "EvoReLU" composite polynomials, not explicit Remez minimax). Degree mutations in their
+  evolutionary search could implicitly land on plateau-respecting degrees through the fitness landscape, but
+  the paper does not discuss or exploit the step-function structure explicitly, and does not combine it with
+  true minimax fitting the way this week's exploration did.
+Refined gap statement after the deeper check: the specific combination -- (a) reading a real library's
+  degree-to-multiplicative-depth table as a step function with exploitable plateaus, for (b) a SINGLE
+  activation function, fit via (c) true Remez minimax at the top of the relevant plateau -- still does not
+  appear addressed by the two closest papers found (Woo et al.: interval optimization at one fixed degree, no
+  depth-table engagement, explicitly flagged as future work in their own conclusion; AutoFHE: joint degree/
+  bootstrap-count search at network granularity, different fitting method, no explicit plateau discussion).
+  This is now a better-supported gap claim than yesterday's (inference from absence); it is supported by a
+  direct quote from the nearest paper's own stated limitations.
+Taught: the difference between "didn't find it" (yesterday, weaker) and "the closest paper says they haven't
+  done it yet" (today, stronger) as evidence for a research gap -- the skill's own Mode 2 instructions flag
+  exactly this distinction (rule 6: "flag if a gap might actually be solved work you haven't found yet --
+  search before claiming absence"), and today's deeper pass is what that instruction is for.
+Exercise: today's related-work/citations/lineage search stood in as the exercise.
+Asked: (1) given AutoFHE is the closest adjacent prior art and uses evolutionary search rather than Remez,
+  is there a principled reason to prefer exact minimax fitting at a depth-table-aware degree over an
+  evolutionary/co-evolved approach for a SINGLE activation (interpretability and reproducibility of the
+  exact minimax solution, vs. AutoFHE's advantage of jointly handling many layers at once) -- this seems like
+  the right framing question if Parth wants to scope a contribution relative to both nearest papers rather
+  than just one; (2) is AutoFHE itself already known to Parth, given it is the single most load-bearing
+  adjacent paper in this specific niche (highest lift score of anything found across two sessions of
+  searching); (3) all earlier carried-forward questions remain unanswered and are carried forward without
+  repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across forty-four sessions (zero of ~74+ questions answered to date).
+Revisit next time: open for redirect. The gap-finder thread now has two sessions of increasingly well-
+  supported evidence behind it (Woo et al.'s explicit future-work admission is the strongest single piece);
+  a natural next step if continuing would be scoping the actual small experiment proposed yesterday (combine
+  Woo et al.'s interval optimization with plateau-aware degree selection on a real OpenFHE table, measure the
+  combination against each lever alone) rather than further literature searching, since the literature check
+  itself has reached diminishing returns without Parth's input on which direction he'd actually want to take it.
