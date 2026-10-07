@@ -1497,3 +1497,56 @@ Revisit next time: open for redirect. The gap-finder thread now has two sessions
   Woo et al.'s interval optimization with plateau-aware degree selection on a real OpenFHE table, measure the
   combination against each lever alone) rather than further literature searching, since the literature check
   itself has reached diminishing returns without Parth's input on which direction he'd actually want to take it.
+
+## 2026-10-07 — The actual experiment: combining plateau-aware degree selection with Woo et al.'s interval optimization
+Moved from literature search to the small constructive experiment proposed two sessions ago, since the lit
+  check had reached diminishing returns without Parth's input. Built, for sigmoid under a standard-normal
+  pre-activation distribution (matching Woo et al.'s experimental setup) at a FIXED depth budget (5
+  multiplicative levels, plateau degrees 6-13 per OpenFHE's real table): a distribution-weighted MSE objective
+  combining within-interval minimax-fit error and outside-interval extrapolation error, both density-weighted
+  -- a simplified stand-in for Woo et al.'s DEF/DEP framework (their actual clipping-polynomial construction
+  was not reproduced; noted explicitly as a simplification, not a replication).
+First attempt had a real design flaw, caught and fixed before trusting the result: the initial "interval-
+  optimization-only" condition held degree FIXED AT 13, which is itself the top of the depth-5 plateau -- not
+  a fair isolation of the interval-optimization lever alone, since it was unintentionally already plateau-aware.
+  Corrected by re-running with degree fixed at 7 (matching the naive baseline) for the interval-optimization-
+  only condition, to properly isolate what each lever contributes.
+Four conditions at the IDENTICAL multiplicative depth (5 levels, zero cost difference between any of them):
+  - naive (degree 7, fixed interval [-8,8], matching this week's earlier naive baseline): MSE = 1.78e-4
+  - interval optimization ALONE (Woo et al.'s lever: degree fixed at 7, radius optimized, R*=4.0): MSE =
+    9.08e-7 -- a ~196x improvement over naive, confirming Woo et al.'s actual contribution is real and
+    substantial on its own.
+  - plateau-aware degree selection ALONE (this week's lever: degree optimized within the plateau, interval
+    fixed at [-8,8]): MSE = 1.79e-6 -- a ~100x improvement over naive on its own.
+  - COMBINED (both optimized jointly: degree*=13, R*=5.0): MSE = 5.55e-9 -- a further ~164x improvement
+    beyond interval-optimization alone, and ~32,000x total improvement over the naive baseline, all at
+    ZERO additional multiplicative depth versus every other condition.
+This is a clean, honest confirmation of the gap-finder hypothesis from the last two sessions: plateau-aware
+  degree selection is a genuinely ADDITIONAL, non-redundant lever on top of Woo et al.'s interval optimization
+  (the closest published technique), not something their method already captures implicitly. The two levers
+  compound rather than overlap, because they attack different parts of the same objective -- interval
+  optimization trades within-interval accuracy against out-of-interval blowup for a FIXED degree; plateau
+  selection extracts free accuracy from degrees that cost identical depth, independent of interval choice.
+Taught: the value of building the smallest experiment that actually tests a hypothesis, including deliberately
+  checking the experiment's OWN validity (the degree=13-vs-degree=7 fixed-degree flaw) before trusting its
+  output -- the same self-correction discipline from Monday's ReLU-anomaly session, applied prospectively this
+  time (caught during construction) rather than retrospectively (caught after a week of believing a wrong
+  number).
+Exercise: today's four-condition experiment, including the self-caught design flaw and its fix, stood in as
+  the exercise.
+Asked: (1) this result (now a genuine constructive finding, not just a literature gap) seems like the clearest
+  candidate yet across 45 sessions for something directly usable in Parth's actual thesis work -- does this
+  specific experimental design (distribution-weighted MSE, fixed depth budget, joint degree+interval search)
+  match how he'd want to frame it, or would a real thesis-grade version need a different objective/setup;
+  (2) the simplification versus Woo et al.'s actual DEP-based out-of-interval handling (raw extrapolation vs.
+  their clipping-polynomial construction) -- is this gap large enough to matter for a real comparison, or
+  reasonable for a first-pass sanity check; (3) all earlier carried-forward questions remain unanswered and
+  are carried forward without repeating the full list.
+Answers: pending.
+Weak spots: unmeasured across forty-five sessions (zero of ~77+ questions answered to date).
+Revisit next time: open for redirect -- this is now a complete, self-contained, three-session arc (gap search
+  -> deepened gap search -> constructive experiment confirming the gap) with a genuinely compelling headline
+  number (32,000x MSE improvement, zero extra depth) ready to show Parth if he engages. Absent a redirect,
+  natural next steps: extend the experiment to GELU/tanh (matching Woo et al.'s other tested functions) for
+  robustness, or implement Woo et al.'s actual DEP clipping construction properly rather than the simplified
+  stand-in used today.
