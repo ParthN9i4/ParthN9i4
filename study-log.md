@@ -1550,3 +1550,53 @@ Revisit next time: open for redirect -- this is now a complete, self-contained, 
   natural next steps: extend the experiment to GELU/tanh (matching Woo et al.'s other tested functions) for
   robustness, or implement Woo et al.'s actual DEP clipping construction properly rather than the simplified
   stand-in used today.
+
+## 2026-10-08 — RESTART: curriculum pacing reset to Chapter 1 (Session 1 of a new cycle)
+Genuine live instruction from Parth (first direct message since the engagement began): "Reset it and let's
+  start from scratch." Clarified scope before acting, given the ambiguity and irreversibility risk -- asked
+  whether this meant restarting curriculum pacing only, wiping study-log.md, or a full branch/log reset.
+  Parth chose: restart curriculum pacing only. This log, the git branch, and all 45 prior sessions' history
+  (full book coverage, the FHERMA/Remez week, the research-gap-finder arc) are explicitly KEPT, not wiped.
+  This entry marks the start of a new teaching cycle beginning again at Chapter 1, per that instruction.
+Re-read Chapter 1 (Modular Arithmetic and Algebraic Structures) fresh from fhe-book.html, as required --
+  did not teach from memory of the first cycle's Ch1 session.
+Verified live, fresh (not reused from the original Ch1 session, which is many weeks and a full cycle old):
+  - Ran tier0_math/ex01_modular_arith.py: 16/16 checks pass (mod arithmetic, CRT reconstruction, NTT/INTT
+    round-trip, NTT-convolution-theorem equivalence over 20 random pairs, and the negacyclic-vs-cyclic
+    root-order rejection check).
+  - Transcribed and ran Chapter 1's own Artifact 1.1 verbatim: RNS reconstruct (12345*6789+12345 mod
+    17*19*23) = 1143, matching direct computation exactly; primitive 8th root of unity mod 17 found as 9,
+    confirmed omega^8 = 1 mod 17; NTT-based cyclic convolution matched schoolbook O(N^2) convolution exactly
+    on a random length-8 instance.
+  - Verified Theorem 1.4's Gaussian tail bound (P(|X|>t*sigma) <= 2e^(-t^2/2)) numerically for t=1..4 --
+    holds as a valid (non-tight) upper bound throughout, consistent with the book's own framing of it as a
+    provable correctness/security budget rather than an exact tail probability.
+Taught (fresh, this cycle): Z_q's group/ring/field structure and why q is chosen prime (Theorem 1.1: units
+  exist iff gcd(a,q)=1, hence Z_q is a field iff q is prime); the Chinese Remainder Theorem as a ring
+  isomorphism Z_q ~= Z_q1 x ... x Z_qk, and RNS as its direct engineering payoff (big-integer arithmetic on a
+  500-bit modulus becomes independent machine-word arithmetic on ~9 limbs, parallelizable and SIMD-friendly --
+  except division/comparison, which don't factor componentwise, forcing the RNS-BFV/RNS-CKKS redesigns covered
+  later); discrete Gaussian noise and why its exponential tail (not a bounded-uniform alternative) is load-
+  bearing for BOTH the correctness budget (Chapter 4, 5, 7) and the LWE hardness reduction itself (Chapter 4);
+  the NTT as a finite-field FFT, requiring an N-th root of unity in F_q (hence N | q-1, the "NTT-friendly
+  modulus" condition used throughout the book), collapsing polynomial multiplication from O(N^2) to O(N log N)
+  -- concretely a ~2000x operation-count gap at N=2^15, the single largest algorithmic factor making FHE usable
+  at all; the negacyclic-vs-cyclic pitfall (X^N+1 vs X^N-1) as a classic silent-sign-bug source, flagged for
+  when Chapter 2 formalizes the ring R_q.
+Exercise: ex01_modular_arith.py (run and verified above) plus Chapter 1's own Artifact 1.1 (reproduced from the
+  book's text and run independently, both agreeing).
+Asked (first questions of the new cycle, replacing rather than adding to the unanswered backlog from cycle 1
+  -- noting the full prior backlog, ~77+ questions across 45 sessions, remains in this log's history above but
+  is not being re-asked here since the format is restarting): (1) why must N specifically be a power of two for
+  the clean log_2(N)-stage NTT recursion Chapter 1 describes -- what would break (not just "be less elegant")
+  if N were, say, 12; (2) the chapter notes RNS breaks down for division/comparison -- can you name a concrete
+  FHE operation (from what you already know, or a guess) that needs one of those, to connect this forward to
+  why rescaling/mod-switching get their own chapters later; (3) Theorem 1.4's tail bound is stated with a
+  slack (non-tight) constant -- does a looser-than-necessary provable bound ever cost you something concrete
+  in parameter selection, or is slack always just "free" conservatism with no downside?
+Answers: pending (session just started).
+Weak spots: n/a yet this cycle -- tracking restarts here.
+Revisit next time: Chapter 2 (Polynomial Rings and Cyclotomic Fields), continuing the new cycle. The full
+  45-session history above remains the project's memory of what's already been explored in depth (FHERMA/
+  Remez, the research-gap-finder thread); this restart is specifically about teaching pace/sequence, not
+  erasing that context.
