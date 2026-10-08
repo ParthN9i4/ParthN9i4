@@ -1600,3 +1600,40 @@ Revisit next time: Chapter 2 (Polynomial Rings and Cyclotomic Fields), continuin
   45-session history above remains the project's memory of what's already been explored in depth (FHERMA/
   Remez, the research-gap-finder thread); this restart is specifically about teaching pace/sequence, not
   erasing that context.
+
+## 2026-10-09 — Chapter 2 (new cycle, session 2): Polynomial Rings and Cyclotomic Fields
+Continuing the restarted cycle. Read Chapter 2 fresh from fhe-book.html.
+Verified live:
+  - tier0_math/ex02_ring_poly.py: 9/9 pass (poly_mod negacyclic reduction, schoolbook negacyclic
+    multiplication including wraparound sign flip, NTT-accelerated multiplication matching schoolbook on
+    both fixed and random instances).
+  - Theorem 2.1 (expansion factor ||ab||_inf <= N*||a||_inf*||b||_inf) checked numerically over 5 random
+    negacyclic-multiplication trials at N=16: bound held every time, with real slack (e.g. 97 vs bound 400),
+    consistent with the book's own framing of delta_R=N as an upper bound, not a tight constant.
+Taught: R = Z[X]/(X^N+1) and why power-of-two N specifically -- three independent reasons converge (NTT-
+  friendliness via the twist-then-cyclic-NTT trick from Ch1's machinery; uniform transitive Galois structure
+  that Ch13's rotations exploit; near-optimal expansion factor delta_R=N); the negacyclic property X^N=-1 and
+  how it differs from Ch1's plain cyclic convolution; R_q's CRT splitting into N copies of F_q when 2N|q-1,
+  and the explicit warning (worth flagging clearly) that this mod-q splitting is an arithmetic accelerator
+  ONLY, not the same thing as BFV/BGV plaintext batching slots (which need t = 1 mod 2N on the PLAINTEXT
+  modulus) or CKKS slots (which come from the canonical embedding over C, a different construction entirely)
+  -- the book explicitly calls out conflating these as a common error; the canonical embedding sigma as
+  literally the CKKS encoding map (its inverse, restricted to conjugate-symmetric vectors, scaled by Delta)
+  and why it gives a strictly better (constant-factor submultiplicative) noise norm than the raw coefficient
+  norm; Theorem 2.1's expansion factor as the algebraic seed of every later noise-growth bound, modulus chain,
+  and the eventual need for bootstrapping.
+Exercise: ex02_ring_poly.py (above) plus a direct numerical check of Theorem 2.1's expansion-factor bound.
+Asked: (1) the chapter is explicit that R_q's mod-q CRT splitting (an arithmetic accelerator) must not be
+  confused with BFV/BGV's plaintext-batching slots (t=1 mod 2N) or CKKS's canonical-embedding slots -- can you
+  state, in one sentence each, what's actually different about the THREE constructions (they use the same
+  ring R, but three different moduli/maps: q for fast multiplication, t for exact batching, C for CKKS) --
+  this is exactly the kind of conflation the book warns is common; (2) Theorem 2.1's expansion factor is stated
+  as an upper bound (delta_R=N), and today's numerical check showed real slack (actual growth well under the
+  bound) -- is that slack structural (power-of-two cyclotomics are provably loose here) or just a property of
+  the specific random inputs tried, and would worst-case inputs approach the bound more tightly; (3) the
+  chapter flags that multiplication by a non-unit ring element (e.g. g=2) is NOT an isometry of an ideal
+  lattice, unlike multiplication by X -- why does this distinction (unit vs non-unit multiplier) matter for
+  how "structured" an attacker's view of an ideal lattice actually is.
+Answers: pending.
+Weak spots: n/a yet this cycle.
+Revisit next time: Chapter 3 (Lattices and Hard Problems), continuing the new cycle.
