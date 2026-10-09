@@ -1637,3 +1637,54 @@ Asked: (1) the chapter is explicit that R_q's mod-q CRT splitting (an arithmetic
 Answers: pending.
 Weak spots: n/a yet this cycle.
 Revisit next time: Chapter 3 (Lattices and Hard Problems), continuing the new cycle.
+
+## 2026-10-10 — Chapter 3 (new cycle, session 3): Lattices and Hard Problems
+Continuing the restarted cycle. Read Chapter 3 fresh from fhe-book.html. No committed exercise file matches
+  this chapter directly (tier0_math covers modular arithmetic/ring-poly/LWE/RLWE/CKKS-encode, not LLL), so
+  verification was done by transcribing and running the chapter's own Artifact 3.1 plus its two other
+  concrete numerical claims (Example 3.1, the BKZ cost-model numbers), matching the pattern used for chapters
+  without a direct fhe-foundations exercise throughout the original cycle.
+Verified live, fresh:
+  - Artifact 3.1 (LLL from scratch): on the book's deliberately bad 2D basis ((1731,512), (1264,375), norms
+    ~1805 and ~1318), LLL reduction (delta=0.75) produced ((-25,22), (-31,-51)), norms 33.30 and 59.68 --
+    matching the book's own description ("both vectors of length under 60," determinant preserved exactly at
+    1957 in both bases).
+  - Example 3.1 (successive minima / Gaussian heuristic on a toy lattice): b1=(2,0), b2=(1,2), det=4,
+    lambda_1=2 (confirmed b2-b1 is longer, norm 2.236). Minkowski bound sqrt(2)*det^(1/2)=2.828 holds with
+    slack. Gaussian heuristic estimate 0.684 -- confirmed a poor numerical fit at this toy dimension, exactly
+    as the book flags (asymptotic statement, most accurate at cryptographic dimensions, not n=2).
+  - BKZ core-SVP cost-model arithmetic (2^(0.292*beta)): beta=350 -> 2^102.2, beta=400 -> 2^116.8,
+    beta=438 -> 2^127.9 -- all three match the book's stated figures (2^102, 2^117, ~2^128) to the precision
+    given.
+Taught: lattices, bases, and why basis-independent invariants (det, successive minima lambda_i) coexist with
+  basis-DEPENDENT computational difficulty -- the entire asymmetry trapdoor lattice cryptosystems are built on
+  (good basis = private key, bad basis = public key); SVP/CVP/SIVP and their approximate/decision variants,
+  with the approximation factor gamma as the single dial connecting lattice theory to concrete FHE parameters
+  (smaller noise rate alpha -> easier lattice problem reduced from -> weaker security for fixed dimension,
+  per Regev's reduction previewed here for Chapter 4); LLL's polynomial-time but only exponential-factor
+  guarantee, and BKZ's exponential-time-in-block-size tradeoff for better approximation -- and the chapter's
+  explicit, pointed warning that quoting a BKZ block size without naming the cost model is "how security
+  estimates end up off by twenty-plus bits" (today's own arithmetic check demonstrates exactly how sensitive
+  the beta-to-bit-security mapping is); Ajtai's worst-case-to-average-case reduction as the structural reason
+  lattice cryptography is trusted beyond bare average-case conjecture, and its precise limits (does not make
+  SVP provably hard, does not pin down concrete hardness at a given n -- those remain empirical/cryptanalytic
+  questions); the post-quantum argument precisely stated (no known quantum algorithm beats classical sieving
+  by more than a modest constant-factor exponent reduction, 0.292*beta down to ~0.257*beta, nothing like
+  Shor's exponential-to-polynomial collapse -- and the explicit correction that parameter selection does NOT
+  compensate by doubling the classical security target, contrary to widespread belief).
+Exercise: transcribed-and-run Artifact 3.1, Example 3.1, and the BKZ cost-model arithmetic, all above.
+Asked: (1) the chapter states LLL's worst-case approximation bound is routinely far more pessimistic than
+  its typical-case behavior (today's demo: a ~2^(n/4)-style worst-case guarantee vastly outperformed on an
+  actual random-looking input) -- given this gap, why can't parameter selection (Chapter 14) just rely on
+  LLL/BKZ's typical-case behavior directly instead of needing simulated cost models at all; (2) Ajtai's
+  reduction is explicitly framed as NOT proving SVP is hard, only that breaking SIS/LWE on average implies
+  breaking SVP in the worst case -- if a worst-case SVP break were somehow found tomorrow, what EXACTLY would
+  that mean for deployed FHE systems versus what it would NOT mean (i.e., does it immediately break every
+  lattice scheme, or does the reduction's direction matter here); (3) the chapter flags the common
+  misconception that quantum resistance requires doubling classical security parameters, and corrects it to
+  "adjusted at the margin" -- can you reconstruct NUMERICALLY, from the 0.292 vs ~0.257 sieving exponents
+  alone, roughly how much LARGER a block size (and hence roughly how much larger n) a quantum-secure target
+  needs versus a classical one, to sanity-check "modestly larger" against an actual ratio.
+Answers: pending.
+Weak spots: n/a yet this cycle.
+Revisit next time: Chapter 4 (Learning With Errors), continuing the new cycle.
