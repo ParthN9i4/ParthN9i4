@@ -1688,3 +1688,51 @@ Asked: (1) the chapter states LLL's worst-case approximation bound is routinely 
 Answers: pending.
 Weak spots: n/a yet this cycle.
 Revisit next time: Chapter 4 (Learning With Errors), continuing the new cycle.
+
+## 2026-10-11 — Chapter 4 (new cycle, session 4): Learning With Errors (LWE)
+Continuing the restarted cycle. Read Chapter 4 fresh from fhe-book.html.
+Verified live, fresh:
+  - tier0_math/ex03_lwe.py: 5/5 pass, large-noise accuracy exactly 39.00% again (deterministic script) --
+    third independent confirmation of this number across the whole engagement (original session, the
+    spaced-repetition review session, and now this cycle's restart), and the t=4 chance-baseline correction
+    (25%, not 50%) still holds as context for reading that 39%.
+  - Chapter 4's own Artifact 4.1 (LWE toy encrypt/decrypt + deliberate failure demo), transcribed and run
+    independently: safe sigma=3.2 gives exactly 0.0000% failure over 500 trials; sigma pushed to (q/4)/1.5
+    = 554.8 gives 12.00% failure -- close to the book's own stated two-tailed theoretical estimate (~13.4%,
+    "roughly one in seven"), confirming the deliberate-failure demonstration reproduces as described.
+  - Example 4.1's hand computation (n=4, q=97, s=(2,51,76,13), a=(34,8,91,5), e=2) reproduced exactly:
+    <a,s> mod 97 = 85, b=87 (m=0), b'=38 (m=1), decrypt raw=50, signed representative -47, |-47|>24.25 so
+    correctly decodes to 1 -- matching the book's arithmetic digit-for-digit, including the specific
+    signed-vs-circular-distance subtlety the chapter flags as a common implementation bug (comparing by
+    magnitude against q/4 on the circle, not by naive signed-integer proximity to 0).
+Taught: the LWE distribution and why the error term alone creates intractability despite the underlying
+  linear algebra being trivial (Gaussian elimination recovers s in O(n^3) with NO error; the error breaks
+  this entirely); search-decision equivalence via the coordinate-by-coordinate hybrid reduction (guess s_1,
+  zero it out via rerandomization, test with a Decision oracle, repeat); Regev's quantum worst-case reduction
+  to GapSVP/SIVP at gamma=~O(n/alpha), and the chapter's explicit caution that this is an asymptotic,
+  parameter-FAMILY statement, not a black-box certificate for any specific (n,q,sigma) -- that translation is
+  Chapter 14's empirical job; Regev encryption's exact structure (encrypt by adding e + m*floor(q/2), decrypt
+  by rounding/magnitude-threshold at q/4) as the direct ancestor of every later scheme's encryption; the
+  security-vs-correctness tension (large sigma/q=alpha wants security, small sigma wants correctness) as the
+  central engineering problem the rest of Part II manages; LWR as a derandomized variant trading explicit
+  noise sampling for implicit rounding error, used in Saber/NIST candidates and FHE modulus-switching alike;
+  and the concrete security-estimation sketch (primal attack, BKZ block size, sieving cost) with its explicit,
+  repeated warning not to hand-roll real parameter estimates outside a maintained tool like the Lattice
+  Estimator.
+Exercise: ex03_lwe.py (above), Chapter 4's own Artifact 4.1 transcribed and run independently, and Example
+  4.1's hand computation reproduced digit-for-digit.
+Asked: (1) the chapter's search-to-decision reduction costs O(nq) oracle calls -- walk through why this
+  specifically requires q to be POLYNOMIAL in n (not just "bounded") for the reduction to stay efficient, and
+  what would happen to the reduction's running time if q were, say, exponential in n (as it effectively is in
+  some leveled FHE schemes with very large moduli) -- does the equivalence theorem even apply there, or does
+  real FHE parameter selection need to worry about this gap; (2) Theorem 4.3's correctness condition and
+  Regev's security reduction both depend on sigma/alpha, but pull in OPPOSITE directions -- construct a
+  concrete toy numerical example (pick actual small numbers) where a sigma choice satisfies correctness but
+  would, under the reduction's asymptotic parameters, correspond to a uselessly small gamma (i.e., demonstrate
+  the tension with real numbers rather than just restating it qualitatively); (3) the chapter flags LWR's
+  deterministic rounding as avoiding "certain randomness-source side channels" -- what specific side channel
+  does explicit Gaussian sampling (Chapter 1's CDT/rejection-sampling machinery) actually leak in practice, and
+  why does removing the sampler entirely close it off.
+Answers: pending.
+Weak spots: n/a yet this cycle.
+Revisit next time: Chapter 5 (Ring-LWE), continuing the new cycle.
