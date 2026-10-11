@@ -1736,3 +1736,54 @@ Asked: (1) the chapter's search-to-decision reduction costs O(nq) oracle calls -
 Answers: pending.
 Weak spots: n/a yet this cycle.
 Revisit next time: Chapter 5 (Ring-LWE), continuing the new cycle.
+
+## 2026-10-12 — Chapter 5 (new cycle, session 5): Ring-LWE and the Path to Practicality
+Continuing the restarted cycle. Read Chapter 5 fresh from fhe-book.html.
+Verified live, fresh:
+  - tier0_math/ex04_rlwe.py: 7/7 pass (encrypt/decrypt round-trip x2, homomorphic addition for 2 and 3
+    ciphertexts, fresh noise small (max 3) vs after-addition noise larger (max 18) confirming additive noise
+    growth, zero-message edge case).
+  - Chapter 5's own Artifact 5.1, transcribed and run independently end-to-end (built ring_poly.py from
+    Chapter 2's artifact plus mod_arith.py from Chapter 1's, exactly as the chapter's code says it depends
+    on): encrypted x=5 under LPR/RLWE (N=16, q=12289, t=8), homomorphically squared via the degree-growing
+    (un-relinearized) multiplication routine, decrypted constant term = 1 (expected (5^2) mod 8 = 1); then
+    added the degree-1 encryption of x to the degree-2 ciphertext and decrypted the constant term = 6
+    (expected (25+5) mod 8 = 6) -- f(x)=x^2+x evaluated entirely under encryption, matching the book's worked
+    example exactly, including confirming the he_mul routine's exact-integer-tensor-product-then-rescale fix
+    (not naive mod-q reduction at each step) actually produces a decryptable result rather than scrambled
+    noise.
+Taught: RLWE's one-line substitution (inner product -> ring product) and why it is not a cosmetic change --
+  Theorem 5.1's compression of N LWE-like equations into one ring sample, giving O(N) storage/O(N log N)
+  multiplication versus O(N^2)/O(N^2) for comparable LWE, which is the SIMD/batching foundation the entire
+  rest of the book (especially CKKS, Part IV) depends on; the Hermite Normal Form secret-distribution
+  deviation (small/ternary secret rather than uniform) as a deliberate, well-studied efficiency trade rather
+  than a textbook-pure choice; the LPR encryption scheme's decryption identity (eu+e1+e2*s+floor(q/t)*m) as
+  the direct algebraic ancestor of BFV/BGV/CKKS; the double-edged ring-structure tradeoff -- Theorem 5.2's
+  hardness reduction targets ideal lattices specifically, and the chapter's careful, non-alarmist treatment of
+  subfield/subring attacks (Cramer-Ducas-Peikert-Regev 2016, Albrecht-Bai-Ducas 2016, Cheon-Jeong-Lee 2016) --
+  real results, but targeting non-standard parameter regimes that were never deployed, with module-LWE as the
+  pragmatic middle ground adopted for KEMs; homomorphic addition (componentwise, additive noise growth) versus
+  multiplication (degree-2-in-s ciphertext growth, requiring relinearization in Ch7, and MULTIPLICATIVE noise
+  growth by a factor C~tN that is explicitly independent of q because the t/q rescale cancels the q-scale
+  factors -- the chapter's explicit refutation of the naive "noise picks up a factor of q" misreading); and the
+  resulting depth formula d ~ (log(q/2t) - log B) / log C being LOGARITHMIC in q, the single fact explaining
+  why raising q only buys a little extra depth while directly weakening security -- the hard ceiling motivating
+  bootstrapping (Chapter 12).
+Exercise: ex04_rlwe.py (above) plus Chapter 5's own Artifact 5.1, transcribed and run end-to-end with a real
+  dependency chain across three chapters' worth of from-scratch code (Ch1's mod_arith, Ch2's ring_poly, Ch5's
+  rlwe_toy), not just a standalone script.
+Asked: (1) the chapter is explicit that C (the per-multiplication noise expansion factor) is ~tN and
+  deliberately independent of q -- walk through, in your own words, exactly which step of he_mul's rescale
+  (not just "the t/q division") is responsible for cancelling the q-scale factor, referencing the specific
+  line in the artifact above; (2) given d is logarithmic in q, estimate (even roughly, order-of-magnitude) how
+  much additional multiplicative depth you'd buy by DOUBLING log_2(q) at fixed t and N, and connect that
+  numerically to why Chapter 14's parameter selection treats q growth as a limited, not free, resource; (3) the
+  chapter is careful to say the subfield/subring attacks target parameter regimes "never adopted in practice
+  specifically because this research flagged them as risky" -- does that mean the attacks are evidence FOR the
+  safety of deployed parameters (since the dangerous region is now known and avoided), or does it just mean
+  deployed parameters are simply unexamined by this particular attack -- is there a meaningful difference
+  between those two framings for how much confidence to place in standard RLWE parameters.
+Answers: pending.
+Weak spots: n/a yet this cycle.
+Revisit next time: Chapter 6 (A History of Homomorphic Encryption), continuing the new cycle and entering
+  Part II (Core FHE Theory).
