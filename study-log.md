@@ -1787,3 +1787,67 @@ Answers: pending.
 Weak spots: n/a yet this cycle.
 Revisit next time: Chapter 6 (A History of Homomorphic Encryption), continuing the new cycle and entering
   Part II (Core FHE Theory).
+
+## 2026-10-13 — Chapter 6 (new cycle, session 6): The Arc of Homomorphic Encryption, From Partial to Full
+Continuing the restarted cycle, entering Part II. Read Chapter 6 fresh from fhe-book.html. This is a
+  history/landscape chapter (RSA/ElGamal/Paillier homomorphisms, BGN, Gentry's bootstrapping blueprint,
+  BV11/BGV12/BFV12) with no committed fhe-foundations exercise, and its own Artifact 6.1 is explicitly
+  illustrative pseudocode (omitted gen_prime, undefined she_encrypt/she_add/she_mult placeholders) rather
+  than runnable code -- so today's verification was to build a REAL, runnable version of Artifact 6.1's PHE-
+  vs-SHE contrast rather than just reading the sketch.
+Built a real toy Paillier (actual prime generation, actual encrypt/decrypt/add) and hit a genuine, self-
+  caught bug worth reporting honestly: first attempt, over 2000 additive compositions, started returning
+  WRONG decryptions partway through (correct through ~iteration 800, silently corrupted by iteration 1000+).
+  Root cause: Paillier's encryption requires r coprime to n, and my first version sampled r uniformly from
+  [1,n) with no coprimality check -- fine at real cryptographic parameter sizes (1024+ bit primes, where
+  hitting a non-coprime r is astronomically unlikely), but with toy 12-bit primes the per-draw collision
+  probability (~2*(1/p+1/q) ~ 0.0013) compounds across ~2000 encrypt calls to roughly 90%+ chance of at least
+  one bad draw, which then permanently corrupts the running ciphertext product. Fixed with the standard
+  textbook safeguard (reject r if gcd(r,n)!=1) and reconfirmed exact correctness over 2000 additions
+  (decrypted=3913, expected=3913). Framed explicitly as a toy-PARAMETER artifact, not an algebraic limitation
+  of Paillier itself -- a meaningfully different KIND of "wall" than the SHE noise wall this chapter contrasts
+  it with, worth not conflating.
+Then attempted the SHE side of the contrast using yesterday's working Chapter 5 RLWE toy scheme, and found
+  something cleaner than planned: the unrelinearized he_mul from Chapter 5 cannot be chained AT ALL -- it
+  takes two degree-1 ciphertexts and produces a degree-2 result, which cannot be fed back into he_mul a
+  second time (shape mismatch, not merely a noise-budget exhaustion after several steps). This is actually a
+  sharper, more immediate demonstration of Chapter 6's point than a slow noise-decay curve would have been:
+  PHE's wall is "never" (given correct, real-sized parameters); unrelinearized SHE's wall is "after exactly
+  one multiplication," full stop -- precisely matching Chapter 5's own closing remark that real schemes
+  "immediately relinearize... which this toy deliberately omits to keep the degree-growth mechanism visible."
+Taught: Definition 6.1's two teeth (unbounded depth, compactness) and the PHE/SHE/leveled-FHE/FHE taxonomy;
+  RSA and ElGamal's multiplicative homomorphism (both from c1*c2 landing on m1*m2 via the group structure)
+  versus Paillier's additive homomorphism (g^m encoding puts addition in the exponent, reached via ciphertext
+  multiplication) -- and WHY no PHE scheme can mix operations (Paillier's ciphertext group is only linearly
+  related to the plaintext group via a one-way-feeling discrete-exp map; multiplying plaintexts would require
+  "exponentiating an exponent," which the group structure doesn't expose); Boneh-Goh-Nissim's pairing trick as
+  the first operation-mixing construction (unlimited + in G, exactly one x landing in G_T via bilinearity,
+  evaluating any 2-DNF/quadratic form) and why it still falls short of real depth; Gentry's bootstrapping
+  theorem precisely, including the two precisions the chapter flags as easy to get wrong -- bootstrappability
+  alone (a key CHAIN, Enc_{pk_{i+1}}(sk_i)) gives leveled FHE under plain semantic security with no circular-
+  security assumption needed, and circular security specifically buys a SINGLE compact key pair plus genuinely
+  unbounded depth, which is a different and stronger ask; squashing as the fix for Gentry's original
+  decryption-circuit-too-deep chicken/egg problem, via a sparse-subset-sum hint structure; and the second-
+  generation arc (BV11's relinearization + dimension-modulus reduction, BGV12's modulus switching making
+  leveled FHE a design-time choice rather than bootstrapping-dependent, BFV's scale-invariance as a
+  philosophically distinct noise-management strategy reaching the identical goal) that Chapters 8-9 formalize
+  as a matched pair.
+Exercise: built and debugged a real, runnable Paillier-vs-SHE contrast (the point of Artifact 6.1, which is
+  itself only pseudocode in the book) -- both halves above, including the self-found-and-fixed Paillier bug
+  and the cleaner-than-expected one-shot SHE multiplication wall.
+Asked: (1) today's Paillier bug was a TOY-PARAMETER artifact (small primes make a negligible-at-scale failure
+  probability non-negligible), structurally different from the SHE noise wall (which is not a parameter-size
+  artifact -- it's there even at full cryptographic ring dimension N, governed by the modulus chain). Is there
+  an analogous "looks like a parameter issue but is actually fundamental" (or vice versa) distinction worth
+  watching for in Parth's own FHE/FHERMA work, where a bug might masquerade as one category when it's really
+  the other; (2) the chapter's two precisions on circular security (key-chain leveled FHE needs no circular
+  assumption; a single compact key needs it) -- for a concrete deployed scheme Parth might use (OpenFHE,
+  SEAL), is the key-CHAIN variant ever actually used in practice, or does everything deployed just accept the
+  circular-security assumption for a single key pair -- is the chain variant purely pedagogical; (3) BGV and
+  BFV are described as a "matched pair" reaching the same goal via modulus-switching vs. scale-invariance --
+  before Chapters 8-9 formalize this, what's your own guess at ONE concrete operational difference this
+  philosophical split should produce (e.g. in ciphertext size growth, or which operations are cheap/expensive)
+  -- a prediction to check against the real chapters.
+Answers: pending.
+Weak spots: n/a yet this cycle.
+Revisit next time: Chapter 7 (The Mechanics of Noise and Levels), continuing Part II.
