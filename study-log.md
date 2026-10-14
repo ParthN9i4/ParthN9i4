@@ -1851,3 +1851,62 @@ Asked: (1) today's Paillier bug was a TOY-PARAMETER artifact (small primes make 
 Answers: pending.
 Weak spots: n/a yet this cycle.
 Revisit next time: Chapter 7 (The Mechanics of Noise and Levels), continuing Part II.
+
+## 2026-10-14 — Chapter 7 (new cycle, session 7): The Noise Barrier
+Continuing Part II. Read Chapter 7 fresh from fhe-book.html. (Note: yesterday's scheduled trigger queued
+  without a session being run -- both notifications arrived together today; proceeded with a single session
+  covering the next unit rather than doubling up, consistent with "don't block, carry forward.") Chapter 7's
+  own Artifact 7.1 is again illustrative pseudocode (references she_keygen/she_mult/poly_mul_mod that aren't
+  actually defined functions), so today's verification built a real, runnable version of its noise-budget
+  instrument using working ring arithmetic (same pattern as Ch5/Ch6 this cycle).
+Verified live: built keygen/encrypt/noise_budget exactly per Definition 7.1's formula
+  (log2(delta/(2*||v||_inf))) at the chapter's own suggested scale (N=1024, log2(q)=60, t=1024 -- used N=1024
+  rather than the artifact's N=4096 purely for runtime in pure-Python schoolbook convolution, still two
+  orders of magnitude past Chapter 5's toy N=16):
+  - Fresh ciphertext: 42.1 bits of noise budget, decrypts correctly to 3 -- matches the chapter's own stated
+    expectation ("starts around 40-45 bits") almost exactly.
+  - After one unrelinearized multiplication (3*2, via the same exact-integer-tensor-then-rescale routine from
+    Chapter 5): 23.8 bits remaining, decrypts correctly to 6. Budget dropped by 18.3 bits, versus Result 7.1's
+    predicted ~log2(t*N) = 20.0 bits -- same order of magnitude, consistent with the chapter's own caveat that
+    the general shape is certain but exact constants are scheme/analysis-specific.
+  - Confirms the chapter's prediction that correctness "survives only one or two multiplications" at this
+    scale before the budget would go negative -- a second multiplication is structurally impossible anyway in
+    this unrelinearized toy (Chapter 6's finding, still true here), so the real ceiling is never actually
+    reached in this toy, but the budget trajectory (42 -> 24, heading toward zero at roughly one more
+    multiplication) is fully consistent with where it WOULD cross zero.
+Taught: Observation 7.1's fundamental tension (security wants noise large, correctness wants it small) as the
+  single fact explaining most of FHE engineering's apparent complexity; the clean derivation of WHY addition
+  is linear/cheap (triangle inequality on the noise term) and multiplication is quadratic-then-compounding
+  (the vv' cross term plus message-scaled mv'+m'v term surviving rescaling); Definition 7.1's noise budget as
+  turning exponential noise growth into LINEAR bit-budget decay -- each multiplication costs a roughly
+  constant ~log2(tn) bits, addition costs ~1 bit; Corollary 7.1's crucial, easy-to-conflate distinction
+  between the MANAGED model (log2 q = O(d), what every real scheme achieves) and the genuine UNMANAGED
+  baseline (log2 q = Omega(2^d), doubly-exponential q, because multiplication multiplies noise BY noise,
+  E_d ~ (gamma*E_0)^(2^d)/gamma) -- the entire point of BGV/BFV/CKKS is converting the second into the first,
+  not merely "reducing" an already-linear cost; the three strategies (BGV modulus switching, BFV scale
+  invariance, CKKS rescaling) as sharing one structural idea (periodically shrink something to stop the
+  ratio compounding) while shrinking different things at different points, with CKKS's rescale explicitly
+  flagged as doing double duty (noise AND scale management), which is why mismatched scale/level bugs are
+  CKKS's dominant failure mode (a direct forward-pointer to Chapter 16); and the practical punchline that
+  multiplicative DEPTH (not gate count) is the first number to compute about any FHE workload, plus the
+  concrete, verified fact that SEAL implements zero bootstrapping for any scheme (BGV since v4.0.0, sped up in
+  v4.1.0 by staying in NTT form) -- a hard depth ceiling with no refresh escape hatch, versus OpenFHE/HEAAN's
+  CKKS bootstrapping.
+Exercise: built and ran the real noise-budget instrument above (fresh budget + post-multiplication budget +
+  drop-per-level comparison against Result 7.1's predicted log2(tN)).
+Asked: (1) Corollary 7.1 is explicit that conflating the managed (log2 q=O(d)) and unmanaged (log2 q=Omega(2^d))
+  growth models "collapses the whole exponential-becomes-linear narrative into a tautology" -- in your own
+  words, what EXACTLY would go wrong (what false conclusion would you draw) if you accidentally used the
+  managed-model formula to reason about an unmanaged circuit, or vice versa; (2) today's measured per-level
+  drop (18.3 bits) undershot the predicted log2(tN)=20.0 bits by about 1.7 bits -- is that gap more likely
+  rounding/constant-factor slack in Result 7.1's "general shape, not exact bound" caveat, or could it reflect
+  something about this specific toy's small sample (one multiplication, specific small-noise draws) that
+  would average out over many trials -- how would you tell the difference experimentally; (3) the chapter
+  says CKKS's rescale does "double duty" (noise AND scale management) and flags mismatched scale/level as
+  CKKS's dominant bug source -- for BGV/BFV, which have only ONE job (noise management) in their analogous
+  operations, does that mean they are categorically less bug-prone in practice, or does exact-arithmetic
+  correctness just trade that specific bug class for a different one (overflow mod t, say) -- worth having a
+  concrete guess before Chapters 8-10 settle it.
+Answers: pending.
+Weak spots: n/a yet this cycle.
+Revisit next time: Chapter 8 (BFV), continuing Part II.
