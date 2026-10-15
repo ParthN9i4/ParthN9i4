@@ -1910,3 +1910,67 @@ Asked: (1) Corollary 7.1 is explicit that conflating the managed (log2 q=O(d)) a
 Answers: pending.
 Weak spots: n/a yet this cycle.
 Revisit next time: Chapter 8 (BFV), continuing Part II.
+
+## 2026-10-15 — Chapter 8 (new cycle, session 8): BFV, Exact Arithmetic, Scale-Invariant
+Continuing Part II. Read Chapter 8 fresh from fhe-book.html. This chapter is the formal version of the exact
+  toy construction built across Ch5/Ch6/Ch7 this cycle -- and, critically, it's the first chapter with actual
+  RELINEARIZATION (Definition 8.5), which every prior toy implementation this cycle deliberately omitted.
+  Implemented Definition 8.5 for real for the first time, specifically to test whether it removes the "only
+  one multiplication, structurally" wall found in Ch6 and Ch7's un-relinearized toys.
+Verified live, with an honest, not-fully-resolved finding:
+  - Built the full gadget-decomposition relinearization key (base w=2^10, N=64, log2(q)=40, t=16, ell=4
+    digits) per Definition 8.5, plus tensor -> rescale-and-round -> relinearize exactly per Sections 8.4.1-
+    8.4.3.
+  - Multiplication 1 (3*5): decrypted correctly to 15 (expected 15). Budget dropped from a fresh 30.6 bits to
+    21.4 bits -- a ~9.2 bit drop, closely matching Result 8.1/7.1's predicted ~log2(tN)=log2(16*64)=10 bits.
+    This is the headline positive result: relinearization successfully folded the degree-2 product back to a
+    decryptable degree-1 ciphertext, which is EXACTLY what Ch6 and Ch7's toys could not do at all (structural
+    wall, not just a noise wall) -- real relinearization removes that wall, as the chapter claims.
+  - Multiplication 2 (prior result * 2, expecting 30): decrypted INCORRECTLY to 14, despite the naive noise-
+    budget formula still reporting a nominally positive 12.3 bits. Ran a direct diagnostic: measured the raw
+    noise magnitude against the KNOWN correct message (30) rather than trusting the nearest-multiple-of-delta
+    the budget formula silently assumes, and found the true noise (~1.1e12) is roughly 32x OVER the
+    correctness threshold (delta/2 ~ 3.4e10) -- far more than the ~10-bit-per-level growth seen cleanly at
+    mult 1. This is too large a jump to be ordinary noise accumulation (mult 1 -> mult 2 should cost roughly
+    another ~10 bits, landing near +11 bits remaining, not -5); it strongly indicates a real bug in my
+    relinearization routine (most likely in the digit-decomposition step) rather than genuine noise
+    exhaustion. NOT resolved today -- reported honestly as an open implementation bug rather than claiming
+    the chaining demo fully succeeded.
+  - Separately, surfaced a genuine conceptual subtlety while diagnosing this: the naive noise-budget formula
+    (round to the NEAREST multiple of delta, measure distance to that) silently assumes decryption is already
+    correct. Once decryption has actually failed, "nearest multiple of delta" can be a DIFFERENT, wrong
+    multiple, making the computed "budget" look falsely healthy even when the true message is unrecoverable.
+    This is a real, previously-unstated-in-this-log gap in how I'd been computing Definition 7.1's formula in
+    every prior session this cycle -- worth carrying forward as a standing caveat on any future noise-budget
+    number I report: it is only trustworthy BEFORE failure, not as a way to detect failure after the fact.
+Taught: Definition 8.1's scale Delta=floor(q/t) and why "scale-invariant" is literal, not metaphorical (Delta
+  is fixed once at setup, never renegotiated, in contrast to CKKS where the chapter notes the analogous scale
+  actively changes via rescaling); the decryption relation c0+c1*s = Delta*m+v derived cleanly via substitution
+  (Proposition 8.1) -- this IS exactly the toy construction built across this whole cycle, now with its noise
+  term v's composition (e1+e2*s-ue) made explicit; tensoring's over-scaled Delta^2 result and why rescale-and-
+  round (dividing by t/q) is required before the result means anything at the right scale; Definition 8.5's
+  gadget-decomposition relinearization key precisely, including the w-vs-ell tradeoff (smaller w = less per-
+  digit noise but more terms and bigger public key); and SEAL's BFV-specific design note that mod_switch_to_next
+  is an optional SIZE/performance optimization for BFV (unlike BGV, where modulus switching IS the noise-control
+  mechanism) -- a concrete, checkable prediction surfaced by last session's question 3 about BGV/BFV's
+  operational differences.
+Exercise: implemented Definition 8.5's relinearization key and the full tensor/rescale/relinearize pipeline
+  from scratch; verified it correctly completes one full multiplication (new capability this cycle); attempted
+  to chain a second multiplication to directly test the Ch6/Ch7 "removes the structural wall" claim, and found
+  a genuine, unresolved bug rather than clean success -- reported both the real positive result (mult 1 works)
+  and the real negative result (mult 2 fails with implausibly large noise) rather than only the clean half.
+Asked: (1) given today's diagnostic showed mult 2's true noise is ~32x over threshold rather than the
+  expected gradual ~10-bit-per-level growth, where in Definition 8.5's relinearization step would you look
+  FIRST for a sign or base-mismatch bug, given that mult 1 (which exercises the exact same relinearization
+  code path once) worked perfectly -- does working-once-then-failing-the-second-time narrow down the
+  hypothesis space in a specific way; (2) the noise-budget-formula subtlety found today (nearest-multiple-of-
+  delta silently assumes correctness, so it can't detect its own failure) -- is this a known, named caveat in
+  the real literature (e.g. does SEAL's invariant_noise_budget() have the same blind spot), or does a real
+  library's instrumentation handle this differently; (3) all earlier carried-forward questions (Ch7's three)
+  remain open and are carried forward without repeating them.
+Answers: pending.
+Weak spots: TODAY's own unresolved bug (relinearization chaining) is now a concrete, carried-forward item --
+  the first genuinely open technical loose end of this new cycle, to be revisited rather than left implicit.
+Revisit next time: resolve the relinearization chaining bug before moving on, OR proceed to Chapter 9 (BGV)
+  and return to the bug afterward -- Parth's call if he engages, otherwise default to attempting the fix first
+  since an unresolved, actively-wrong result is a higher priority than new content.
