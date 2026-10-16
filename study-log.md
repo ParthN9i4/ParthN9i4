@@ -1974,3 +1974,43 @@ Weak spots: TODAY's own unresolved bug (relinearization chaining) is now a concr
 Revisit next time: resolve the relinearization chaining bug before moving on, OR proceed to Chapter 9 (BGV)
   and return to the bug afterward -- Parth's call if he engages, otherwise default to attempting the fix first
   since an unresolved, actively-wrong result is a higher priority than new content.
+
+## 2026-10-16 — Chapter 8 follow-up (new cycle): the relinearization "bug" resolved -- it was never a bug
+Carried forward from the previous session's open item: commit 56dfd5d left mult 2 of the chained-relinearized-
+  BFV test decrypting to 14 instead of an "expected" 30, flagged as an unresolved implementation bug with
+  noise reported as ~32x over threshold. Today's priority was to resolve it before moving on, per that
+  session's own instruction.
+Debugging process (systematic elimination, not guessing):
+  (1) Checked whether the digit decomposition itself exactly reconstructs d2c for both mult1 and mult2 --
+      confirmed EXACT reconstruction (0/64 nonzero leftover coefficients in both cases), ruling out a
+      boundary-overflow or decomposition-range bug.
+  (2) Decrypted the DEGREE-2 ciphertext directly, i.e. BEFORE relinearization, for mult2 -- it ALSO decrypted
+      to 14, with noise=6,984,174 against a threshold delta/2=34,359,738,368 -- the true noise was actually
+      ~4900x UNDER threshold, not over it. This proved the previous session's "32x over threshold" diagnostic
+      had itself been computed wrong: it measured noise against the assumed-correct value 30 rather than
+      against the modulus's actual decoding threshold, which silently manufactured a fake overflow signal.
+  (3) Compared noise before relinearization (6,984,174) vs after (6,982,951) for mult2 -- nearly identical,
+      proving relinearization's own noise contribution was negligible and not the source of any discrepancy.
+  (4) Root cause: BFV's plaintext space is R_t (t=16 here) by Definition 8.1 -- "exact" arithmetic in BFV
+      means exact MODULO t, not exact over the integers. My test harness's "expected" values (15, 30, 60) were
+      plain full-precision integer products, never reduced mod t. Recomputed properly: 3*5=15 (15 mod 16=15,
+      matches), 15*2=30 (30 mod 16=14, matches the "wrong" 14 exactly), 14*2=28 (28 mod 16=12, matches the
+      "wrong" 12 exactly). Every decryption flagged as wrong was in fact correct mod-t arithmetic all along.
+Conclusion: there was no relinearization bug. Real BFV relinearization, built from scratch via Definition
+  8.5's gadget decomposition, correctly chained THREE sequential multiplications end to end -- this is the
+  positive result the whole exercise was meant to establish (removing the "only one multiplication" structural
+  wall hit by every un-relinearized toy scheme in Ch5/Ch6/Ch7 this cycle). The apparent failure was a self-
+  inflicted test-harness error -- forgetting to reduce "expected" values mod t -- and a fittingly on-theme one,
+  since it is exactly the "plaintext space is R_t, not Z" gotcha Chapter 8 itself teaches via Definition 8.1.
+  Re-ran the full script today and reconfirmed the resolution reproduces cleanly.
+Exercise: no new exercise -- this was dedicated debugging time on last session's carried-forward bug, as
+  planned ("default to attempting the fix first since an unresolved, actively-wrong result is a higher
+  priority than new content").
+Answers: pending (all of last session's 3 new questions plus the Ch7 carried-forward questions remain
+  unanswered; Parth has not engaged with any reasoning question across either cycle of this engagement).
+Weak spots: today's own process is the lesson -- a noise-budget or correctness diagnostic is only as good as
+  the "expected value" it's compared against; computing that expected value in the wrong algebraic structure
+  (Z instead of R_t) can fully fabricate a bug that doesn't exist. Worth remembering for every future chapter
+  with a modular plaintext space (BGV's R_t is next, CKKS's approximate real-number space will need a
+  different kind of care).
+Revisit next time: nothing outstanding from Ch8. Proceed to Chapter 9 (BGV) next session.
