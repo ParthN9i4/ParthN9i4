@@ -2014,3 +2014,59 @@ Weak spots: today's own process is the lesson -- a noise-budget or correctness d
   with a modular plaintext space (BGV's R_t is next, CKKS's approximate real-number space will need a
   different kind of care).
 Revisit next time: nothing outstanding from Ch8. Proceed to Chapter 9 (BGV) next session.
+
+## 2026-10-17 — Chapter 9 (new cycle): BGV, modulus switching, the chain as depth budget
+Taught: Definition 9.1's decryption relation c0+c1*s = m+t*e (mod q) and how it differs from BFV's Delta*m+v
+  -- message in the low bits mod t directly (no scaling), noise confined to being a multiple of t above it,
+  so decryption's final "mod t" throws the noise away exactly rather than needing a separate rescale. Section
+  9.2's tensor-then-relinearize multiplication (same shape as Def 8.5) and the key asymmetry it exposes: BFV's
+  rescale-by-t/q after multiplying drags the quadratic t^2*e*e' cross term down to negligible, giving constant
+  per-multiplication growth O(tn); BGV has no such division, so that term survives and growth is proportional
+  to the OPERANDS' CURRENT noise (~tnE), which is precisely why BGV needs modulus switching as mandatory rather
+  than optional. Definition 9.2's modulus-switching operation itself -- round to the nearest integer in the
+  correct residue class mod t, not simply the nearest integer, which is what makes the message survive exactly
+  -- and Proposition 9.1's noise-scaling claim (new modulus's noise is approximately e*q'/q plus a small
+  rounding term bounded independent of e). Definition 9.3's modulus chain and why switching restores absolute
+  noise magnitude but NOT the noise-to-modulus ratio -- the budget still falls by log2(kappa) bits per level,
+  permanently; what changes is that unmanaged squaring (B -> B^2 -> B^4 -> ...) becomes a fixed additive cost
+  per level, turning Corollary 7.1's exponential log2(q) requirement linear. Also Section 9.5's side-by-side
+  comparison table (BFV vs BGV: same asymptotic cost, different ergonomics) and the OpenFHE CryptoContextBGVRNS
+  API skeleton (Artifact 9.1) -- again illustrative/non-compiling as given (SetMultiplicativeDepth-driven
+  parameter model mirrors BFV's, automatic-vs-manual mod-switch behavior is explicitly flagged as version-
+  dependent, not to be assumed).
+Exercise: no fhe-foundations file exists between ex04 (RLWE) and ex05 (CKKS encode) -- the repo has no
+  dedicated BGV exercise, same gap pattern as Ch3/6/7/8 this cycle. Built a real, runnable BGV implementation
+  from scratch (reusing Ch8's ring-arithmetic and gadget-decomposition relinearization machinery) implementing
+  Definition 9.1's encrypt/decrypt, Section 9.2's tensor+relinearize multiply, and Definition 9.2's modulus-
+  switching operation over an actual 3-level chain (q2=60 bits > q1=40 bits > q0=20 bits, N=64, t=16, w=2^10).
+  Chained two multiplications (3*5, then *2) with a mod-switch after each, matching BGV's Definition 9.3
+  protocol exactly. Results: fresh noise ~8-10; mult1 pre-switch noise balloons to 19,763; switching q2->q1
+  collapses it back to 2; mult2 pre-switch noise is 196; switching q1->q0 brings it to 3 -- both switches
+  landed noticeably below Prop 9.1's pure-scaling prediction (0.019 and ~0, respectively), which is exactly
+  the paper's own caveat: once scaled noise is this small, the small ADDITIVE rounding term e_round dominates
+  rather than the q'/q*e term, so the observed floor is the rounding term, not a contradiction of the formula.
+  Then ran a direct control: repeated mult2 using mult1's UNSWITCHED output (still at q2) -- its pre-switch
+  noise going into mult2 was 121,755x larger than the switched path's. That ratio is the chapter's central
+  claim made concrete: growth proportional to current noise means skipping the switch doesn't just add a
+  constant penalty, it compounds. Decrypted values were 15 then 14 (30 mod 16) -- the same mod-t reduction
+  lesson from yesterday's BFV debugging, now observed naturally in a second scheme, reinforcing that it's a
+  structural property of R_t plaintext spaces rather than an artifact of one implementation.
+Asked: (1) today's noise numbers after switching (2 and 3) came out noticeably ABOVE the pure q'/q*e
+  prediction (0.019 and ~0) precisely because of the rounding term e_round -- given BGV's correctness
+  requires noise to stay comfortably under q/(2t) at every level, does e_round's floor (roughly O(n) or
+  O(sqrt(n))*||s|| per the chapter's own citation) ever become the DOMINANT noise source at realistic
+  parameters, i.e. is there a point where switching more aggressively (shorter chain, bigger per-level
+  modulus drop) actually hurts because each switch's rounding cost outweighs what it saves?; (2) the measured
+  121,755x gap between the switched and unswitched paths going into mult2 is already enormous after just ONE
+  skipped switch -- does the chapter's own doubly-exponential claim (B -> B^2 -> B^4 -> ...) predict that this
+  gap itself should roughly SQUARE with each additional skipped level, and is that checkable by extending
+  today's script to a third unswitched multiplication?; (3) all earlier carried-forward questions (Ch7's
+  three, Ch8's three) remain open and are carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking).
+Weak spots: none newly surfaced as a misconception today -- the one thing worth flagging for future self is
+  that Prop 9.1's noise-scaling formula is only the LEADING term; at small absolute noise values the rounding
+  term can dominate the arithmetic, so don't be alarmed by ratios that look "off" from the pure q'/q prediction
+  at the small end, the way I nearly was before re-reading the proposition's own caveat.
+Revisit next time: nothing outstanding from Ch9. Proceed to Chapter 10 next session (Part II continues --
+  likely CKKS's approximate-arithmetic construction, the real counterpart to BGV/BFV's exact arithmetic).
