@@ -2070,3 +2070,57 @@ Weak spots: none newly surfaced as a misconception today -- the one thing worth 
   at the small end, the way I nearly was before re-reading the proposition's own caveat.
 Revisit next time: nothing outstanding from Ch9. Proceed to Chapter 10 next session (Part II continues --
   likely CKKS's approximate-arithmetic construction, the real counterpart to BGV/BFV's exact arithmetic).
+
+## 2026-10-18 — Chapter 10 (new cycle): CKKS, the conceptual break with exact schemes
+Taught: the single idea the whole chapter hangs on -- CKKS does not hide noise from the message the way
+  BFV/BGV do (Ch8/Ch9), it makes noise PART of the message: decryption returns z+e, never exactly z, and
+  there is no failure mode that announces itself -- a drifted CKKS computation just returns a plausible-
+  looking wrong float. Definition 10.1's encoding map: run Chapter 2's canonical embedding sigma in reverse
+  (sigma^-1 pulls a conjugate-symmetric complex vector back to a real polynomial), then discretize by scale
+  Delta and round -- Encode_Delta(z) = floor(Delta * sigma^-1(z)) rounded. Fact 10.1, the chapter's central
+  mechanical claim: ciphertext multiplication multiplies scales (Delta1*Delta2), it does NOT add them --
+  left unmanaged this explodes past any usable modulus within a handful of multiplications. Section 10.3's
+  rescaling discipline as the fix: dividing by (approximately) Delta AND dropping to the next smaller RNS
+  modulus in the SAME operation, so rescale is simultaneously precision restoration and level consumption --
+  this dual role is explicitly flagged as what makes CKKS engineering feel different from BGV's separate
+  noise-control (switching) vs depth-budget (chain) mechanisms. The #1-bug warning box: operands need matching
+  scale AND level before combining, and the two concrete failure patterns (depth-imbalanced branches;
+  forgetting to rescale after a plaintext-constant multiply). Section 10.4's three-library automation spectrum
+  (TenSEAL hides rescale entirely -- fast intuition, poor debugging training; SEAL exposes it fully with a
+  hard non-negotiable depth ceiling since it has no bootstrapping; OpenFHE sits in between with optional
+  automation and native bootstrapping) and Section 10.6's worked precision-budget arithmetic (a 360-bit chain
+  split 60/40x6/60 supports exactly six multiplications at Delta=2^40, and doubling Delta to 2^80 roughly
+  halves that count -- depth and precision trade against a fixed modulus budget, there is no free variable).
+Exercise: tier0_math/ex05_ckks_encode.py -- the first directly-matching exercise since Ch5 (ex04 rlwe); ran
+  it fresh, 8/8 passed. The scale-vs-error check is a direct, measured confirmation of Section 10.1.2's claim
+  that encoding error is order 1/Delta: at scale=2^10 the measured error was 1.76e-3 (1/2^10 = 9.77e-4, same
+  order of magnitude), at scale=2^40 it was 1.88e-12 (1/2^40 = 9.09e-13, same order) -- the predicted scaling
+  law held exactly across 30 bits of scale change. Since ex05 only covers Definition 10.1's encode/decode and
+  not Fact 10.1 or rescaling (the chapter's other two central claims), built a short standalone follow-up
+  reusing ex05's own encode_ckks/decode_ckks functions directly: encoded two length-4 complex vectors at
+  Delta=2^30, multiplied the encoded polynomials via negacyclic convolution (no encryption needed -- Fact
+  10.1 is a statement about the message/scale relationship under ring multiplication, independent of
+  encryption noise), then decoded the raw product three ways. Decoding at scale Delta gave garbage off by
+  ~Delta (confirming "if you decode assuming the scale didn't change, you get nonsense"); decoding at scale
+  Delta^2 recovered the true elementwise product z1*z2 to error 4.6e-9; explicitly rescaling (divide by
+  Delta, decode at Delta) ALSO recovered the correct product, to error 3.8e-9 -- both confirming Fact 10.1
+  and Section 10.3's rescale operation concretely rather than just asserting them from the text.
+Asked: (1) today's standalone rescale demo skipped encryption entirely and worked on the encoded polynomial
+  directly -- does adding real RLWE encryption noise change WHERE the dominant error comes from after a
+  rescale (i.e. does the rescale's own rounding term stay comparable to one encoding step's 1/Delta cost as
+  measured today, or does encryption noise usually dominate it in a realistic parameter regime), and is that
+  checkable by extending today's script with Ch8/Ch9's existing encrypt/decrypt machinery adapted to CKKS's
+  additive (not multiplicative-then-mod-t) decryption relation?; (2) Section 10.6's worked example says
+  doubling Delta from 2^40 to 2^80 roughly halves the number of supported multiplications for a fixed total
+  modulus budget -- given today's measured error at Delta=2^40 was already ~1e-12-1e-9 (far below anything
+  an ML pipeline needs), is there a principled way to tell, for a GIVEN target accuracy (not just "more bits
+  is better"), the SMALLEST Delta that still meets it, so as to buy back the maximum number of levels rather
+  than over-provisioning precision no one asked for?; (3) all earlier carried-forward questions (Ch7's three,
+  Ch8's three, Ch9's two) remain open and are carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's exercise and follow-up both matched the book's predictions exactly
+  on the first attempt, no debugging arc this session (a nice contrast to the last two sessions' Ch8/Ch9 work).
+Revisit next time: nothing outstanding from Ch10. Proceed to Chapter 11 next session -- likely bootstrapping
+  (Ch10's Section 10.3.1 and Section 10.4.3 both forward-reference bootstrapping as "Chapter 12," so Ch11 is
+  probably an intermediate topic -- read it fresh rather than assuming).
