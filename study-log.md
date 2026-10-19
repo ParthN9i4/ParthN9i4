@@ -2124,3 +2124,64 @@ Weak spots: none newly surfaced -- today's exercise and follow-up both matched t
 Revisit next time: nothing outstanding from Ch10. Proceed to Chapter 11 next session -- likely bootstrapping
   (Ch10's Section 10.3.1 and Section 10.4.3 both forward-reference bootstrapping as "Chapter 12," so Ch11 is
   probably an intermediate topic -- read it fresh rather than assuming).
+
+## 2026-10-19 — Chapter 11 (new cycle): TFHE, programmable bootstrapping, Concrete ML
+Taught: the philosophy inversion that opens the chapter -- every scheme so far (BFV/BGV/CKKS) treats
+  bootstrapping as a rare, expensive emergency procedure to be avoided via depth budgeting; TFHE (Chillotti-
+  Gama-Georgieva-Izabachene, 2016/2020, journal 2020) inverts this by making bootstrapping fast enough
+  (ms-scale) to run after literally every gate, and -- the dual-purpose part -- the bootstrap itself can apply
+  an arbitrary function as it refreshes the ciphertext (programmable bootstrapping, PBS). The FHEW (Ducas-
+  Micciancio 2015) to TFHE lineage: FHEW's accumulator/blind-rotation idea got bootstrap latency under a
+  second; TFHE reformulated it over the torus and pushed it to milliseconds, which is what makes "bootstrap
+  per gate" practical rather than merely possible. Definition 11.1's blind rotation at the conceptual level --
+  a plaintext LUT gets rotated into an accumulator by an amount controlled by the encrypted index, via RGSW
+  external products, without ever revealing the index -- and the structural fact that makes this chapter matter
+  for ML: the LUT can encode ANY function on a small domain, so ReLU/sign/comparisons are evaluated natively
+  in one bootstrap, no polynomial approximation needed, which is exactly the capability Ch10 flagged CKKS as
+  structurally lacking. The trade: domain size p must stay small (2-8 bits typical), so TFHE buys arbitrary-
+  function evaluation at the price of narrow integer domains plus per-operation bootstrap latency -- the
+  opposite trade from CKKS's wide-range/SIMD-but-polynomial-only profile. The Boolean/shortint/integer API
+  ladder and why bit-width remains the dominant cost lever at every layer. The Zama stack (TFHE-rs -> Concrete
+  compiler -> Concrete ML) and Section 11.8's decision procedure: CKKS for wide linear algebra with rare
+  polynomial-approximated nonlinearities, TFHE for narrow decision-heavy/exact workloads (tree ensembles,
+  thresholds), scheme-switching for genuinely mixed pipelines. Section 11.7's sharpest practical point: TFHE's
+  bit-width constraint fails LOUDLY at compile time (Concrete ML refuses to build an overflowing circuit)
+  versus CKKS's silently-wrong-looking-plausible failure mode from Ch10 -- a real ergonomic asymmetry between
+  the two schemes' failure modes, not just their cost profiles.
+Exercise: tier3_ml/ex15_xgboost_fhe.py, the direct match to Artifact 11.1 (Concrete-ML XGBoost). Concrete-ML
+  1.9.0 is actually installed in this environment -- the exact version the book cites. Running it as-is
+  surfaced a genuine bug: train_concrete_xgboost() fits the model but never calls .compile(), yet
+  compare_accuracy() immediately calls .predict(X_test, fhe="simulate"), which the model's own error message
+  (and the function's own docstring one line above) says requires compilation first -- a real, reproducible
+  AttributeError, not a "fill in the blank" stub (all of ex01-05's blanks were already filled in correctly
+  this cycle; this is the first exercise file with an actual bug). Fixed it the same way Artifact 11.1 itself
+  does it -- added model.compile(X_train) immediately after model.fit() inside train_concrete_xgboost() -- and
+  reran: 4/4 passed. Results matched the book's own predicted pattern closely: plain XGBoost 0.933, Concrete-
+  ML 6-bit 0.922 (within ~1.1%, book predicts "typically within 2-5%"), Concrete-ML 2-bit 0.867 (further
+  degraded, confirming the quantization-bitwidth trade-off). Went one step further than the exercise itself
+  tests: ran real fhe="execute" against fhe="simulate" on a 2-sample slice to verify Section 11.9's strongest
+  claim -- that FHE-execute should reproduce simulate almost exactly, since TFHE+PBS is exact relative to the
+  quantized model rather than approximate the way CKKS is. Confirmed: both modes predicted [1, 1], an exact
+  match, at a measured cost of ~20.0s/sample for real encrypted execution -- concretely bearing out the book's
+  "orders of magnitude slower than clear/simulate" framing with an actual number rather than taking it on faith.
+Asked: (1) today's bug (a missing .compile() call before a predict(fhe=...) call) is exactly the kind of
+  mistake Section 11.7 contrasts favorably against CKKS's silent failures -- it failed LOUDLY with a clear
+  AttributeError rather than producing wrong results -- does that ergonomic property (fail loud, not silent)
+  hold for EVERY TFHE/Concrete-ML misconfiguration, or are there failure modes in this stack (e.g. an n_bits
+  choice that compiles fine but produces a circuit whose PBS failure probability is quietly too high for the
+  stated security/correctness target) that fail silently the way CKKS does, which the "it fails loudly" framing
+  might be overstating?; (2) measured 20s/sample for 50-estimator depth-4 XGBoost at n_bits=6 -- given Section
+  11.4's claim that cost scales with LUT domain size, is that ~20s dominated by the NUMBER of bootstraps (one
+  per tree-split comparison, roughly estimators*depth many) or by the PER-bootstrap cost at this bit-width,
+  and would doubling n_estimators (predict more trees) or doubling n_bits (same trees, wider LUTs) hurt this
+  number proportionally the same amount or not -- checkable by rerunning today's script with each changed
+  independently; (3) all earlier carried-forward questions (Ch7's three, Ch8's three, Ch9's two, Ch10's two)
+  remain open and are carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced as a misconception -- today's one genuine finding was a bug in the repo's own
+  exercise harness (fixed, verified, now passing), not a gap in my understanding of the chapter's content.
+Revisit next time: the ex15_xgboost_fhe.py fix (adding model.compile(X_train) to train_concrete_xgboost) is
+  committed alongside this log entry -- worth a one-line mention to Parth if he ever reviews diffs, since it's
+  a real correctness fix to shared exercise code, not just a study note. Proceed to Chapter 12 next session
+  (bootstrapping proper, per both Ch10 and Ch11's forward references).

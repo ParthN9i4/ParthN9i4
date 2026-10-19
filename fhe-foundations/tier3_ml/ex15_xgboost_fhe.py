@@ -101,6 +101,7 @@ def train_concrete_xgboost(X_train, y_train, n_bits=6):
         random_state=42,
     )
     model.fit(X_train, y_train)
+    model.compile(X_train)
     return model
 
 
