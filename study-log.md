@@ -2185,3 +2185,67 @@ Revisit next time: the ex15_xgboost_fhe.py fix (adding model.compile(X_train) to
   committed alongside this log entry -- worth a one-line mention to Parth if he ever reviews diffs, since it's
   a real correctness fix to shared exercise code, not just a study note. Proceed to Chapter 12 next session
   (bootstrapping proper, per both Ch10 and Ch11's forward references).
+
+## 2026-10-20 — Chapter 12 (new cycle): Gentry's bootstrapping theorem, CKKS's approximate reduction
+Operational note: today's session started in a fresh container (the repo directory was gone -- the previous
+  session's clone did not persist). Re-cloned ParthN9i4/ParthN9i4, checked out claude/fhe-research-Bf2WD,
+  confirmed it was exactly at commit fd2b5ee (last session's push) with full study-log.md history intact --
+  no data lost, just a clean re-clone. Noting this transparently rather than silently.
+Taught: Theorem 12.1, Gentry's bootstrapping theorem precisely -- a scheme that can homomorphically evaluate
+  its own decryption circuit plus one additional gate is "bootstrappable," and iterating the resulting
+  refresh (re-encrypt under a fresh/same key via a bootstrapping key, resetting noise to a fresh-ciphertext-
+  like level) permits unbounded-depth circuits. The important, easy-to-conflate distinction the chapter draws
+  explicitly: bootstrappability (pure capacity/correctness property) is separate from circular security (the
+  assumption needed to collapse the resulting key chain to one compact key pair) -- the former alone gives
+  leveled FHE via independent keys, the latter is what every practical deployment actually relies on for
+  unbounded depth with one key. Section 12.2's cost anatomy: bootstrapping literally evaluates the decryption
+  circuit homomorphically, feeding it an encryption of the secret key itself -- it's a genuine, expensive
+  circuit evaluation, not a magic reset, and the modular-reduction step inside decryption is exactly what
+  makes this hard to make fast. Section 12.3's CKKS-specific pipeline (ModRaise -> CoeffToSlot -> EvalSine/
+  EvalCos -> SlotToCoeff) and why it's hard in a way BGV/BFV's bootstrapping isn't (Section 12.4): CKKS can
+  only evaluate polynomials (Ch10), but mod-reduction isn't one, so CKKS approximates it via a Chebyshev-
+  polynomial fit to a scaled sine/cosine -- meaning CKKS bootstrapping is ITSELF approximate, compounding with
+  ordinary CKKS rounding error, and consumes real depth internally (~10-20 levels cited) before any "useful"
+  circuit depth is available. Section 12.5's sharp contrast table against TFHE's blind-rotation bootstrap
+  (Ch11) -- rare-but-batched-and-approximate (CKKS) vs. routine-but-cheap-and-exact (TFHE), not a "better/
+  worse" axis but a different-cost-model-for-different-circuit-shapes axis. Section 12.6's bootstrap-vs-deepen
+  checklist (latency ~10-100x a single multiply; CKKS bootstrap's own approximation error; whether the
+  circuit's depth is genuinely unbounded) and Section 12.7's library-support table, especially the "SEAL has
+  no bootstrapping for ANY scheme, at all" fact that TenSEAL (being SEAL-based) inherits as a hard ceiling.
+Exercise: tier1_ckks/ex09_depth_limit.py -- directly matches this chapter's opening premise (a leveled
+  scheme's hard depth wall) and Section 12.7's SEAL/TenSEAL-has-no-bootstrapping claim specifically. TenSEAL
+  was not installed in the fresh container; installed 0.3.18 (book/exercise cite 0.3.16 -- close enough,
+  noted rather than blocking, consistent with this cycle's standing practice on version mismatches). Ran
+  fresh: 5/5 passed. A shallow 1-level context allows exactly one squaring, then the second squaring raises
+  "ValueError: scale out of bounds"; a deeper context allows two squarings instead of one -- the ONLY fix
+  TenSEAL/SEAL offers, exactly confirming Section 12.7's "the only SEAL-native fix is bigger parameters, no
+  escape hatch" claim with a real, reproducible number rather than taking it on faith. Worth flagging one
+  precise nuance against the chapter's own generic framing: Ch12's opening line describes a leveled scheme's
+  failure mode as "the coefficient modulus is exhausted and decryption returns garbage" -- but what TenSEAL
+  actually does is fail LOUDLY at the multiplication call itself (a raised ValueError from its own scale/
+  level bookkeeping, the same mechanism Ch10 described protecting against scale/level mismatch), before ever
+  reaching decryption. That is a strictly more informative failure mode than "silently garbage at decrypt
+  time" -- a useful correction to carry forward rather than assume the chapter's most general framing applies
+  identically to every library's specific error-handling choices.
+Asked: (1) today's observed TenSEAL failure (a raised ValueError at the exhausted multiplication itself) is
+  more informative than the chapter's generic "decryption returns garbage" framing -- is that because TenSEAL/
+  SEAL's scale/level bookkeeping (Ch10) happens to also double as an implicit depth-budget check, or do OTHER
+  leveled libraries/schemes (e.g. raw BGV/BFV without that bookkeeping layer) actually hit the "silent garbage
+  at decrypt time" failure mode the chapter describes more literally -- i.e. is "fails loud vs. fails silent"
+  more a property of whether a library tracks scale/level explicitly than of the scheme itself?; (2) Section
+  12.6's 10-100x latency multiple for a CKKS bootstrap vs. one multiply is a wide range -- given today's
+  TenSEAL depth-wall demo cost nothing extra to run (no bootstrap available to measure against), is there a
+  rough, checkable proxy for where in that 10-100x range a GIVEN parameter set would land, e.g. does the
+  level-budget devoted to CoeffToSlot/SlotToCoeff (today's book text cites {4,4} in Artifact 12.1) scale
+  linearly with the multiple, so a bigger numSlots costs proportionally more bootstrap latency per refresh,
+  or is the multiple closer to a fixed constant across parameter choices?; (3) all earlier carried-forward
+  questions (Ch7's three, Ch8's three, Ch9's two, Ch10's two, Ch11's two) remain open and are carried forward
+  without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced as a misconception about the chapter's content -- today's one real finding
+  was the generic "decryption returns garbage" framing being less precise than what a specific library (TenSEAL)
+  actually does, which is itself exactly the kind of library-vs-theory gap this whole curriculum exists to
+  surface through hands-on verification rather than reading alone.
+Revisit next time: nothing outstanding from Ch12. Proceed to Chapter 13 next session (SIMD packing/batching,
+  referenced repeatedly across Ch10-12 as "Chapter 13" for rotations/CoeffToSlot mechanics).
