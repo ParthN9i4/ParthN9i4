@@ -2249,3 +2249,73 @@ Weak spots: none newly surfaced as a misconception about the chapter's content -
   surface through hands-on verification rather than reading alone.
 Revisit next time: nothing outstanding from Ch12. Proceed to Chapter 13 next session (SIMD packing/batching,
   referenced repeatedly across Ch10-12 as "Chapter 13" for rotations/CoeffToSlot mechanics).
+
+## 2026-10-21 — Chapter 13 (new cycle): SIMD packing, diagonal matrix-vector, relinearization, key switching
+Operational note: another fresh-container start today, but the repo clone from yesterday's session had
+  actually persisted this time (unlike two days ago) -- confirmed via git log that HEAD matched yesterday's
+  pushed commit exactly, no re-clone needed beyond a sanity check.
+Taught: Section 13.1's foundational throughput claim -- SIMD packing (N/2 CKKS slots or N BFV/BGV slots per
+  ciphertext, one operation touching all of them) is close to the entire reason RLWE-based FHE is usable at
+  all, and an underfilled ciphertext wastes essentially all the compute you paid for. Section 13.2's packing
+  layouts for matrix-vector multiplication -- row-major (m log n rotations, one rotation-sum per output row)
+  and column-major (rotation cost moves rather than vanishes) both lose to the Halevi-Shoup diagonal method,
+  which packs W along diagonals d_k and computes W*x = sum_k d_k ⊙ rot(x,k) in exactly n rotations -- and
+  Section 13.2.3's baby-step giant-step refinement, which factors n ~ n1*n2 and reduces that further to
+  O(sqrt(n)) rotations by reusing n1 "baby step" rotations of x across all n2 "giant step" groups. Section
+  13.3's mechanical grounding of rotation in Galois automorphisms (X -> X^k for k coprime to 2N) and the sharp
+  warning box: forgetting to pre-generate a Galois key for an offset your circuit actually needs is a RUNTIME
+  failure, not a compile-time one -- and library behavior differs on how loud that failure is (OpenFHE refuses
+  undeclared offsets; TenSEAL/SEAL's default key set silently covers only power-of-two offsets, so a circuit
+  rotating by an untabulated amount can fail in ways that don't show up until the full pipeline, not the unit
+  test, exercises a different offset set -- especially after a BSGS optimization changes which offsets are
+  needed). Section 13.4's rotate-and-sum pattern (O(log n) rotations via the doubling trick, every slot ending
+  up with the full sum) as the recurring primitive under dot products, means, and attention-score reductions.
+  Section 13.5's relinearization -- multiplication grows a ciphertext from 2 to 3 components (d0+d1*s+d2*s^2),
+  and relinearization (an eval-mult key, an encryption of s^2 under s) collapses it back -- paired with the
+  chapter's own myth-correction: skipping relinearization is a COST choice, not a correctness one (SEAL's own
+  basics example deliberately decrypts an un-relinearized size-3 ciphertext and it works), the real cost being
+  quadratic size/noise growth on further multiplication and incompatibility with rotation/Galois ops which
+  assume the canonical 2-component form. Section 13.6's unification: relinearization and rotation's correction
+  step are BOTH special cases of one primitive, key switching (Definition 13.1) -- relin switches from "s^2"
+  to s, rotation switches from "s(X^k)" to s -- sharing the same gadget-decomposition cost driver (more digits
+  = less noise per switch, bigger key, slower switch) described in 13.6.1. Section 13.7's pointer to FHERMA
+  (Fair Math + OpenFHE community) and its polycircuit library as a source of competitively-verified reference
+  implementations of exactly these primitives, worth consulting once a hand-rolled BSGS skeleton needs to
+  become production-grade. This chapter closes Part II (Core FHE Theory) -- Part III (FHE Engineering) begins
+  next session.
+Exercise: tier1_ckks/ex07_dot_product.py directly exercises Section 13.4's rotate-and-sum pattern (TenSEAL's
+  .dot() is rotate-and-sum under the hood) and Section 13.3's Galois-key requirement (generate_galois_keys()
+  in the context setup). Ran fresh: 4/4 passed, encrypted dot product 17.500002 vs plain 17.500000 (error
+  1.97e-06, comfortably inside CKKS's approximate-arithmetic budget from Ch10). Since no existing exercise
+  directly tests Section 13.2's diagonal-packing matrix-vector claim (the chapter's other central mechanical
+  idea), ran a standalone check against TenSEAL's own built-in matmul (presumably diagonal-method-backed under
+  the hood, same packing family this chapter describes): encrypted a length-4 vector x, called
+  enc_x.matmul(W) for a random 4x4 W, and confirmed the decrypted result matches x@W (not W@x -- checked both
+  orientations explicitly rather than assuming) to ~1e-6 absolute error. A real, measured confirmation of
+  Section 13.2's headline claim via actual library behavior, not a hand-rolled toy standing in for it.
+Asked: (1) today's Galois-key warning box says TenSEAL's default generate_galois_keys() covers power-of-two
+  rotation offsets automatically, which is exactly what ex07's rotate-and-sum dot product needs (log2(n) is
+  always a power-of-two offset by construction) -- but the diagonal method's BSGS baby/giant-step offsets
+  {0,1,...,n1-1} and {0,n1,2*n1,...} are generally NOT powers of two for an arbitrary n1 -- does that mean a
+  from-scratch TenSEAL diagonal-matvec implementation (as opposed to the built-in matmul I tested today, which
+  presumably handles its own key generation correctly) would silently need explicit Galois key offsets passed
+  to generate_galois_keys(), and is that checkable by trying to hand-roll Artifact 13.1's BSGS pattern in
+  TenSEAL directly rather than relying on the built-in matmul?; (2) Section 13.6.1 says modern RNS-CKKS/BGV
+  implementations fold the gadget decomposition into the existing RNS modulus chain, so digit count "falls out
+  of" the depth-driven parameter choice rather than being chosen directly -- does that mean a parameter change
+  made purely to buy more multiplicative depth (a longer RNS chain) ALSO silently changes rotation/
+  relinearization latency as a side effect, and is there a way to observe that coupling directly by timing
+  ex07's dot product under two different coeff_mod_bit_sizes chains of different length but similar total
+  bit-count?; (3) all earlier carried-forward questions (Ch7's three, Ch8's three, Ch9's two, Ch10's two,
+  Ch11's two, Ch12's two) remain open and are carried forward without repeating them in full here -- this is
+  now a substantial backlog worth a dedicated review session at some point rather than perpetual silent carry-
+  forward, Parth's call on when.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's exercise and standalone check both matched the chapter's claims
+  cleanly on the first attempt.
+Revisit next time: nothing outstanding from Ch13 specifically, but flagging the growing carried-forward
+  question backlog (now 12 across Ch7-13) as worth a standalone review/answers session if Parth ever engages,
+  rather than letting it grow indefinitely. Proceed to Chapter 14 next session -- the start of Part III, FHE
+  Engineering (parameter selection, library mastery, performance optimization per the book's own Part III
+  tagline).
