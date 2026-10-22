@@ -2319,3 +2319,79 @@ Revisit next time: nothing outstanding from Ch13 specifically, but flagging the 
   rather than letting it grow indefinitely. Proceed to Chapter 14 next session -- the start of Part III, FHE
   Engineering (parameter selection, library mastery, performance optimization per the book's own Part III
   tagline).
+
+## 2026-10-22 — Chapter 14 (new cycle): parameter selection and security standards -- Part III opens
+Taught: the chapter's opening reframe, worth stating plainly because it corrects how every earlier session
+  this cycle has implicitly treated N and q -- "the parameter block is the cryptography," not a boring setup
+  step before the interesting part. RLWE hardness is a function of the RATIO between N and log2(q), not either
+  alone: bigger N (fixed q) is more secure, bigger q (fixed N) is less secure, because it shrinks the gap the
+  LWE noise has to hide inside. Section 14.2's HomomorphicEncryption.org standard table (N -> max log2(q) at
+  128-bit security, reference uniform-ternary secret, sigma~3.2) as the thing every library's "default"
+  parameter helper actually consults under the hood -- and the sharp warning that the table only certifies a
+  SPECIFIC attack model; deviating (sparse secrets for cheaper bootstrapping, smaller sigma, non-power-of-two
+  rings) invalidates the table-lookup argument entirely and requires re-deriving security via the lattice-
+  estimator (Section 14.6). Section 14.3's tradeoff triangle -- security wants big N/small q, performance wants
+  small N/small q, functionality (depth) wants big q -- and the chained mechanism that follows from it:
+  depth forces q up, which forces the security table's minimum N up, which is how "I need one more
+  multiplication" silently becomes "my ciphertexts are now megabytes." Section 14.4's concrete derivation
+  recipe (fix Delta -> build the chain as bookend-primes-plus-scale-primes -> sum to log2(q) -> look up min N
+  -> check slot budget) and its two sharpest "easy to invert" clarifications: the special/key-switching prime
+  is never a compute level (spendable levels = chain length minus 2, not minus 1), and a fresh ciphertext
+  starts at the TOP of the chain and rescales walk it DOWN toward q0 -- q0 is what's left at the end, not
+  where precision starts. Section 14.5's RNS/CRT explanation for why coeff_mod_bit_sizes is a list of prime
+  bit-sizes rather than one integer -- it simultaneously fixes log2(q) (security), the level count
+  (functionality), and the scale trajectory (forward-referenced as Ch16) -- plus the beginner trap it
+  specifically warns about: uniformly bumping every prime's bit-size to "fix precision" silently pushes
+  log2(q) past the security boundary with zero error from the library, since nothing checks security for you
+  automatically on every parameter edit.
+Exercise: no fhe-foundations exercise exists for parameter-selection/security-table material (expected --
+  this is a decision-procedure chapter, not a primitive to implement, same gap pattern as the other
+  engineering-judgment chapters this cycle). Built a real, runnable version of Section 14.4's derivation
+  algorithm (the actual table lookup + chain-construction logic, not pseudocode) and ran it against BOTH of
+  the chapter's own worked examples: the depth-5 example (Section 14.4) and the depth-7 three-layer-NN
+  artifact (Section 14.6). Both matched the book's stated results exactly on every number -- chain
+  [60,40,40,40,40,40,60]/log2(q)=320/N=16384 for depth-5, and chain [60,40x7,60]/log2(q)=400/N=16384/
+  8192 slots/38-bit margin for depth-7. Went one step further than arithmetic verification: actually
+  instantiated the depth-7 parameter set in real TenSEAL (N=16384, the exact 9-prime chain, Delta=2^40) and
+  ran sequential squarings to see whether it really supports exactly 7 levels as computed. It does, precisely:
+  7 squarings succeeded (sample decrypted values drifting slightly from 1.0 as expected, consistent with
+  compounding approximation error from Ch10), and the 8th failed with "ValueError: scale out of bounds" --
+  the same failure signature observed with Ch12's ex09_depth_limit, now triggered by hitting the exact
+  numeric boundary this chapter's own derivation predicted, in a real library rather than on paper.
+Asked: (1) today's real-library check only tested the FUNCTIONALITY side of the tradeoff triangle (does the
+  derived chain actually support 7 levels) -- the SECURITY side (is N=16384 at log2(q)=400 really 128-bit
+  secure under the standard's reference assumptions) was taken on the static table's word, per Section 14.2's
+  own caveat that the table only applies when assumptions match exactly. Is there a lightweight way to at
+  least sanity-check that TenSEAL/SEAL's default secret-key distribution for this context genuinely IS
+  uniform ternary (matching the table's assumption) rather than assuming it, short of running the full Sage-
+  based lattice-estimator Section 14.6 describes?; (2) the chapter's "beginner trap" warning (uniformly
+  bumping every prime's bit-size silently breaches the security boundary with no library error) seems
+  directly testable: does TenSEAL/SEAL's context constructor actually accept and build a context whose
+  log2(q) exceeds the N=16384/438-bit security ceiling without complaint, the way the warning predicts, or
+  does the library have SOME internal security check that would in fact catch it (even if not the full
+  estimator) -- checkable by deliberately building an oversized chain and seeing whether context creation
+  itself raises anything; (3) all earlier carried-forward questions (now a backlog of 12 across Ch7-13)
+  remain open and are carried forward without repeating them in full -- noting again, as last session did,
+  that this backlog is growing and would benefit from a dedicated review whenever Parth engages.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's derivation code and real-library check both matched the book's
+  claims exactly on the first attempt, continuing the clean run since Ch10 (no debugging arc since the Ch8/
+  Ch9 relinearization work).
+Revisit next time: question (2) above is cheap to check immediately next session if there's a spare moment --
+  it's a natural, fast follow-up to today's work rather than a deep investigation. Proceed to Chapter 15 next
+  session (Part III continues -- likely a library-landscape survey chapter per Ch9's "Chapter 15 surveys the
+  library landscape in full" forward-reference).
+Same-session follow-up on question (2): checked it immediately rather than deferring. Built an oversized
+  chain at N=16384 ([60,40,40,40,40,40,40,40,60] replaced with nine 60-bit primes, log2(q)=540 vs the 438-bit
+  tabulated ceiling) and TenSEAL/SEAL's context constructor REJECTED it outright -- "ValueError: encryption
+  parameters are not set correctly" -- contrary to the chapter's own "beginner trap" framing that the library
+  "will happily encrypt, compute, and decrypt with an insecure parameter set unless you re-check." Bisected
+  precisely to confirm this is really the security table being enforced, not some unrelated per-prime-size
+  limit: log2(q)=438 (the exact tabulated ceiling) builds successfully, log2(q)=439 (one bit over) fails --
+  a bit-exact match to the static table's stated boundary. Conclusion: SEAL (and therefore TenSEAL) DOES
+  enforce the HomomorphicEncryption.org standard table by default at context-construction time for its
+  default uniform-ternary-secret configuration -- the chapter's warning is accurate for hand-rolled/non-
+  standard schemes or libraries without this check, but is a strictly more pessimistic claim than what SEAL's
+  own default behavior actually does. A useful, precise correction to carry forward rather than take the
+  chapter's most general phrasing as applying identically to every library.
