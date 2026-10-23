@@ -2395,3 +2395,53 @@ Same-session follow-up on question (2): checked it immediately rather than defer
   standard schemes or libraries without this check, but is a strictly more pessimistic claim than what SEAL's
   own default behavior actually does. A useful, precise correction to carry forward rather than take the
   chapter's most general phrasing as applying identically to every library.
+
+## 2026-10-23 — Chapter 15 (new cycle): the library landscape -- a lighter survey session
+Taught: the field-level map -- OpenFHE as the de facto production default (BGV/BFV/CKKS all leveled, PLUS
+  CKKS and FHEW/TFHE bootstrapping, PLUS scheme switching between CKKS and FHEW/TFHE mid-circuit -- precisely
+  the capability gestured at since Ch11/Ch12's forward references), SEAL as the explicit-everything teaching
+  workhorse with a permanent no-bootstrapping ceiling (confirmed directly, repeatedly, this cycle -- Ch12's
+  ex09, Ch14's own depth-wall tests), TenSEAL as SEAL-wrapped-and-hidden (the library this cycle has run
+  almost every exercise against), HEaaN as CKKS from the scheme's own authors (CryptoLab, worth reading for
+  ground-truth internals, not a first production pick), Concrete ML/TFHE as the complementary non-polynomial
+  solution already explored in depth in Ch11, and the narrower-scope tools (Lattigo for Go/WASM/multiparty,
+  Apple's swift-homomorphic-encryption for on-device PIR -- shipped in iOS 18's Live Caller ID Lookup, a
+  genuine consumer-scale FHE deployment -- HEIR as compiler infrastructure not a runtime, HElib as superseded
+  history). OpenFHE's Enable(...) capability-model gotcha (forgetting the right Enable() call before KeyGen
+  produces a runtime error that reads like a missing feature rather than a missing flag) and SEAL's v4.4
+  critical-security-upgrade notice (untrusted-input handling matters specifically because a server evaluating
+  a ciphertext is, by construction, processing data it cannot inspect). Section 15.12's choose-a-library decision
+  table as a capstone that ties every scheme/bootstrap/niche distinction from Ch8-14 into one practical lookup.
+Exercise: no fhe-foundations exercise pairs with a survey chapter (expected). Ran the chapter's own three-
+  library comparison artifact for the one library actually available here: the 5-line TenSEAL dot-product
+  (poly_modulus_degree=8192, chain [60,40,40,60], vectors [1,2,3,4].[5,6,7,8]) -- decrypted 70.00000970895698
+  vs expected 70.0, matching the book's own "~70.0" claim and its "5 lines, hides everything" framing exactly
+  (no visible relinearize/rescale/rotate call anywhere in the code, confirmed by inspection of what was
+  actually written, not just asserted). Attempted to also verify the OpenFHE Enable() gotcha directly (the
+  chapter's other concrete, checkable claim) -- `pip install openfhe` was not even present in this fresh
+  container and, per this cycle's Ch12 session's prior finding that the compiled C++ extension does not
+  function in this environment even when nominally installed, did not re-attempt the install -- noted
+  honestly as an environment limitation rather than silently skipped or faked.
+Asked: (1) today's artifact comparison (TenSEAL 5 lines vs the book's own SEAL/OpenFHE skeletons at ~20-25
+  lines) is entirely about LINE COUNT and hidden-vs-explicit maintenance calls -- given this cycle has run
+  nearly every exercise on TenSEAL specifically because OpenFHE isn't usable here, how much of the "SEAL/
+  OpenFHE teaches you the mechanism better" claim this book repeats (Ch10, Ch13, and again today) is actually
+  separable from simply writing the rotate-and-sum loop by hand ONCE, by hand, in TenSEAL itself (TenSEAL does
+  expose enc_matmul_plain/matmul but, per Ch13's finding, no public per-offset .rotate() on CKKSVector) --
+  is the real lesson "use SEAL" or "write the loop yourself at least once, in whatever library is at hand"?;
+  (2) Section 15.9's HEIR (MLIR-based FHE compiler, scheme-agnostic frontend lowering to backends like
+  OpenFHE) sounds structurally similar in spirit to how Concrete ML's compiler (Ch11) lowers quantized sklearn/
+  PyTorch models to TFHE circuits -- is HEIR aiming to eventually do for CKKS/BGV/BFV what Concrete already
+  does for TFHE (a single high-level frontend, scheme chosen/optimized underneath), or is its scope
+  structurally different in a way that makes the comparison misleading?; (3) all earlier carried-forward
+  questions (now a backlog of 14 across Ch7-14) remain open and carried forward without repeating them in
+  full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's one real constraint was environmental (OpenFHE unusable here),
+  not a gap in understanding the chapter's content, and it was handled the same way this cycle's Ch12 session
+  handled the identical limitation: reported plainly rather than worked around with a fabricated result.
+Revisit next time: nothing outstanding from Ch15 specifically. The growing backlog (now 14 questions, Ch7-15)
+  is flagged again -- not blocking, but worth a dedicated review whenever Parth engages, rather than letting
+  it compound indefinitely. Proceed to Chapter 16 next session (CKKS scale and level management in practice --
+  the hands-on payoff of Ch14's parameter-derivation theory, per Ch14's own chain-trajectory forward reference).
