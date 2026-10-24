@@ -2445,3 +2445,68 @@ Revisit next time: nothing outstanding from Ch15 specifically. The growing backl
   is flagged again -- not blocking, but worth a dedicated review whenever Parth engages, rather than letting
   it compound indefinitely. Proceed to Chapter 16 next session (CKKS scale and level management in practice --
   the hands-on payoff of Ch14's parameter-derivation theory, per Ch14's own chain-trajectory forward reference).
+
+## 2026-10-24 — Chapter 16 (new cycle): CKKS scale/level management in practice
+Taught: the three governing rules compressed from Ch14's theory into daily discipline -- rescale after
+  every multiply (Rule 1), match scale AND level before combining two ciphertexts (Rule 2), know the
+  circuit's longest multiplicative path before choosing parameters (Rule 3, Ch14's derivation read as a
+  discipline rather than a one-time calculation). The three bugs mapped from symptom back to cause: Bug 1
+  (forgotten rescale -> values off by roughly a factor of Delta, or a hard failure a level or two downstream,
+  not at the offending multiply itself); Bug 2 (level mismatch across computation-graph branches -- skip
+  connections and residual paths are the prototypical real-world source, since they reach a merge point
+  having consumed fewer levels than the main path); Bug 3 (undersized Delta -> runs to completion, decrypts
+  cleanly, wrong in the 3rd/4th significant figure, NOT caught by any exception -- the chapter's sharpest
+  point: a plausible-looking decrypted result is not evidence of correctness). Section 16.3's level diagrams
+  as a DAG you draw BEFORE writing code, which simultaneously catches Bug 2 (any node whose incoming edges
+  sit at different rows is a bug by inspection) and hands you Rule 3's depth number directly. Section 16.4's
+  OpenFHE scaling-technique ladder (FIXEDMANUAL -> FIXEDAUTO -> FLEXIBLEAUTO -> FLEXIBLEAUTOEXT), each step
+  trading explicit control for automated (and increasingly careful) bookkeeping -- "learn on manual, deploy
+  on flexible-auto."
+Exercise: fhe-foundations/tier2_engineering/ex10-12 are OpenFHE C++ exercises requiring a system OpenFHE
+  install (find_package(OpenFHE) in CMakeLists.txt); confirmed no OpenFHE headers/libs exist anywhere in
+  this environment (same limitation as Ch12/Ch15 this cycle) -- not buildable here, noted honestly. Built a
+  real TenSEAL-based demonstration of all three bugs instead:
+  - Bug 1: reused Ch10's encode/decode machinery to show the exact mechanism (TenSEAL always auto-rescales,
+    so this demonstrates the underlying math a forgotten rescale would produce) -- decoding a raw ciphertext
+    product at scale Delta instead of Delta^2 gave values off from the true elementwise product by a ratio
+    of 1.074e9 on the tested slot, matching Delta=2^30=1.074e9 exactly -- a precise, measured confirmation of
+    "off by roughly a factor of Delta," not just "big and wrong."
+  - Bug 2: built a 2-level context, computed a "deep" branch (x*x*x, 2 multiplies) and a "shallow" branch
+    (a fresh 0-multiply ciphertext), and added them directly. TenSEAL auto-aligned the levels silently and
+    returned the exact correct result (decrypted [3.475, 8.1, 0.225, -0.9] matching true (x^3+0.1) to 4
+    decimal places) -- confirms TenSEAL structurally eliminates Bug 2 for the user, which is exactly why
+    Section 16.4 frames OpenFHE's FIXEDMANUAL mode as pedagogically necessary: this bug cannot even be
+    constructed in TenSEAL to learn from.
+  - Bug 3: ran the ax^2+bx+c circuit at five Delta choices with chain primes matched to Delta each time --
+    clean, smooth degradation (2^20: 0.75 abs error -> 2^25: 1.8e-2 -> 2^30: 3.8e-4 -> 2^35: 6.4e-5 -> 2^40:
+    1.9e-6), every run decrypting without any exception, consistent with Ch10's O(1/Delta) relative-error law.
+    Went further than the book's framing and found something sharper: when Delta is instead left MISMATCHED
+    from the chain's actual (fixed 40-bit) prime size -- varying Delta from 2^15 up to 2^39 while the chain
+    stays [60,40,40,60] -- the error does NOT degrade gradually, it sits at a catastrophic ~4.4 (wrong by
+    multiple full units, not a late digit) for every mismatched Delta tested, then falls off a cliff to
+    1.9e-6 only once Delta actually reaches 2^40 and matches the chain. This directly and sharply confirms
+    Ch14's own warning ("each scale-tier prime in the chain is sized to match Delta almost exactly, not just
+    close enough") with an actual measured discontinuity rather than the smoother "precision degrades" framing
+    Ch16's own Bug 3 narrative implies -- mismatched Delta-vs-chain is a cliff-edge failure, not a dial.
+Asked: (1) today's cliff-edge finding (mismatched Delta-vs-chain-prime gives ~4.4 error regardless of HOW
+  mismatched, while matched Delta-vs-chain gives smooth O(1/Delta) decay) suggests TenSEAL/SEAL's internal
+  scale bookkeeping assumes rescale divides out almost exactly the global_scale you declared, and breaks
+  non-gracefully the moment that assumption is violated, rather than degrading proportionally to the mismatch
+  size -- is this SEAL-specific internal bookkeeping (i.e. would OpenFHE's FLEXIBLEAUTO mode, which the
+  chapter says adaptively corrects per-level scale drift, actually handle a declared-Delta-vs-chain-prime
+  mismatch gracefully where FIXEDMANUAL/SEAL's hidden-FIXEDMANUAL-equivalent does not), or is a mismatch this
+  large always going to break any scheme's bookkeeping regardless of automation level?; (2) Bug 2's finding
+  that TenSEAL auto-aligns branches of different levels for free raises a question about COST, not just
+  correctness -- does that auto-alignment cost the shallow branch any additional noise/precision relative to
+  what an explicit, deliberate level-drop would cost in OpenFHE, or is it genuinely free because it's
+  implemented as exactly the no-op-rescale-by-encoded-1.0 trick Section 16.2 describes by hand?; (3) all
+  earlier carried-forward questions (now a backlog of 16 across Ch7-15) remain open and carried forward
+  without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced as a misconception -- today's work surfaced a genuinely interesting and
+  precise refinement of the book's own Bug 3 framing (cliff vs gradual decay) through direct measurement,
+  which is itself the kind of finding this hands-on verification practice exists to produce.
+Revisit next time: the growing backlog (now 16 questions, Ch7-16) is flagged again. Proceed to Chapter 17
+  next session (performance profiling and optimization, per this cycle's Ch13 forward-reference to Paterson-
+  Stockmeyer and cost hierarchy, and the pre-restart cycle's own prior coverage of this chapter).
