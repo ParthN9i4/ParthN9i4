@@ -2510,3 +2510,62 @@ Weak spots: none newly surfaced as a misconception -- today's work surfaced a ge
 Revisit next time: the growing backlog (now 16 questions, Ch7-16) is flagged again. Proceed to Chapter 17
   next session (performance profiling and optimization, per this cycle's Ch13 forward-reference to Paterson-
   Stockmeyer and cost hierarchy, and the pre-restart cycle's own prior coverage of this chapter).
+
+## 2026-10-25 — Chapter 17 (new cycle): performance profiling and optimization -- closes Part III
+Taught: Section 17.1's cost ordering (ciphertext-ciphertext multiply dominant, rotation a close second since
+  it's also a key-switch, encrypt/decrypt cheap and not accumulated across depth, keygen a one-time amortized
+  cost, bootstrapping dwarfing everything else per call by 1-2 orders of magnitude -- directly explaining why
+  Ch16's leveled-circuit discipline is preferred whenever the depth budget allows it). The three standard
+  depth/op-count reduction techniques as a unified family: Paterson-Stockmeyer (O(d)->O(log d) depth for
+  polynomial evaluation, via baby-step powers computed once at low depth plus giant-step coefficient-group
+  combination), BSGS for diagonal-packed linear transforms (O(N)->O(sqrt(N)) rotations -- already verified
+  empirically this cycle via Ch13's TenSEAL matmul test), and tree/doubling reduction for slot summation
+  (O(n)->O(log n) rotations -- already verified empirically this cycle via Ch13's ex07 rotate-and-sum dot
+  product). Section 17.3's memory danger: Galois/rotation keys are the most easily over-provisioned cost in a
+  pipeline (a naive "generate every offset" policy can produce gigabytes of key material dwarfing every
+  ciphertext combined) -- the practical fix is deriving the exact BSGS-implied offset set programmatically,
+  the same discipline Ch13's Galois-key warning box already established. Intel HEXL (Section 17.4) as free
+  2-5x AVX-512 NTT/modmul acceleration, a build-flag-only change with zero algorithmic cost, available in
+  OpenFHE/SEAL/HElib. FHERMA (Section 17.5) as the standing venue to check before hand-rolling a hard-to-
+  optimize component (comparison, sign, argmax) from scratch.
+Exercise: no fhe-foundations exercise matches this chapter's content (performance/depth-counting, not a
+  scheme primitive -- expected gap). Built a real depth-tracked polynomial evaluator (a Val wrapper
+  incrementing .lvl on every ciphertext-ciphertext multiply, mirroring Ch16's rescale-per-multiply rule) and
+  implemented both naive Horner and Paterson-Stockmeyer from scratch, tested against numpy.polyval as ground
+  truth at degree 3 and degree 15 (random coefficients, seeded). Both methods matched the true value exactly
+  at both degrees. Levels: degree 3 -- Horner 3, P-S 2 (matches the book's own Ch16-artifact aside that
+  "for d=3 the naive form is already near-optimal, ceil(log2 3)~2 levels either way"). Degree 15 -- Horner
+  gave 15 levels, NOT the book's stated "14 sequential multiplies, 14 levels" for this exact case; this is the
+  SAME discrepancy independently found in the pre-restart cycle's own Ch17 session (confirmed again now, a
+  second time, strengthening confidence it's a genuine minor error in the book's stated figure rather than a
+  implementation fluke either time) -- Horner's rule for a degree-d polynomial mathematically requires exactly
+  d sequential multiplications (verified by hand on degree 1/2/3 cases: 1, 2, 3 multiplies respectively), so
+  degree 15 should cost 15, not 14. My first P-S attempt gave 6 levels (also matching the pre-restart cycle's
+  prior finding of 6, "likely non-minimal baby-step power scheduling") -- this time, rather than just noting
+  the gap again, found and fixed the actual inefficiency: the giant-step multiplier x^k was being built as
+  baby[k-1]*x (adding one avoidable level) instead of the same balanced half+half construction used for every
+  other baby power. After the fix, P-S landed at exactly 5 levels for degree 15 -- squarely inside the book's
+  own stated "4-5 total levels" estimate, resolving a loose end carried since the pre-restart cycle rather than
+  just re-observing it a second time.
+Asked: (1) today's fix (balanced half+half construction for x^k instead of baby[k-1]*x) closed the P-S gap
+  from 6 down to 5 levels, matching the book's estimate -- is this fix something real libraries' Paterson-
+  Stockmeyer implementations (OpenFHE's EvalChebyshevFunction, cited in this cycle's earlier chapters) already
+  do automatically, or is "which power-of-x construction minimizes depth" itself a nontrivial scheduling
+  problem that a hand-rolled implementation could still get wrong even after this specific fix, at a different
+  degree or block size?; (2) the Horner "14 vs 15" discrepancy has now been independently reproduced across
+  BOTH cycles of this entire engagement at the exact same degree (15) -- is this worth treating as confirmed
+  enough to flag as an actual erratum if Parth ever revisits the book's source, or does the ambiguity in how
+  "multiplicative depth" is counted (e.g. some conventions count the FIRST squaring differently, or treat the
+  constant term specially) mean 14 is defensible under a different counting convention I haven't considered?;
+  (3) all earlier carried-forward questions (now a backlog of 17 across Ch7-16) remain open and carried
+  forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced as a misconception -- today's work resolved a previously-open loose end
+  (the P-S depth gap) via an actual fix rather than re-flagging it passively, which feels like forward progress
+  on the carried-forward backlog rather than just growing it further.
+Revisit next time: question (2) above (whether the Horner 14-vs-15 point is a genuine erratum) is worth
+  surfacing to Parth directly whenever he engages, since it's now a twice-reproduced, checkable claim rather
+  than a one-off. PART III (FHE Engineering) IS COMPLETE. Proceed to Chapter 18 next session -- opens Part IV
+  (Privacy-Preserving Machine Learning), per this cycle's and the pre-restart cycle's shared structure (The
+  Non-Polynomial Barrier).
