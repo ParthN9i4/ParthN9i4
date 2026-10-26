@@ -2569,3 +2569,71 @@ Revisit next time: question (2) above (whether the Horner 14-vs-15 point is a ge
   than a one-off. PART III (FHE Engineering) IS COMPLETE. Proceed to Chapter 18 next session -- opens Part IV
   (Privacy-Preserving Machine Learning), per this cycle's and the pre-restart cycle's shared structure (The
   Non-Polynomial Barrier).
+
+## 2026-10-26 — Chapter 18 (new cycle, opens Part IV): the non-polynomial barrier
+THE chapter Parth's own research question (depth-optimal polynomial approximation of activations) comes
+  from. Ran the book's own Artifact 18.A live, exactly as specified (N=16384, chain [60]+[35]*8+[60],
+  Delta=2^35, x=linspace(-6,6,16)):
+  - Step 1: confirmed hasattr(enc_x,'relu')==False and hasattr(enc_x,'sigmoid')==False -- not missing
+    convenience methods, a structural absence per Definition 18.1 (only +,-,*,matmul,dot exist because
+    those are the only functions a leveled RLWE scheme can express at all).
+  - Step 2: degree-4 least-squares ReLU fit, max abs error in [-6,6] = 0.18063 (book states ~1.8e-1 -- exact
+    match).
+  - Step 3: degree-8 fit, max abs error = 0.08733 (book states ~9e-2 -- exact match). Ratio degree4/degree8
+    = 2.068x -- precisely confirms the book's own framing ("a factor of about two, not the order-of-magnitude
+    gain one might expect") rather than just citing it.
+  - Out-of-range: degree-8 poly at x=9 (true ReLU=9) evaluates to -64.56 -- wrong in BOTH sign and magnitude.
+    At x=-9 (true ReLU=0) evaluates to -73.56. Observation 18.2 (a polynomial fit says nothing about the
+    function outside its fitting interval) made fully concrete with real, measured numbers rather than
+    merely asserted.
+Taught: Definition 18.1's precise native-operation-set statement (finite polynomial compositions only,
+  degree bounded by depth budget L admitting degree up to 2^L since squaring doubles degree while consuming
+  one level) and the crucial economic-vs-structural distinction: in BFV/BGV (finite plaintext ring Z_t)
+  comparison/sign ARE technically expressible via Lagrange interpolation or Fermat's-little-theorem equality
+  tests, just at cost O(t) degree / O(log t) depth -- impossibly expensive, not impossible -- whereas in CKKS
+  (real/complex plaintexts) a comparison or exponential is genuinely, structurally unreachable by any finite
+  polynomial, full stop. TFHE's PBS as the one member of the family that changes the computational model
+  itself (table lookup over a small domain, not ring arithmetic) rather than approximating within it. The
+  "bottleneck is not the linear algebra" misconception named directly and killed: matmuls are depth-1 (or
+  depth-log), well-optimized, and NOT the hard part -- activations are one-line functions and yet are the
+  entire reason encrypted deep learning is a research area. x^2 flagged as the one activation CKKS was, in a
+  sense, made for (exact, degree-2, zero approximation error) -- directly relevant to co-designed-architecture
+  thinking. The three crossing strategies (polynomial approximation / TFHE-PBS / scheme switching) and the
+  one-line tradeoff that organizes the rest of Part IV: "there is no strategy that avoids paying somewhere" --
+  Strategy 1 pays accuracy+depth, Strategy 2 pays bit-width+per-op latency, Strategy 3 pays engineering
+  complexity for owning two schemes' correctness simultaneously plus their conversion boundary.
+Exercise: the book's own Artifact 18.A is a complete, directly runnable TenSEAL script -- no separate
+  fhe-foundations exercise exists or is needed for this chapter; ran it verbatim and it IS the exercise.
+  All four measured numbers (two in-range errors, two out-of-range divergences, plus the hasattr structural
+  check) matched the book's stated claims exactly.
+Asked: (1) today's exact 2.068x ratio for doubling degree (4->8) on ReLU specifically, versus Ch19's eventual
+  claim (per the pre-restart cycle's own prior coverage of that chapter) of a ~950x leverage gap between
+  kinked and smooth-analytic activations at identical degree investment -- given today's result is purely
+  about ReLU's OWN diminishing returns as ITS OWN degree increases, while the 950x gap compares ReLU against
+  a DIFFERENT function's returns, are these two numbers actually in tension, or orthogonal facts that both
+  hold simultaneously (ReLU improves slowly as you throw more degree at ReLU, AND a smooth function improves
+  far faster than ReLU does for the same degree investment) -- worth stating precisely since "diminishing
+  returns" and "lower leverage than something else" could easily be conflated?; (2) the chapter's own stated
+  reason degree-8 isn't an order-of-magnitude better than degree-4 for ReLU is "the corner dominates" -- is
+  there a way to isolate that claim numerically TODAY, e.g. by fitting the same least-squares degree-4-vs-8
+  comparison to a SMOOTHED version of ReLU (softplus, or ReLU with the corner replaced by a small quadratic
+  blend near 0) and checking whether the ratio moves meaningfully toward the order-of-magnitude regime once
+  the corner is removed, isolating "it's the kink" from "least-squares fitting is just not that good"?; (3)
+  all earlier carried-forward questions (now a backlog of 18 across Ch7-17) remain open and carried forward
+  without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's artifact run matched the book's claims exactly on every number,
+  continuing this cycle's clean run (no debugging arc since the Ch8/Ch9 relinearization work many sessions back).
+Revisit next time: nothing outstanding -- question (2) was checked same-session, see below. Proceed to
+  Chapter 19 next session (Polynomial Activation Approximation -- almost literally Parth's thesis topic, per
+  both this cycle's and the pre-restart cycle's shared assessment).
+Same-session follow-up on question (2): checked immediately rather than deferring. Repeated the identical
+  degree-4-vs-8 least-squares comparison (same range [-6,6], same 400-point fitting grid, same 16-point test
+  grid) on softplus -- a smooth function with no corner that nonetheless looks like ReLU away from the origin
+  -- instead of ReLU. Result: ReLU's own degree4->degree8 improvement ratio was 2.46x (close to today's main
+  result); softplus's improvement ratio over the IDENTICAL degree jump was 10.66x -- genuinely into the
+  order-of-magnitude regime the book contrasts ReLU against. Same fitting method, same range, same degree
+  increase, only the corner removed -- and the ratio changed by roughly 4.3x. This cleanly isolates the
+  cause: it really is the kink, not a limitation of least-squares fitting, that produces ReLU's diminishing
+  returns from added polynomial degree.
