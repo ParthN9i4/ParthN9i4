@@ -2637,3 +2637,89 @@ Same-session follow-up on question (2): checked immediately rather than deferrin
   increase, only the corner removed -- and the ratio changed by roughly 4.3x. This cleanly isolates the
   cause: it really is the kink, not a limitation of least-squares fitting, that produces ReLU's diminishing
   returns from added polynomial degree.
+
+## 2026-10-28 — Chapter 19 (new cycle): Polynomial Activation Approximation -- Parth's thesis topic
+NOTE: the daily routine fired on 2026-10-27 while this session was idle, with no response; resuming today
+  (2026-10-28) with ONE session covering the next chapter rather than replaying the missed day separately --
+  gap noted here, not repeated, consistent with this engagement's standing practice for idle gaps.
+Nearly Parth's actual thesis topic by name. Ran the book's own Artifact 19.A live, exactly as specified
+  (pure numpy/Chebyshev, R=8, degrees 4/8/15/27, ReLU/sigmoid/GELU, in-range plus just-outside-range error):
+  ReLU:    degree4 err=4.61e-01 -> degree27 err=8.48e-02   (5.4x improvement)
+  GELU:    degree4 err=3.64e-01 -> degree27 err=2.64e-03   (137.8x improvement)
+  sigmoid: degree4 err=1.14e-01 -> degree27 err=2.22e-05   (5118.1x improvement)
+  leverage gap (sigmoid's improvement / ReLU's improvement): 941.7x
+  This reproduces the pre-restart cycle's own prior run of this exact artifact number-for-number (5.4x,
+  137.8x, 5118.1x, ~950x gap) -- a clean, deterministic re-confirmation across both cycles of this engagement,
+  and a precise quantitative answer to the question this cycle's own Ch18 session (yesterday) asked and
+  partially answered with the ReLU-vs-softplus comparison (2.5x vs 10.7x at degree 4->8): today's result
+  extends that same finding to the FULL degree range (4->27) and to TWO different smooth functions (sigmoid,
+  GELU) against ReLU, confirming the kink -- not the fitting method, not the specific smooth function chosen
+  -- is the structural reason for ReLU's weak returns from added polynomial degree. Also confirmed: out-of-
+  range error (just past the fit boundary) worsens sharply as degree increases for every function tested --
+  e.g. ReLU's out-of-range error grows from 0.98 (degree 4) to 1,730 (degree 27), the same divergence pattern
+  from Ch18's Artifact 18.A, now shown to get WORSE, not better, as you chase in-range accuracy with more
+  degree -- a direct, quantified illustration of why Observation 18.2's calibrated-range discipline is not
+  optional at higher degrees, it gets MORE load-bearing.
+Taught: Section 19.1's numerical-conditioning argument for why monomial least-squares fails past degree
+  ~10-15 (Vandermonde-Gram condition number scaling ~O((1+sqrt2)^2d)) -- not a FHE-specific issue, classical
+  numerical analysis that FHE practitioners simply inherit as "the newest and most depth-sensitive customers"
+  of. Section 19.2's Chebyshev basis fix: same three-term recurrence cost to evaluate homomorphically as
+  monomials, but truncating a Chebyshev series gives a near-minimax fit almost for free, via nodes clustered
+  near +-1 where equally-spaced sampling under-resolves the function. Theorem 19.2's equioscillation
+  characterization of the TRUE L-infinity minimax fit and the Remez exchange algorithm that finds it
+  (scipy.signal.remez's FIR special case; chebpy/hand-rolled Remez for the general case) -- explicitly flagged
+  as usually NOT worth the extra machinery over Chebyshev truncation for most CKKS activation work, only for
+  "chasing the last bit of tail robustness." Section 19.4's composite strategies (closed-form reduction,
+  e.g. GELU = x*sigmoid(1.702x), reusing a single sigmoid fit rather than fitting GELU's Gaussian CDF from
+  scratch; composition p_k-o-...-o-p_1 giving the SAME depth as a single degree-g^k polynomial -- k*log2(g) =
+  log2(g^k) exactly, no depth saving, but real numerical/practical advantages since you never construct or
+  store the catastrophically-large coefficients of a literal degree-g^k monomial poly; x^2 as the zero-cost
+  option when architecture is co-designed, Chapter 21's CryptoNets choice). Fact 19.3's depth-from-library-
+  table discipline: OpenFHE's real EvalChebyshevFunction costs consistently MORE than the naive
+  ceil(log2(d+1)) formula predicts (degree 15 costs 6 levels per the table, not 4) -- directly connects to
+  and resolves an open thread from THIS cycle's own Ch17 session, where a hand-optimized Paterson-Stockmeyer
+  construction landed at 5 levels for degree 15 (strictly between the naive formula's 4 and the library
+  table's 6) -- today's reading clarifies that gap precisely: the library's extra 1-2 levels beyond even a
+  well-optimized construction is internal-scaling overhead specific to OpenFHE's implementation, not a sign
+  that Ch17's optimized construction was still suboptimal.
+Exercise: the book's own Artifact 19.A is a complete, directly runnable pure-numpy script -- ran it verbatim,
+  no fhe-foundations exercise needed or exists separately for this chapter (same pattern as Ch18).
+Asked: (1) today's result shows GELU's 137.8x improvement sits meaningfully BELOW sigmoid's 5118.1x despite
+  GELU being built FROM a sigmoid (GELU(x) = x*sigmoid(1.702x) per Section 19.4's own closed-form reduction)
+  -- given that closed-form identity, why does fitting GELU directly with a degree-d Chebyshev series converge
+  so much worse than fitting sigmoid directly at the same degree, when the "smart" move per the chapter's own
+  advice would be to never fit GELU directly at all and instead reuse the sigmoid fit via the closed form --
+  is today's GELU number basically an illustration of "here's what happens if you ignore Section 19.4's own
+  advice," i.e. does fitting via the closed form (one degree-d sigmoid fit, one extra multiply) actually
+  recover something close to sigmoid's 5118.1x-at-degree-27 accuracy for GELU, checkable immediately by
+  comparing x*chebyshev_sigmoid_fit(1.702x) against direct chebyshev_gelu_fit(x) at the same degree?; (2)
+  Theorem 19.2's equioscillation condition requires at least d+2 alternating extrema -- is there a cheap way
+  to check TODAY's Chebyshev-truncation fits (not true Remez) against that condition directly, to see how
+  close truncation already gets to true minimax without running Remez at all, which would make concrete the
+  chapter's own claim that "the distinction rarely changes downstream accuracy by more than a fraction of a
+  percent"?; (3) all earlier carried-forward questions (now a backlog of 19 across Ch7-18) remain open and
+  carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's artifact run reproduced the pre-restart cycle's own numbers
+  exactly, and also cleanly resolved an open thread from this cycle's Ch17 session (the P-S depth-table gap).
+Revisit next time: nothing outstanding -- question (1) was checked same-session, see below. Proceed to
+  Chapter 20 next session (Encrypted Inference: Linear Models and Decision Trees -- first full end-to-end
+  pipeline chapter of Part IV, per the pre-restart cycle's own prior structure).
+Same-session follow-up on question (1): checked immediately, and the result was the OPPOSITE of what my own
+  question's hypothesis expected -- worth reporting honestly rather than declaring the hypothesis confirmed.
+  Compared, at matched degree, a direct Chebyshev fit of GELU against the closed-form construction
+  x*sigmoid_fit(1.702x) (fitting sigmoid on the correspondingly widened range [-1.702R, 1.702R] since that's
+  the actual domain 1.702x sweeps when x in [-R,R]). Result at every degree tested (4/8/15/27): the DIRECT
+  GELU fit was MORE accurate than the closed-form construction, by a factor of roughly 3.5-4.5x (e.g. at
+  degree 27: direct err=2.64e-3 vs closed-form err=9.13e-3). Two compounding reasons, both visible in the
+  construction itself rather than mysterious: (a) the closed form requires fitting sigmoid over a WIDER
+  domain (1.702x) than GELU's own domain, and Chebyshev truncation error grows with fitting range at fixed
+  degree, so the "inner" sigmoid fit is already working at a disadvantage; (b) the sigmoid fit's error gets
+  multiplied by |x| (up to R=8) when forming x*sigmoid_fit(...), directly amplifying whatever error the inner
+  fit carried. Conclusion: Section 19.4's closed-form recommendation is better read as an ENGINEERING-REUSE
+  argument (one sigmoid polynomial serves double duty if you already need sigmoid elsewhere, and you avoid
+  characterizing GELU's Gaussian-CDF shape from scratch) rather than an accuracy argument -- the book's own
+  text only ever claims the former, and today's direct test shows the latter does not hold, at least not in
+  this unoptimized comparison. A genuine, useful correction to how I'd silently have framed that section
+  if I hadn't tested it.
