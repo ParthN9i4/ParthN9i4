@@ -2723,3 +2723,75 @@ Same-session follow-up on question (1): checked immediately, and the result was 
   text only ever claims the former, and today's direct test shows the latter does not hold, at least not in
   this unoptimized comparison. A genuine, useful correction to how I'd silently have framed that section
   if I hadn't tested it.
+
+## 2026-10-29 — Chapter 20 (new cycle): Encrypted Inference -- Linear Models and Decision Trees
+First full end-to-end pipeline chapter of Part IV. Ran both of the book's own artifacts live (environment
+  note: this fresh container had neither sklearn/xgboost nor concrete-ml installed; reinstalled both,
+  concrete-ml's install ran long enough to need a background task + scheduled wakeup rather than a blocking
+  wait -- noted plainly, not hidden):
+  - Artifact 20.1 (TenSEAL encrypted logistic regression, N=32768, chain [60]+[40]*10+[60], degree-7
+    Chebyshev sigmoid fit via naive Horner): prediction 0.830774 vs true sigmoid(1.7)=0.845535, abs error
+    1.476e-2 -- exact match to the book's stated 0.83077/0.84553/~1.5e-2, and an exact reproduction of the
+    pre-restart cycle's own prior run of this identical artifact.
+  - Depth-accounting arithmetic confirmed by hand: dot product (1 level) + domain rescale into Chebyshev's
+    [-1,1] range (1 level) + degree-7 Horner (d+1=8 levels) = 10 total, matching the book's stated "d+3=10"
+    formula for this specific pipeline exactly.
+  - Trust-boundary test: ctx.copy() -> make_context_public() -> reconstructing a ciphertext against the
+    public context and calling .decrypt() correctly raised "ValueError: the current context of the tensor
+    doesn't hold a secret_key" -- confirms the separation is actually enforced by the library, not just a
+    convention of how the demo code is laid out (the book's own stated caution).
+  - Artifact 20.A (Concrete-ML XGBoost n_bits sweep on real sklearn breast_cancer data, n_estimators=50,
+    max_depth=4, vs a LogisticRegression baseline): n_bits=2->0.937, 4->0.972, 6->0.951, 8->0.979. This is
+    NON-MONOTONIC (a real dip at n_bits=6), diverging from the book's own idealized "climbs sharply then
+    plateaus" framing of Section 20.4 -- and it is an EXACT reproduction, number for number, of the pre-
+    restart cycle's own prior run of this identical artifact (same dip at the same n_bits value). Reported
+    honestly as a genuine, twice-confirmed empirical finding rather than smoothed over to match the book's
+    framing. LogisticRegression baseline: 0.951, which happens to tie exactly with XGB at n_bits=6 -- also an
+    exact reproduction of the pre-restart cycle's coincidental finding.
+Taught: why encrypted logistic regression is the field's universal "hello world" -- it isolates exactly ONE
+  non-polynomial operation (the final sigmoid) from an otherwise trivially CKKS-native affine model, letting
+  you debug Ch19's approximation machinery in complete isolation from everything else that could go wrong.
+  The depth-accounting trap Section 20.1 names directly: a plaintext multiply skips relinearization (cheaper
+  in TIME) but its product's scale is still the product of both scales, so CKKS must still rescale -- meaning
+  it costs a LEVEL exactly like a ciphertext-ciphertext multiply, a common and costly budgeting error. Why
+  decision trees/XGBoost belong to TFHE rather than CKKS: a tree's forward pass is pure comparison with no
+  polynomial encoding of "which path" that stays cheap, which is precisely the 1-bit-lookup-table shape PBS
+  evaluates natively and exactly, not approximately. Section 20.3's accuracy-privacy-performance triangle --
+  every knob (n_bits, polynomial degree) trades among the three axes, and any benchmark reporting only one
+  (usually latency) is implicitly hiding a choice about the other two.
+Asked: (1) today's n_bits sweep reproduced the EXACT SAME non-monotonic dip at n_bits=6 that the pre-restart
+  cycle found independently many sessions ago, on what should be a freshly re-trained model each time (new
+  XGBClassifier, same random_state=0, same train/test split) -- given this is now reproduced byte-for-byte
+  across two full installs in two different container instances, is this dip a genuine, deterministic artifact
+  of HOW n_bits=6's specific quantization interacts with THIS dataset's split-threshold distribution (i.e. a
+  real, explainable non-monotonicity), or is random_state=0 simply pinning XGBoost's own internal randomness
+  so tightly that what looks like a "finding" is actually just one single deterministic run away from being
+  randomness-driven -- checkable by sweeping n_bits across several different random_state values and seeing
+  whether the dip at 6 persists or moves?; (2) the depth-accounting lesson (plaintext multiply still costs a
+  level because of the mandatory rescale) directly connects to something from much earlier this cycle (Ch9's
+  BGV, which has no rescale-by-Delta step at all in the same sense) -- does a plaintext-ciphertext multiply in
+  BGV similarly "secretly" cost a level the way it does in CKKS, or does BGV's exact-arithmetic structure
+  (Definition 9.1's m+t*e relation) actually let a plaintext multiply skip even that cost, making this
+  specific gotcha CKKS-specific rather than a universal leveled-scheme trap?; (3) all earlier carried-forward
+  questions (now a backlog of 20 across Ch7-19) remain open and carried forward without repeating them in
+  full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's two artifacts both matched the book's claims and both exactly
+  reproduced the pre-restart cycle's own prior numbers, continuing this cycle's clean run.
+Revisit next time: nothing outstanding -- question (1) was checked same-session, see below. Proceed to
+  Chapter 21 next session (Encrypted Neural Network Inference -- full architectures, combining this cycle's
+  Ch13 packing + Ch17 Paterson-Stockmeyer + Ch19 activation-fitting material).
+Same-session follow-up on question (1): checked immediately. Reran the identical n_bits sweep at three
+  different random_state values (0, 1, 42), varying both the train/test split and XGBoost's own internal
+  randomness together: seed=0 dipped at n_bits=6 (0.972->0.951->0.979, matching today's and the pre-restart
+  cycle's original run); seed=1 dipped at n_bits=8 instead (0.951->0.958->0.951, the dip moved to the OTHER
+  end); seed=42 showed a milder dip at n_bits=6 followed by a flat plateau (0.972->0.958->0.958). Conclusion:
+  non-monotonicity itself is real and general -- every seed tested shows SOME wiggle rather than the book's
+  idealized clean climb-then-plateau -- but the earlier question's implicit premise (that n_bits=6
+  specifically is where the dip belongs) does not hold: the dip's LOCATION moves with the random seed. What
+  looked, across two full independent reproductions at seed=0, like a stable "n_bits=6 is special" finding
+  was actually a seed-pinned coincidence of which specific quantization boundary happened to interact badly
+  with that one train/test split and tree ensemble. The deeper, now better-supported finding is: quantization-
+  bitwidth sweeps for tree ensembles are not guaranteed monotonic at any fixed n_bits value, full stop --
+  not that any particular bit-width is a weak point.
