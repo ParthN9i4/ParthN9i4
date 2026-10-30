@@ -2795,3 +2795,68 @@ Same-session follow-up on question (1): checked immediately. Reran the identical
   with that one train/test split and tree ensemble. The deeper, now better-supported finding is: quantization-
   bitwidth sweeps for tree ensembles are not guaranteed monotonic at any fixed n_bits value, full stop --
   not that any particular bit-width is a weak point.
+
+## 2026-10-30 — Chapter 21 (new cycle): Encrypted Neural Network Inference
+Where Ch13's packing + Ch17's Paterson-Stockmeyer + Ch19's activation-fitting all converge into full
+  architectures. No fhe-foundations exercise exists for this chapter (architecture-level composition, not a
+  primitive -- expected gap, same pattern as Ch18/Ch20). Verified the chapter's concrete, checkable claims
+  directly rather than taking them on faith:
+  - BatchNorm folding (Section 21.1) as an EXACT algebraic identity, not an approximation: built a random
+    10-input/6-output linear layer plus random BN statistics (gamma, beta, mu, sigma2), computed the
+    unfolded path (linear then separate BN) and the folded path (single affine W'=gamma*W/sqrt(sigma2+eps),
+    b'=gamma*(b-mu)/sqrt(sigma2+eps)+beta) on the same random input -- max abs difference 8.882e-16, floating-
+    point noise only. Confirms folding is mandatory-and-free for FHE (no approximation cost at all), not a
+    convenient simplification that loses anything.
+  - argmax(softmax(z)) == argmax(z) (Section 21.1's softmax-removal shortcut): tested across 5 random logit
+    vectors, matched exactly every time. Confirms the shortcut is mathematically exact (softmax is strictly
+    monotonic, so it never reorders the ranking), not a heuristic that usually happens to work -- directly
+    justifying skipping an encrypted exponential-plus-reciprocal whenever only the predicted class label is
+    needed.
+  - Table 21.5's worked depth budget (2-conv+2-FC CNN, 4 linear layers at 1 level each + 3 activations):
+    recomputed independently against Fact 19.3's real OpenFHE degree-to-depth table (read in this cycle's own
+    Ch19 session) rather than trusting the book's arithmetic blindly -- degree-15 activations give depth 6
+    each, total 4*1+3*6=22 (matches); degree-13 gives depth 5 each, total 19 (matches); degree-5 gives depth
+    4 each, total 16 (matches). All three of the book's stated totals confirmed exactly from the underlying
+    table, not just copied.
+  All three checks reproduce the pre-restart cycle's own prior findings on this chapter (same ~1e-16 BatchNorm
+  identity, same exact argmax match, same table-driven depth arithmetic) -- a clean, deterministic re-
+  confirmation across both cycles.
+Taught: the three mandatory architecture-adaptation steps before deploying a trained plaintext network under
+  FHE (activation replacement calibrated PER-LAYER, not to one shared global range, since deeper layers have
+  different pre-activation statistics; BatchNorm folding, mandatory rather than optional since CKKS can't
+  evaluate the division by sqrt(sigma2+eps) directly anyway even if you wanted to skip folding; softmax
+  removal to raw logits plus client-side argmax wherever only the class label is needed). The CryptoNets
+  lineage (2016's maximally conservative x^2-activation + average-pooling + shallow-network answer to Ch18's
+  barrier, and the three enabling developments since -- Paterson-Stockmeyer, maturing CKKS bootstrapping,
+  better Chebyshev/Remez calibration -- that let the field relax toward higher-degree activations and deeper
+  networks). The layer-by-layer mental model (encode -> [diagonal-method packed matmul -> Chebyshev
+  activation via P-S] repeated -> decrypt) and im2col as the standard reduction turning convolution into the
+  same diagonal-matmul machinery already used for linear layers, done once in plaintext at encoding time
+  rather than under encryption per layer. The KEY quantitative ratio from Table 21.5: at degree 15, the three
+  activations consume 18 of 22 total levels (~82%) while the four linear layers consume only 4 -- meaning
+  every degree reduction Chapter 19's fitting work buys multiplies its savings by the number of activations
+  in a real multi-layer network, directly connecting this chapter back to Parth's own research value
+  proposition. The CryptoLab/Niobium hardware partnership as a signal the field expects dedicated hardware,
+  not just further algorithmic tricks, to make transformer-scale encrypted inference commercially viable.
+Asked: (1) today's confirmed 82% activation-dominance ratio at degree 15 (18 of 22 levels) is itself a
+  function of network depth (3 activations in a 4-linear-layer network) -- does that ratio trend toward 100%
+  as networks get deeper (more activations, same 1-level-per-linear-layer cost), meaning Chapter 19's
+  activation-fitting research becomes STRICTLY more valuable as models scale up, or does something else
+  (deeper networks needing progressively looser/wider calibration ranges per layer, compounding error, or
+  bootstrapping becoming necessary and resetting the whole calculus) cap how far that trend can actually go
+  in practice?; (2) Section 21.6 flags hardware (CryptoLab/Niobium) as necessary for transformer-scale
+  encrypted inference specifically because of attention and layer-norm cost at LLM parameter counts -- given
+  that attention's core nonlinearity IS softmax, and today's argmax shortcut structurally only applies to a
+  FINAL classification head (you need the actual normalized probabilities mid-network for attention weights,
+  not just the argmax), does that mean the softmax-removal trick from Section 21.1 is specifically unavailable
+  for every attention layer in a transformer, making attention's softmax cost unavoidable in a way a CNN's
+  classification head's softmax cost is not -- i.e. is "encrypted attention is hard" partly just "you can't
+  use the one cheap trick that makes CNN-classifier softmax easy"?; (3) all earlier carried-forward questions
+  (now a backlog of 21 across Ch7-20) remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's three verifications all matched the book's claims exactly and all
+  reproduced the pre-restart cycle's own prior numbers, continuing this cycle's clean run.
+Revisit next time: nothing outstanding from Ch21. Proceed to Chapter 22 next session (Quantization-Aware
+  Training for FHE -- the TFHE-side counterpart to this chapter's CKKS-side depth budgeting, per the pre-
+  restart cycle's own prior structure).
