@@ -2860,3 +2860,68 @@ Weak spots: none newly surfaced -- today's three verifications all matched the b
 Revisit next time: nothing outstanding from Ch21. Proceed to Chapter 22 next session (Quantization-Aware
   Training for FHE -- the TFHE-side counterpart to this chapter's CKKS-side depth budgeting, per the pre-
   restart cycle's own prior structure).
+
+## 2026-10-31 — Chapter 22 (new cycle): Quantization-Aware Training for FHE -- TFHE's side of depth budgeting
+TFHE-side counterpart to Ch21's CKKS-side depth budgeting. Verified the two conceptually load-bearing facts
+  directly with real code, deliberately skipping the full CIFAR-10+Brevitas Artifact 22.A (same scope
+  decision the pre-restart cycle made on this exact chapter: dataset download plus real training time isn't
+  suited to this daily-cadence environment -- noted explicitly as a deliberate choice, not a silent omission):
+  - Fact 22.2's accumulator bit-width formula (ceil(log2(k))+8 for 4-bit weights/activations): computed
+    across a range of fan-ins and found it crosses the 16-bit ceiling EXACTLY at k=256 (ceil(log2(256))+8=
+    8+8=16, the precise edge) and strictly exceeds it from k=512 onward (17 bits), reaching 18 bits at
+    k=800-1024 and 20 bits at k=4096 -- an exact reproduction of the pre-restart cycle's own prior numbers on
+    this identical formula, and a precise, measured confirmation of the chapter's "a few hundred input
+    features... routinely pushes past 16" claim rather than just quoting it.
+  - The straight-through estimator (Definition 22.1): built a real custom torch.autograd.Function (forward
+    = genuine delta*round(x/delta) rounding, backward = identity gradient, the STE's defining trick) and ran
+    actual SGD through a single weight with REAL rounding applied on every forward pass. Loss fell from 0.25
+    to exactly 0.0 within 2 steps (prediction converged exactly onto the target, with the weight settling at
+    a value whose quantized form Q(w)=0.5 exactly matches the required output) -- despite the forward pass
+    genuinely rounding the weight to one of only a handful of representable values every single step.
+    Printed the raw Q(w) staircase directly alongside this (w=-0.1 and w=+0.0 and w=+0.05 all map to Q=0 or
+    nearby flat segments) to show concretely why the TRUE derivative of Q is zero almost everywhere -- and
+    why STE's "pretend the backward pass sees dQ/dw=1" substitution is not a minor simplification but the
+    entire thing that makes gradient descent possible at all through a function that is otherwise piecewise
+    constant.
+Taught: why quantization is FORCED rather than optional under TFHE (Section 22.1) -- PBS operates over a
+  bounded lookup-table domain, so every value in the graph, not just the final output, must fit a small
+  integer budget, the structural flip side of CKKS's float-native comfort from Ch18. Why naive post-training
+  quantization usually fails at FHE-relevant bit-widths (weights were never optimized knowing they'd be
+  rounded, and small per-layer rounding errors compound through the network exactly the way Ch19's
+  polynomial-approximation errors compound). Section 22.3's Concrete-ML + Brevitas division of labor
+  (Brevitas owns model definition/QAT training with STE built into its QuantXxx layers; Concrete-ML owns
+  compiling the already-trained model into an FHE circuit via compile_brevitas_qat_model, with the
+  calibration set at compile time playing exactly the same role as Ch21's polynomial-range calibration, now
+  for integer ranges). Section 22.4's accumulator-overflow-is-the-real-failure-mode lesson and its practical
+  mitigation order (narrow fan-in first, drop bit-width further second, rounding_threshold_bits third).
+  Section 22.5's CKKS-vs-TFHE comparison table and its sharpest point: scheme choice is a TRAINING-TIME
+  decision, not a deployment-time afterthought -- a model QAT-trained for 4-bit TFHE deployment is a
+  genuinely different set of learned weights than the same architecture trained in float32 for CKKS, and
+  retrofitting across schemes costs accuracy that earlier scheme commitment would have avoided. Section
+  22.6's v1.8 LoRA-based hybrid fine-tuning extension and the precise statement of which operand is which
+  (the SERVER computes encrypted-activation times clear-weights -- the user's data is what's protected, the
+  model's weights stay clear on the server, the adapter stays clear on the client) -- worth stating precisely
+  since it is easy to get backwards.
+Asked: (1) today's accumulator-formula check found the exact edge at k=256 -- is that crossing point itself
+  sensitive to the "+8" constant in Fact 22.2's formula (which the book itself calls "roughly" -- 4+4 bits
+  for the product plus log2(k) headroom), or is +8 a fixed, derivable constant from 4-bit-times-4-bit
+  multiplication specifically (i.e. would an 8-bit-weight/8-bit-activation network's accumulator formula be
+  ceil(log2(k))+16 instead, exactly doubling, or does the "+8" have a more complex dependence on bit-width
+  that isn't simply linear in the per-operand bit-width?; (2) today's STE demo converged almost trivially
+  fast (2 steps to exact zero loss) because it was a single-weight, single-data-point toy -- the pre-restart
+  cycle's own version of this same exercise (per that session's log) needed a learning-rate correction after
+  an initial divergence and took 6 steps to converge on a presumably richer setup -- is there a RICHER-than-
+  today's single-weight toy that would actually exercise "the optimizer has to work around genuine staircase
+  gradients across many quantization levels," since today's demo only ever touched 2 adjacent levels of the
+  staircase (0.25->0.375->0.5) and never had to navigate a flat, truly-zero-gradient plateau the way a real
+  multi-level quantizer with many more bits would?; (3) all earlier carried-forward questions (now a backlog
+  of 22 across Ch7-21) remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's two verifications both matched the book's claims and (for the
+  accumulator formula) exactly reproduced the pre-restart cycle's own prior numbers.
+Revisit next time: question (2) above is worth a slightly richer demo next time there's a spare moment
+  (e.g. a weight that must cross several flat quantization plateaus, not just two adjacent levels, to reach
+  its target) -- today's toy was too easy to really stress-test the staircase-gradient problem STE solves.
+  Proceed to Chapter 23 next session (Federated Learning and Homomorphic Encryption -- shifts from single-
+  model inference/training to multi-party settings, per the pre-restart cycle's own prior structure).
