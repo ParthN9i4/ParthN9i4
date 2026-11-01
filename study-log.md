@@ -2925,3 +2925,71 @@ Revisit next time: question (2) above is worth a slightly richer demo next time 
   its target) -- today's toy was too easy to really stress-test the staircase-gradient problem STE solves.
   Proceed to Chapter 23 next session (Federated Learning and Homomorphic Encryption -- shifts from single-
   model inference/training to multi-party settings, per the pre-restart cycle's own prior structure).
+
+## 2026-11-01 — Chapter 23 (new cycle): Federated Learning and Homomorphic Encryption
+Shifts from single-model inference/training to multi-party settings. Ran the book's own Artifact 23.A live
+  (2-client FedAvg secure aggregation via TenSEAL, N=8192, chain [60,40,60] -- only 1 inner level needed
+  since aggregation never multiplies, confirming Observation 23.1 by construction):
+  - Encrypted aggregate matched the TRUE plaintext FedAvg weighted average to max abs error 5.09e-11 --
+    essentially exact, CKKS-noise-floor level. An exact reproduction (same order of magnitude, 5.09e-11 vs
+    the pre-restart cycle's own prior 2.1e-11 on this identical artifact) across both cycles.
+  - Ran the book's own suggested security exercise: attempted to call .decrypt() directly on an individual
+    client's ciphertext (enc_delta1, built against the public, secret-key-stripped context) rather than the
+    aggregated sum -- correctly FAILED with "ValueError: the current context of the tensor doesn't hold a
+    secret_key". This is the concrete, runnable version of Section 23.3's central point: HE protects the
+    INDIVIDUAL update from the aggregation server, demonstrated as a real enforced boundary rather than a
+    code-layout convention (the same enforcement mechanism already confirmed for a different scenario in this
+    cycle's Ch20 session).
+Taught: the structural reason secure aggregation is cheap -- Observation 23.1, FedAvg's aggregation step is
+  PURE addition (each client pre-scales its own update by its FedAvg weight n_i before encrypting, so the
+  server's entire job is summing ciphertexts), making it a depth-0 circuit: no relinearization, no rescaling,
+  no bootstrapping, and noise growing only additively/logarithmically in client count rather than
+  multiplicatively -- which is also why even Paillier (purely additive, no multiplicative structure at all)
+  is a perfectly adequate tool here, and CKKS is chosen mainly for infrastructure reuse with any encrypted-
+  inference component elsewhere in the system, not because the aggregation step itself needs CKKS's power.
+  Section 23.3's crucial, easy-to-overclaim boundary: HE-protected aggregation defeats a curious server
+  seeing INDIVIDUAL updates, but says nothing about gradient inversion (reconstructing training examples
+  from a gradient, mitigated only by cohort size/aggregation protocol design, not cryptography) or membership
+  inference against the FINAL AGGREGATE MODEL (the leak lives in the trained model's own generalization
+  behavior, an artifact HE never touches since the model is never meant to stay secret). Differential privacy
+  (DP-SGD, clip-and-noise client-side BEFORE encryption) as the necessary complement -- HE protects the
+  channel, DP protects the information content, and a system using only one answers a different threat model
+  than one using both. The broader design space (encrypted model evaluation run in the opposite trust
+  direction from Ch20/21; private set intersection for cross-silo vertical FL; threshold HE removing the
+  single-point-of-decryption-trust a lone aggregation-key holder represents) and OpenMined's PySyft/Datasites
+  as the governance/orchestration layer HE's aggregation machinery plugs into, not a competing framework.
+Asked: (1) today's artifact used only 2 clients -- Observation 23.1's claim that noise grows only additively/
+  logarithmically in client count (not multiplicatively) suggests the SAME 1-inner-level chain should keep
+  working correctly at much larger client counts (hundreds), since it's still just EvalAdd calls -- is that
+  literally true regardless of count, or does summing enough ciphertexts eventually risk the aggregate's
+  MAGNITUDE itself overflowing CKKS's representable range even though no additional LEVEL is consumed,
+  meaning very large cohorts might need a bigger scale/modulus for magnitude headroom even without needing
+  more depth -- checkable by rerunning today's script with a much larger simulated client count and watching
+  whether accuracy degrades even though no level-related error appears?; (2) Section 23.3 draws a sharp line
+  between what HE protects (the update, in transit/at aggregation) and what it doesn't (gradient inversion,
+  membership inference) -- given this cycle's Ch17 session already covered FHERMA/comparison primitives and
+  the broader "threshold HE" pointer in Section 23.4, does THRESHOLD HE (splitting the decryption key across
+  a t-of-n quorum) actually change anything about gradient-inversion or membership-inference resistance, or
+  is it purely an orthogonal improvement to the TRUST model (removing a single decryption point) that leaves
+  Section 23.3's two attack classes exactly as unaddressed as plain single-key HE does -- i.e. is "HE alone
+  isn't enough" still true even with the strongest possible threshold-HE setup, and DP remains unavoidable
+  regardless of how the key is split?; (3) all earlier carried-forward questions (now a backlog of 23 across
+  Ch7-22) remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's artifact run matched the book's claims exactly and reproduced the
+  pre-restart cycle's own prior numbers on this identical chapter.
+Revisit next time: nothing outstanding -- question (1) was checked same-session, see below. Proceed to
+  Chapter 24 next session (Encrypted Training: The Frontier -- training rather than inference under
+  encryption, per the pre-restart cycle's own prior structure, and the hardest remaining problem the book
+  covers before Part V's advanced topics).
+Same-session follow-up on question (1): checked immediately. Scaled the same 1-inner-level [60,40,60] chain
+  up from 2 to 10 to 100 to 1000 simulated clients (random per-client updates and FedAvg weights), summing
+  all of them via pure EvalAdd into one aggregate each time. Error vs. the true plaintext sum stayed at the
+  CKKS noise floor throughout -- 1.45e-9 (2 clients) -> 4.71e-9 (10) -> 1.88e-8 (100) -> 2.21e-8 (1000) --
+  growing far more slowly than the aggregate's own magnitude did (true sum magnitude grew ~27x from 2 to
+  1000 clients, error grew only ~15x). No overflow, no level-related failure, no magnitude-driven accuracy
+  cliff observed at any tested scale. This is consistent with (though does not conclusively prove for
+  arbitrarily large cohorts) Observation 23.1's claim that secure aggregation's cost stays flat in client
+  count: at least up to 1000 simulated clients with realistic update magnitudes, the same depth-0, 1-inner-
+  level parameter set that worked for 2 clients keeps working essentially unchanged.
