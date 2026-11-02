@@ -2993,3 +2993,80 @@ Same-session follow-up on question (1): checked immediately. Scaled the same 1-i
   arbitrarily large cohorts) Observation 23.1's claim that secure aggregation's cost stays flat in client
   count: at least up to 1000 simulated clients with realistic update magnitudes, the same depth-0, 1-inner-
   level parameter set that worked for 2 clients keeps working essentially unchanged.
+
+## 2026-11-02 — Chapter 24 (new cycle): Encrypted Training -- The Frontier (Part IV complete)
+Closes Part IV with the chapter the book itself flags as needing the most skepticism. Verified Section
+  24.3's per-iteration depth arithmetic independently against Fact 19.3's real OpenFHE degree-to-depth table
+  (read fresh in this cycle's own Ch19 session): forward Xw (1 level) + degree-7 sigmoid via the library's
+  real table (5 levels, not the formula's 3) + backward X^T(yhat-y) matmul (1 level) + update w<-w-lr*grad
+  (1 level, since lr=0.1 is a non-integer plaintext and still forces a rescale per Ch20's own lesson) = 8
+  levels/iteration, x10 iterations = 80 total -- matches the book's stated numbers exactly.
+  Then built and ran a REAL scalar (1-feature) encrypted logistic regression training loop in TenSEAL
+  (OpenFHE's EvalChebyshevFunction isn't available here, so used naive Horner as the pedagogically honest
+  stand-in, same as this cycle's Ch20 session did), deliberately budgeted for EXACTLY one iteration's depth
+  (chain [60]+[40]*6+[60]=360 bits, N=16384, degree-3 sigmoid: 1+3+1+1=6 levels/iteration) to watch
+  Observation 24.1's claim fail as an EXECUTED result rather than a described one:
+  - Iteration 0: SUCCEEDED, decrypted w=0.3629, matching the true plaintext GD step's w=0.3584 to within
+    4.5e-3 -- consistent with degree-3 Chebyshev sigmoid approximation error (Ch19's own findings), not CKKS
+    noise, confirming the encrypted computation tracked the real gradient-descent update correctly.
+  - Iteration 1: FAILED with "ValueError: scale out of bounds" -- the exact signature seen repeatedly this
+    cycle (Ch12's ex09, Ch14's own security-table test, Ch16's Bug-3 investigation) now triggered by hitting
+    training's specific failure mode: depth accumulates monotonically with no bootstrap to replenish it, so
+    a parameter set sized for exactly one iteration has, by construction, nothing left for a second.
+  Debugging note, reported honestly: my first horner_ckks implementation had an avoidable extra multiply at
+  the start (computing z*c_leading as an explicit step rather than starting the accumulator AT the leading
+  coefficient with no multiply) -- this silently added one unbudgeted level and caused iteration 0 itself to
+  fail against the intended 6-level chain. Caught it by first running the identical pipeline against a
+  generous 10-level chain, confirming it completed, then counting actual multiply operations by hand and
+  finding the off-by-one -- the same kind of construction-efficiency bug flagged and fixed in this cycle's
+  own Ch17 session (Paterson-Stockmeyer's giant-step power), now recurring in a different context, worth
+  noting as a pattern: hand-rolled Horner/polynomial-evaluation code is a recurring, easy-to-get-off-by-one
+  source of wasted depth, not a one-off mistake.
+Taught: Observation 24.1 stated precisely -- inference has FIXED depth, computed once from architecture;
+  training is one circuit repeated T times with each iteration's output feeding the next, so depth either
+  accumulates as T*d (infeasible or bootstrap-dependent) or must be reset via bootstrapping between
+  iterations, itself the single most expensive operation any of these schemes offers. Why backprop roughly
+  doubles the per-iteration cost without introducing a NEW non-polynomial barrier (polynomials differentiate
+  to polynomials one degree lower -- no new approximation machinery needed beyond what Ch19 already built).
+  The three honestly-costed approaches: (a) fully encrypted with per-iteration bootstrapping -- theoretically
+  complete, prohibitive for deep networks at realistic iteration counts; (b) hybrid clear/encrypted split by
+  sensitivity -- the field's actual pragmatic answer, exactly Ch22's LoRA/hybrid-fine-tuning pattern; (c)
+  shallow models with bounded iteration count, fully encrypted, no bootstrapping -- the one corner that is
+  solidly practical TODAY, which is exactly what this session built and ran. Section 24.4's precise
+  correction of a common myth: Concrete-ML's claimed "plaintext-training only" status is OUT OF DATE but the
+  CORRECTED claim is narrower than either the old myth or the marketing -- SGDClassifier(fit_encrypted=True)
+  since v1.5 gives genuine encrypted training, but ONLY for this one logistic-regression-shaped model family;
+  nothing deeper (a neural net, a forest, an arbitrary PyTorch module) can be fit_encrypted. Section 24.5's
+  open problems named precisely (encrypted BatchNorm statistics during training need an encrypted reciprocal-
+  square-root with no clean folding shortcut the way inference-time folding has; encrypted attention
+  compounds an already-expensive inference-time softmax with a full backward pass over it, at transformer
+  scale) and Section 24.6's closing honest-assessment framing: when someone proposes "encrypted training of a
+  deep network," the correct first question is which of the three approaches they actually mean, since "fully
+  encrypted, from scratch, at scale" is not yet a thing you can ship.
+Asked: (1) today's debugging note (an avoidable extra multiply silently costing one unbudgeted level) is now
+  the SECOND time this cycle a hand-rolled Horner/polynomial construction has had exactly this class of bug
+  (Ch17's Paterson-Stockmeyer giant-step power was the first) -- is there a general, checkable invariant
+  (e.g. "the number of ciphertext-ciphertext multiplies in a Horner evaluation of a degree-d polynomial
+  should always equal exactly d, never d+1") that could be asserted automatically in code to catch this whole
+  class of off-by-one depth-budgeting bug before it costs a failed run, rather than discovering it by trial
+  against a generous chain each time?; (2) Section 24.4's precise myth-correction (fit_encrypted works only
+  for the logistic-regression-shaped case) raises a natural question about today's own worked example -- is
+  Concrete-ML's SGDClassifier(fit_encrypted=True) internally doing roughly the SAME per-iteration depth
+  arithmetic Section 24.3 derives by hand (forward+sigmoid+backward+update), or does TFHE's completely
+  different cost model (per-scalar PBS, Ch22) sidestep the CKKS-specific "depth accumulates monotonically"
+  problem entirely, meaning Concrete-ML's encrypted SGD might not face Observation 24.1's wall in the same
+  form at all -- worth resolving since this chapter's CKKS-centric framing of the training-depth problem may
+  not even apply to the one library that actually ships encrypted training today?; (3) all earlier carried-
+  forward questions (now a backlog of 25 across Ch7-23) remain open and carried forward without repeating
+  them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: today's one real finding was a self-caught implementation bug (the off-by-one Horner construction),
+  not a gap in understanding the chapter's content -- caught and fixed within the same session via the
+  generous-chain diagnostic technique established in this cycle's Ch17 session, rather than left unresolved.
+Revisit next time: question (2) above (whether Concrete-ML's own fit_encrypted sidesteps this chapter's CKKS-
+  specific depth-accumulation problem entirely via TFHE's different cost model) is worth investigating next
+  time there's a spare moment, since it bears directly on how much of this chapter's "frontier" framing
+  actually applies to the one library shipping real encrypted training today. PART IV (Privacy-Preserving
+  Machine Learning) IS COMPLETE. Proceed to Chapter 25 next session, opening Part V (Advanced Topics and the
+  Frontier) -- Multi-Party Homomorphic Encryption, per the pre-restart cycle's own prior structure.
