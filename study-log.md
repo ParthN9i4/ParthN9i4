@@ -3070,3 +3070,87 @@ Revisit next time: question (2) above (whether Concrete-ML's own fit_encrypted s
   actually applies to the one library shipping real encrypted training today. PART IV (Privacy-Preserving
   Machine Learning) IS COMPLETE. Proceed to Chapter 25 next session, opening Part V (Advanced Topics and the
   Frontier) -- Multi-Party Homomorphic Encryption, per the pre-restart cycle's own prior structure.
+
+## 2026-11-03 — Chapter 25 (new cycle, opens Part V): Multi-Party Homomorphic Encryption
+Opens Part V (Advanced Topics and the Frontier). OpenFHE's Multiparty* API (Artifact 25.A) is still not
+  runnable in this environment -- same confirmed limitation as Ch12/Ch15/Ch24 earlier this cycle (not
+  installed, and per Ch12's own finding the compiled C++ extension doesn't function here even when nominally
+  present). Followed the same approach the pre-restart cycle used on this exact chapter: verified the two
+  underlying mathematical claims directly with real code rather than describing OpenFHE's skeleton
+  uncritically.
+  - Threshold FHE's security claim (Definition 25.1), simulated as genuine full-threshold (N=5-of-5)
+    additive secret sharing over a small modulus (97): five random shares summing exactly to a toy secret
+    (42) mod 97, confirming Observation-level correctness. Then simulated a coalition of N-1=4 parties
+    missing one share: enumerated all 97 possible values for the missing share and found EVERY one of the
+    97 possible secret values is reachable by exactly one guess -- genuine information-theoretic security,
+    not merely computational hardness. This directly demonstrates Definition 25.1's security half rather
+    than asserting it, and exactly reproduces the pre-restart cycle's own prior finding on this identical
+    simulation (same "97 out of 97, equal probability" result).
+  - Property 25.1's MKHE cost-scaling claim, verified combinatorially: modeled an MKHE ciphertext under k
+    distinct keys as having (k+1) components (one per secret key plus the constant/c0 term, matching the
+    book's own "concatenated key vector" description), giving addition cost O(k+1) and multiplication cost
+    O((k+1)^2) from the full cross-product of components before relinearization-across-keys. From k=2 to
+    k=10 (5x more keys): addition cost grew 3.67x, multiplication cost grew 13.44x -- exactly matching O(k)
+    vs O(k^2) scaling, and an exact reproduction of the pre-restart cycle's own prior numbers on this
+    identical calculation. Caught and self-corrected a modeling inconsistency mid-session: my first attempt
+    used plain k for addition but (k+1) for multiplication, which is why it initially gave a clean-looking
+    but WRONG 5.00x/13.44x pair rather than the structurally consistent 3.67x/13.44x pair -- fixed by using
+    the same (k+1)-component representation for both operations, which is also the more correct model of an
+    actual MKHE ciphertext's structure.
+Taught: the two structurally different answers the field has converged on for multi-party FHE -- threshold
+  FHE (single shared key, decryption needs a t-of-N quorum, homomorphic EVALUATION completely unmodified
+  from single-key CKKS/BFV/BGV, meaning every optimization from Parts II-IV carries over unchanged) vs
+  multi-key HE (each party keeps a fully independent key, ciphertexts under different keys get combined
+  during evaluation at a cost that grows with the number of distinct keys touched, not the total party
+  count). Section 25.1.1's noise-flooding/smudging subtlety -- naively summing partial decryptions leaks
+  more than the final plaintext unless each party adds a large (2^40-2^80x the ciphertext noise) random
+  smudging term first, a security-critical parameter easy to under-budget in a hand-rolled implementation.
+  Proxy re-encryption (Section 25.3) as a DISTINCT, narrower primitive from both -- moves a ciphertext
+  between single-owner keys (e.g. re-keying a database of encrypted records to a new employee's key) without
+  ever enabling joint computation across parties' data, which threshold/MKHE exist specifically to provide.
+  The trust-model decision rule (Section 25.4's applications, crystallized): threshold FHE for a STANDING
+  federation with known, stable membership (a fixed hospital consortium); MKHE for AD HOC, session-based
+  collaboration where parties aren't fixed in advance (an auction with unknown bidders). OpenFHE (mature
+  threshold BGV/BFV/CKKS) vs Lattigo (deepest multiparty feature set, Go-native/WASM-friendly, collective
+  bootstrapping -- threshold-decrypting a ciphertext to a fresh high-level one across the whole committee,
+  sidestepping any single party needing to run single-key bootstrapping).
+Asked: (1) today's MKHE cost-scaling model used (k+1) components uniformly for both addition and
+  multiplication after self-correcting an inconsistency -- does real production MKHE (the Chen-Dai-Kim-Song
+  2019 packed-CKKS construction the book cites) actually achieve the full O((k+1)^2) multiplication cost in
+  practice, or do packed/optimized constructions reduce this below the naive full-cross-product bound the
+  same way Paterson-Stockmeyer (Ch17/19) or BSGS (Ch13/17) reduce a naive bound elsewhere in this book --
+  i.e. is O(k^2) MKHE multiplication a hard structural floor or, like so many other "naive" counts in this
+  book, an upper bound that real implementations beat with cleverness?; (2) Section 25.1's threshold
+  decryption "degrades gracefully into no one can decrypt" if fewer than t parties cooperate -- given this
+  cycle's Ch23 session already established that HE-protected secure aggregation alone doesn't defend against
+  gradient inversion or membership inference (those leaks live in individually-visible updates or the final
+  model, not the aggregation channel), does moving from single-key to THRESHOLD-key secure aggregation change
+  that conclusion at all, or is threshold FHE strictly an improvement to the TRUST model (removing a single
+  point of decryption) that leaves Ch23's two attack classes exactly as unaddressed as before -- i.e. is "HE
+  alone isn't enough, you still need DP" equally true under the strongest possible threshold-HE setup?; (3)
+  all earlier carried-forward questions (now a backlog of 26 across Ch7-24) remain open and carried forward
+  without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: today's one self-caught issue was a modeling inconsistency in my own verification code (mixing
+  k and k+1 across the two cost functions), not a gap in understanding the chapter's content -- caught and
+  fixed within the same session by checking the numbers against the pre-restart cycle's own prior reference
+  values rather than assuming my first attempt was correct just because it ran without error.
+Revisit next time: nothing outstanding -- question (2) was resolvable directly from material already covered
+  rather than needing new code, see below. Proceed to Chapter 26 next session (Scheme Switching and Hybrid
+  Computation -- closes the CKKS<->TFHE thread forward-referenced since Ch11/Ch12/Ch18, per the pre-restart
+  cycle's own prior structure).
+Same-session resolution of question (2): this one was a logical deduction from material already covered
+  this cycle, not something needing a new experiment, so worked it through directly rather than deferring.
+  Gradient inversion exploits an INDIVIDUALLY-VISIBLE update before aggregation; membership inference
+  exploits the FINAL DECRYPTED MODEL's own generalization behavior. Neither attack surface has anything to
+  do with WHO holds the decryption key or how many parties must cooperate to exercise it -- switching from
+  single-key HE to threshold HE changes only the mechanics of recovering the SAME aggregate or the SAME
+  final model that single-key decryption would have produced. Once decrypted (by one key holder or by a
+  cooperating quorum), the aggregate/model carries exactly the same information content either way.
+  Conclusion: threshold FHE is a pure TRUST-model improvement (no single party can unilaterally decrypt) and
+  leaves Ch23's two attack classes exactly as unaddressed as plain single-key HE does -- "HE alone isn't
+  enough, DP is still necessary" remains equally true under the strongest possible t-of-N threshold setup.
+  This is a clean, general point worth carrying forward: threshold/multi-key machinery answers "who can
+  decrypt," never "what does the decrypted output reveal" -- the latter question is DP's job regardless of
+  how elaborate the former gets.
