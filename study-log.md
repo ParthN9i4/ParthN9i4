@@ -3154,3 +3154,59 @@ Same-session resolution of question (2): this one was a logical deduction from m
   This is a clean, general point worth carrying forward: threshold/multi-key machinery answers "who can
   decrypt," never "what does the decrypted output reveal" -- the latter question is DP's job regardless of
   how elaborate the former gets.
+
+## 2026-11-04 — Chapter 26 (new cycle): Scheme Switching and Hybrid Computation
+Closes the CKKS<->TFHE thread forward-referenced since Ch11/Ch12/Ch18. OpenFHE's EvalCKKStoFHEW/EvalFHEWtoCKKS
+  pipeline (Artifact 26.A) isn't runnable here (same confirmed environment limitation as Ch12/15/24/25 this
+  cycle). Followed the pre-restart cycle's own approach to this exact chapter: quantified Rule of Thumb 26.1
+  with an explicit crossover cost model rather than leaving it qualitative, using order-of-magnitude figures
+  already established earlier in THIS cycle's own sessions (Ch11's 1-10ms CPU PBS latency range, Ch17's
+  "10-100x a single multiply" rule applied to a degree-15 Chebyshev activation ~25ms packed):
+  switching_cost(n) = n*pbs_ms, ckks_cost = flat ~25ms regardless of n (one packed op serves all active
+  slots). Crossover at n* = 25/3.5 ~= 7.14 active slots -- switching cheaper below, CKKS-polynomial cheaper
+  above (n=1: 3.5 vs 25ms, switching wins; n=8: 28 vs 25ms, CKKS-poly wins; n=32: 112 vs 25ms, CKKS-poly wins
+  decisively). This is an exact reproduction of the pre-restart cycle's own prior crossover figure (~7.1) on
+  this identical model.
+  Went further than simply reproducing the base case: the pre-restart cycle's own session on this chapter
+  ASSIGNED a follow-up to Parth -- rerun the crossover model under faster PBS (GPU ~1ms) and a cheaper
+  CKKS-poly assumption, with a STATED PREDICTION that the two levers would pull the threshold in OPPOSITE
+  directions -- but that follow-up was never actually checked, since Parth never engaged with it across
+  either cycle. Resolved it directly today rather than leaving it open indefinitely: faster PBS (1ms instead
+  of 3.5ms, same 25ms CKKS-poly cost) pushed the crossover UP to n*=25.00 (switching remains competitive for
+  far more slots before CKKS wins); a cheaper CKKS-poly (12.5ms, e.g. a degree-8 fit instead of degree-15,
+  same 3.5ms PBS) pushed the crossover DOWN to n*=3.57 (CKKS wins sooner). Both moved in the predicted
+  opposite directions, confirming the prediction that had sat unverified since the pre-restart cycle.
+Taught: why CKKS and TFHE are complementary rather than competing cost profiles (bounded-by-degree polynomial
+  approximation error, independent of function sharpness, vs exact-regardless-of-sharpness PBS at a per-
+  element rather than per-ciphertext cost) -- directly connecting to Ch18/19's own ~950x ReLU-vs-sigmoid
+  leverage-gap finding from earlier this cycle: scheme switching exists precisely because that gap is real
+  and sometimes too large for any polynomial degree to close economically. The five-step OpenFHE pipeline
+  (slot extraction -> EvalCKKStoFHEW -> FHEW EvalFunc/PBS -> EvalFHEWtoCKKS -> repacking) and v1.4+'s
+  ConvertRLWEToCKKS/ConvertCKKSToRLWE generalization into reusable functional-bootstrapping building blocks.
+  The sequential slot-extraction bottleneck as THE open problem -- no packed/SIMD way to hand n values to
+  FHEW's bootstrap at once, unlike CKKS's one-op-per-n-slots -- and the two research directions attacking it
+  (batched switching, exploiting structure in blind rotation to process short vectors per bootstrap; selective
+  switching, restructuring the circuit to minimize how many values ever need the FHEW path), neither of which
+  has yet closed the gap.
+Asked: (1) today's crossover model is a FLAT ckks_cost assumption (one packed op serves the whole ciphertext
+  regardless of n) -- is that literally true all the way down to n=1 active slot, or does a degree-15
+  Chebyshev evaluation on a ciphertext with only 1 "meaningfully active" slot (the rest padding/unused) still
+  pay the SAME latency as one with all N/2 slots genuinely active, since CKKS packed multiplication doesn't
+  know or care which slots the caller considers meaningful -- i.e. is the crossover model's real asymmetry
+  "switching cost scales with n, CKKS cost doesn't scale with n at all" rather than "CKKS cost is cheap," and
+  does that distinction matter for how someone should actually read Rule of Thumb 26.1 in practice?; (2) now
+  that this cycle has directly connected today's crossover model to the Ch18/19 leverage-gap finding, is there
+  a single combined framework that predicts, for ANY activation function (not just ReLU vs sigmoid), whether
+  switching or polynomial approximation wins at a given slot count -- e.g. parameterizing by the function's
+  "kink severity" the way Ch19's own degree-vs-error curves already measure it, so the crossover slot count
+  n* becomes a function of a function's shape rather than needing a separate case-by-case judgment call each
+  time?; (3) all earlier carried-forward questions (now a backlog of 27 across Ch7-25) remain open and
+  carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's work resolved a previously-dangling exercise (the sensitivity
+  check assigned but never verified in the pre-restart cycle) rather than leaving the backlog to grow further
+  unexamined, which feels like genuine forward progress on accumulated open threads.
+Revisit next time: nothing outstanding from Ch26 specifically -- today closed out a loose end from the
+  pre-restart cycle rather than opening a new one. Proceed to Chapter 27 next session (per the pre-restart
+  cycle's own prior structure for the remainder of Part V).
