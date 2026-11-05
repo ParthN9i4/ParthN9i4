@@ -3210,3 +3210,68 @@ Weak spots: none newly surfaced -- today's work resolved a previously-dangling e
 Revisit next time: nothing outstanding from Ch26 specifically -- today closed out a loose end from the
   pre-restart cycle rather than opening a new one. Proceed to Chapter 27 next session (per the pre-restart
   cycle's own prior structure for the remainder of Part V).
+
+## 2026-11-05 — Chapter 27 (new cycle): FHE for Computer Vision, NLP, and Large Language Models
+A synthesis chapter -- applies nearly everything built across Parts II-IV (packing, Paterson-Stockmeyer,
+  polynomial activation fitting, scheme switching) to CNN/transformer/LLM-scale inference, so today's session
+  was lighter on new primitives and heavier on connecting prior material. No fhe-foundations exercise exists
+  for this chapter (survey/design-document content, not a scheme primitive -- expected gap). Verified the one
+  concrete numeric claim directly: CryptoNets' reported 250 seconds for a packed batch of 4096 images gives
+  250/4096 = 61.04 ms/image amortized -- matches the book's stated "~60ms per image" within rounding (~1.7%
+  off, consistent with its own "roughly" framing, not a discrepancy). Confirmed the conceptual point this
+  arithmetic is really making: the full 250-SECOND latency still applies to getting any SINGLE image's answer
+  back, since all 4096 images share one packed ciphertext and are processed together in one pass -- the
+  throughput/latency gap is explicitly named as "a permanent feature of SIMD-packed FHE, not a quirk of 2016
+  hardware," directly connecting back to this cycle's own Ch13 session (SIMD packing as the primary
+  throughput lever) from the opposite angle: packing buys throughput, not latency, and the two are not the
+  same number no matter how obvious that sounds stated plainly.
+Taught: the three transformer-specific obstacles beyond what CNNs already need (softmax's exponential-plus-
+  division, layer norm's inverse square root, and the compounding depth-plus-sequentiality of autoregressive
+  generation, where the ENTIRE deep multi-bootstrap forward pass must repeat once per generated token with no
+  way to parallelize across the sequential dependency) and the standard mitigation family for both softmax
+  and layer norm -- Newton-Raphson iteration for reciprocal/inverse-square-root, a fixed-depth-and-therefore-
+  budgetable circuit, versus a smooth FHE-friendly substitute function chosen to avoid the ill-conditioned
+  division/sqrt altogether. Section 27.3's honest LLM gap assessment and its sharpest point: there are THREE
+  genuinely different metrics in circulation that get casually conflated -- Zama's "100x FHE speedup" (an
+  overall multiplier), "500-1000 confidential blockchain TPS by end-2026" (fhEVM transaction throughput, NOT
+  LLM tokens), and "dozens of encrypted LLM tokens/sec" (the actual, far more modest LLM-specific target) --
+  and the chapter's own three-tier calibration (feasible-today-small-models / feasible-today-hybrid-
+  production / aspirational-roadmap-frontier-scale) as the correct way to read any vendor claim rather than
+  taking a headline number at face value. Artifact 27.A's full design-document walkthrough for a 4-layer
+  encrypted transformer classifier as a genuine synthesis exercise -- CKKS for every batched linear-algebra-
+  dominated operation (projections, QK^T, attention output, FFN), scheme switching reserved SPECIFICALLY for
+  layer-norm's inverse square root (chosen because it's the sharpest nonlinearity in the block AND only L=32
+  scalar values need the FHEW conversion, keeping the O(n) per-slot PBS cost bounded per Ch26's own crossover
+  reasoning from last session), softmax handled by CKKS-native exp-polynomial-plus-Newton-Raphson-reciprocal
+  rather than switching (since it's applied across the full L x d_model tensor, where per-element PBS would
+  dominate) -- a concrete, worked instance of exactly the Rule-of-Thumb-26.1 decision this cycle quantified
+  with a real crossover model just one session ago.
+Asked: (1) Artifact 27.A's depth budget states each of the 4 encoder blocks consumes "roughly 6-10
+  multiplicative levels," with "a single CKKS bootstrap between blocks 2 and 3" as the expected minimum --
+  given this cycle's own Ch12 session found CKKS bootstrapping itself consumes ~10-20 levels internally
+  before any useful circuit depth is available, does inserting ONE bootstrap partway through a 4-block stack
+  actually balance correctly against a realistic total parameter budget (i.e. does 2 blocks' worth of
+  consumed depth, 12-20 levels, actually land close to where a typical bootstrappable CKKS parameter set's
+  "useful before refresh" budget runs out), or is "exactly one bootstrap, exactly between blocks 2 and 3" a
+  rounder number than the real arithmetic would give for an arbitrary concrete parameter choice -- checkable
+  by actually working through a full Ch14-style parameter derivation for this specific 4-block circuit rather
+  than taking the book's "roughly" at face value?; (2) today's design document reserves scheme switching
+  for layer norm specifically because "only L scalar values need the conversion" -- given L=32 here, and
+  this cycle's own Ch26 crossover model put the CKKS-vs-switching crossover around n*~7 active slots in its
+  illustrative scenario, does L=32 actually fall on the SWITCHING-favorable side of that crossover (it's
+  well above 7), meaning Artifact 27.A's own design choice might be exactly backwards by its own cycle's
+  prior quantitative reasoning -- or does layer norm's inverse-square-root specifically change the relevant
+  ckks_poly_cost term enough (since sqrt is a much worse polynomial-approximation target than a generic
+  smooth activation) to shift the crossover back in switching's favor despite L=32 being well past the
+  generic n*~7 threshold?; (3) all earlier carried-forward questions (now a backlog of 28 across Ch7-26)
+  remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: question (2) above is a potentially real tension between this session's own worked design
+  example and last session's own quantitative model -- flagging it honestly as a possible inconsistency to
+  resolve rather than silently accepting the design document's reasoning at face value just because it's
+  the book's own worked example.
+Revisit next time: questions (1) and (2) above are both worth a closer look next time there's a spare moment
+  -- (2) especially, since it's a direct, checkable tension between two recent sessions' own reasoning rather
+  than a purely external question. Proceed to Chapter 28 next session (likely the book's final chapter,
+  given the sed-extracted range showed id="ch28" as the last chapter boundary before the appendices).
