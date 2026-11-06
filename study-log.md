@@ -3275,3 +3275,96 @@ Revisit next time: questions (1) and (2) above are both worth a closer look next
   -- (2) especially, since it's a direct, checkable tension between two recent sessions' own reasoning rather
   than a purely external question. Proceed to Chapter 28 next session (likely the book's final chapter,
   given the sed-extracted range showed id="ch28" as the last chapter boundary before the appendices).
+
+## 2026-11-06 — Chapter 28 (new cycle): Hardware Acceleration, Standardization, Open Problems -- book complete
+Final chapter of the main 28-chapter book (Appendices A-D remain). This chapter is almost entirely a
+  commercial/hardware landscape survey, and is unusual among this cycle's sessions in that the TEXT ITSELF
+  flags nearly every dated company/dollar-amount/announcement claim with "Verify" -- explicitly NOT asking
+  the reader to take it as settled fact the way Parts I-IV's cryptographic claims are. No fhe-foundations
+  exercise exists for this chapter (expected -- landscape survey, not a primitive). Checked honestly whether
+  any live fact-verification was possible in this environment before deciding how to handle the exercise: no
+  WebSearch/WebFetch tool is available in this session (confirmed via the session's own tool-availability
+  notices), so rather than fabricate a "verification" of 2025/2026-dated commercial claims I have no way to
+  actually check, did the one thing that genuinely tests understanding of this chapter's own central
+  analytical tool instead: applied Section 28.5's three-tier maturity framework (production-deployed /
+  enterprise-pilot / funding-and-roadmap) to classify its own listed examples, cross-checking my
+  classification against how the book itself characterizes each one:
+  - Production, real users/volume: Zama's fhEVM (reached Ethereum MAINNET per the text), Apple's Swift HE
+    PIR features (shipped on iOS 18+, "true consumer scale" per the book's own words).
+  - Enterprise pilot / named multi-year contract: Duality-Oracle (named partnership, specific workload
+    domain), CryptoLab-Macrogen (named 3-year contract), Enveil-DIU (named government contract).
+  - Funding/roadmap signal, not yet deployed capability: essentially every hardware-company figure in
+    Sections 28.1-28.2 (Intel HERACLES's reported kernel speedups, Duality TREBUCHET, SRI CraterLake-lineage,
+    Niobium's SEMIFIVE ASIC design CONTRACT specifically -- the book's own text is emphatic that a design
+    contract is not fabricated silicon, let alone a shipped product -- Cornami, Optalysys), and Fhenix's
+    Sunscreen acquisition / Decomposable BFV announcement.
+  This exercise reproduced the book's own tier assignments exactly on every example checked -- not
+  surprising, since it's drawn directly from the text, but useful as a forcing function to notice WHICH
+  specific phrase in each claim (mainnet vs. contract vs. round) is doing the maturity-signaling work, which
+  is exactly the skill Section 28.5 is trying to teach: "conflating a funding round with a shipped product
+  is the most common calibration error in FHE industry commentary."
+Taught: DARPA DPRIVE's explicit "within 10x of unencrypted" target and why reported 3-4-orders-of-magnitude
+  KERNEL speedups (Intel HERACLES, Duality TREBUCHET, SRI CraterLake-lineage) are a materially different and
+  more advanced claim than the field could make five years ago, while still not themselves being the same
+  claim as "within 10x for arbitrary end-to-end workloads" -- the accelerated kernel (NTT, modular
+  multiplication, key-switching) is not the whole application pipeline. The three structurally different
+  hardware approaches (digital ASICs -- Niobium/Cornami; photonic computing -- Optalysys, using laser
+  interference to perform the NTT's butterfly structure optically rather than digitally; and software-level
+  vectorization/GPU acceleration already shipping today -- Intel HEXL, FIDESlib) and why they occupy
+  different points on a maturity axis rather than competing head-to-head on the same axis. Compiler efforts
+  (Google HEIR, Zama Concrete) as attacking the ENGINEERING-cost side of adoption -- automatic packing/
+  bootstrap-placement/rotation-key selection -- which the chapter frames as mattering as much as raw hardware
+  speedup, directly connecting back to how much manual expertise this entire cycle's Parts III-IV sessions
+  have required by hand (parameter derivation, Galois-key offset enumeration, depth budgeting) that a mature
+  compiler would ideally automate away. The six open problems in the field's actual priority order (bootstrap
+  cost first, since nearly every other advance in this chapter is in some sense an attack on that one cost
+  center; encrypted training; batch scheme switching, directly continuing last session's own Ch26 crossover
+  work; FHE-friendly architectures as a joint ML-and-cryptography design problem rather than a purely
+  cryptographic one; FHE+MPC+ZKP composition; compiler auto-optimization) and Artifact 28.A's own honestly-
+  graded feasibility table (batch switching: moderate, 2-5x plausible but not SIMD parity; bootstrap hardware/
+  software co-design: high, since both halves are already independently demonstrated and the remaining work
+  is integration; encrypted training beyond hybrid fine-tuning: low-to-moderate, explicitly NOT expected to
+  mature within a 2-3 year horizon).
+Asked: (1) today's maturity-tier classification exercise reproduced the book's own tier assignments exactly
+  -- is there a case among the chapter's own listed examples where the RIGHT classification is genuinely
+  ambiguous or contestable (e.g. does Zama's fhEVM reaching "mainnet" definitively put it in the production
+  tier, or does "mainnet" for a confidential-smart-contract platform admit a pilot-like reading depending on
+  actual transaction volume, which the book doesn't report), or does the three-tier framework cleanly
+  partition every real-world example someone is likely to encounter, with no genuinely hard cases?; (2) this
+  chapter's open-problems list ranks "bootstrapping cost reduction" first specifically because "every other
+  advance... is, in large part, an attack on this one cost center" -- does that framing mean Chapter 26's own
+  batch-scheme-switching problem (ranked #3 here) is ALSO, at bottom, a bootstrapping-cost problem in
+  disguise (since FHEW's PBS is itself a bootstrap, just a cheap single-element one), making today's "six
+  open problems" list actually a list of five variations on bootstrap cost plus one genuinely orthogonal item
+  (FHE-friendly architectures), rather than six independent axes -- worth checking directly against how the
+  chapter itself frames PBS vs CKKS bootstrap as different operations (Ch14) before assuming they're the
+  same cost center wearing different clothes; (3) all earlier carried-forward questions (now a backlog of 30
+  across Ch7-27) remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's one real methodological decision (declining to fabricate fact-
+  verification without a working search tool, and substituting a genuine understanding-testing exercise
+  instead) continues this cycle's consistent practice of never asserting what cannot actually be checked.
+Revisit next time: question (1) is worth a closer look whenever there's a spare moment. Question (2) was
+  resolvable directly from the chapter's own text rather than needing new investigation -- see below. THE
+  MAIN 28-CHAPTER BOOK IS NOW COMPLETE FOR A SECOND TIME THIS ENGAGEMENT (first pass: pre-restart cycle,
+  sessions logged earlier in this file; second pass: this restarted cycle, Ch1-28 now done across roughly a
+  month of daily sessions). Proceed to Appendix A next session -- four appendices remain (A-D) before this
+  cycle, too, reaches the end of the book's full contents.
+Same-session resolution of question (2): checked directly against the chapter's own wording rather than
+  deferring. Artifact 28.A's feasibility text for problem #3 (batch scheme switching) describes the risk as
+  "batching may only amortize the bootstrapping-key application, not the per-value noise/precision
+  tradeoff" -- the chapter's own words explicitly name "bootstrapping-key application" as the thing batch
+  switching is trying to amortize. That confirms the hypothesis directly: problem #3 IS substantially a
+  bootstrap-cost problem, just TFHE/PBS-flavored (amortizing per-element PBS-key application across a
+  batch) rather than CKKS-flavored (the sine/cosine mod-reduction cost from Ch12). Extending the same check
+  across the other five problems: #1 (bootstrap cost reduction) is the center by definition; #2 (encrypted
+  training) is dominated by CKKS depth-accumulation/per-iteration-bootstrap costs per Ch24's own analysis;
+  #6 (compiler auto-optimization) explicitly lists "automatic bootstrapping placement" as one of its named
+  sub-problems in the chapter's own text. That leaves #4 (FHE-friendly architectures) and #5 (FHE+MPC+ZKP
+  composition) as the two genuinely orthogonal items -- #4 is about choosing functions that avoid needing
+  heavy approximation or switching in the first place (sidestepping the cost center rather than reducing
+  it), and #5 is a composition-of-different-primitives problem with no bootstrap involved at all. So the
+  chapter's "six open problems" are better read as four variations on one underlying cost center
+  (bootstrap/PBS cost, in its various forms) plus two genuinely independent axes -- a useful compression of
+  the list worth carrying forward rather than treating all six as equally distinct research directions.
