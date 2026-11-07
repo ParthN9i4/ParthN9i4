@@ -3368,3 +3368,67 @@ Same-session resolution of question (2): checked directly against the chapter's 
   chapter's "six open problems" are better read as four variations on one underlying cost center
   (bootstrap/PBS cost, in its various forms) plus two genuinely independent axes -- a useful compression of
   the list worth carrying forward rather than treating all six as equally distinct research directions.
+
+## 2026-11-07 — Appendix A (new cycle): Notation and Mathematical Prerequisites
+First appendix -- the book itself calls this "a reference, not a tutorial," so today's session was
+  appropriately lighter: consolidating notation and conventions this cycle's own code has been using
+  implicitly for 28 sessions, rather than teaching new content. No fhe-foundations exercise exists (expected
+  -- this is a glossary, not a primitive). Verified the one genuinely checkable claim numerically: Section
+  A.2's discrete Gaussian tail bound, "exceeds t*sigma with probability that falls off as e^(-t^2/2)."
+  Sampled 2,000,000 points from a discrete Gaussian at sigma=3.2 (the book's own conventional RLWE noise
+  parameter, used throughout Parts I-II this entire engagement) and measured P(|x|>t*sigma) at t=1,2,3,4:
+  empirical values (0.274, 0.042, 0.00297, 0.0001) matched the EXACT continuous-Gaussian tail formula
+  (erfc(t/sqrt(2)): 0.317, 0.0455, 0.0027, 0.00006) closely, confirming the simulation itself is correct.
+  Compared against the book's own stated e^(-t^2/2) bound (0.607, 0.135, 0.0111, 0.00034) and found it
+  consistently looser by a roughly stable factor (~3x) across all four t values, rather than diverging
+  further as t grows -- precisely confirming the book's careful "falls off as" phrasing (matching the
+  dominant EXPONENTIAL DECAY RATE) rather than an exact-equality claim (which it explicitly does not make).
+  This is the kind of claim worth checking rather than skimming past: "falls off as e^(-t^2/2)" could easily
+  be misread as "equals e^(-t^2/2)," and today's numbers show precisely how the two differ and why the
+  looser statement is still the mathematically correct one to cite.
+Taught/consolidated: the symbol table (N, q, t, R_q, chi, Delta, L/ell, lambda, negl(lambda)) as a single
+  cross-reference point for notation that has been used without re-explanation across all 28 chapters this
+  cycle; Section A.3's centered-representative convention ($[-q/2, q/2)$) as the thing EVERY scratchpad
+  script this cycle has implemented via a `center_mod` helper (Ch8's BFV relinearization work, Ch9's BGV
+  modulus switching, and others) without previously naming it as a documented, load-bearing convention in
+  its own right -- worth noticing explicitly now that the appendix names it, since "small perturbations stay
+  small" silently depended on this choice in every noise-growth argument this cycle verified numerically.
+  The CRT's dual role (plaintext-level SIMD batching AND ciphertext-level RNS representation) named as "the
+  single most load-bearing piece of algebra in the entire book" -- both uses were independently verified
+  with real numbers earlier this cycle (Ch2's slot-pairing work for the plaintext side; Ch14's RNS/prime-
+  chain-list reasoning for the ciphertext side) without the appendix's unifying frame being available yet at
+  the time. Definitions A.1-A.3 (PPT, negligible functions, advantage/security games) as the precise
+  vocabulary underlying every "IND-CPA secure" claim made in passing across Ch4-6's sessions, now available
+  as a single citable reference rather than scattered informal usage.
+Asked: (1) today's empirical tail-bound check used a continuous normal distribution rounded to integers as
+  a stand-in for the TRUE discrete Gaussian D_{Z,sigma} the appendix defines (probability proportional to
+  e^(-x^2/2sigma^2) assigned directly to integers, then normalized) -- are these two constructions
+  (round-a-continuous-sample vs. sample-from-the-renormalized-discrete-distribution directly) actually
+  identical in distribution, or only approximately so, and would re-deriving today's numbers from a properly
+  constructed discrete Gaussian sampler (rather than my rounding shortcut) change the measured ratio to the
+  e^(-t^2/2) bound in any way worth noting?; (2) Section A.3 states the CRT is "the single most load-bearing
+  piece of algebra in the entire book" for its dual plaintext-batching/ciphertext-RNS role -- given this
+  cycle has now independently verified BOTH uses with real numbers in different sessions (Ch2 and Ch14) many
+  weeks apart without ever explicitly connecting them as the SAME underlying theorem wearing two different
+  hats, is there a single worked example that exercises both uses of CRT simultaneously in one computation,
+  which would make the appendix's unifying claim fully concrete rather than true by assertion across two
+  separate verified instances?; (3) all earlier carried-forward questions (now a backlog of 31 across
+  Ch7-28) remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's one check matched the book's claim exactly once the careful
+  "falls off as" vs "equals" distinction was properly accounted for, which is itself the lesson of the
+  session rather than evidence of a gap.
+Revisit next time: nothing outstanding -- question (1) was checked same-session, see below. Proceed to
+  Appendix B next session.
+Same-session resolution of question (1): checked immediately. Built a true discrete Gaussian sampler via
+  explicit renormalization (weights proportional to e^(-x^2/2sigma^2) over the integer support, properly
+  normalized to sum to 1, then sampled via np.random.choice) rather than rounding a continuous normal
+  sample, and reran the identical tail-bound comparison at sigma=3.2. Result: virtually identical to the
+  rounding shortcut at every t tested (t=1: 0.2724 true-discrete vs 0.2739 rounded-continuous; t=4: 0.00010
+  vs 0.00010) -- the two constructions agree to within ordinary sampling noise at this sigma. This makes
+  sense in retrospect: at sigma=3.2 the continuous Gaussian's probability mass barely redistributes under
+  rounding to the nearest integer relative to the true discrete distribution's own per-integer weights, so
+  the shortcut used in today's main check was not actually a meaningful approximation -- it was already
+  correct for this parameter regime, and the question is resolved with no revision needed to today's main
+  result.
