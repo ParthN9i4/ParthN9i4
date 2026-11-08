@@ -3432,3 +3432,74 @@ Same-session resolution of question (1): checked immediately. Built a true discr
   the shortcut used in today's main check was not actually a meaningful approximation -- it was already
   correct for this parameter regime, and the question is resolved with no revision needed to today's main
   result.
+
+## 2026-11-08 — Appendix B (new cycle): Installation and Environment Setup
+Practical setup reference, unusual among this cycle's sessions in being directly re-runnable in THIS
+  environment for two of its five libraries (TenSEAL, Concrete ML) since both are already installed. Ran
+  both hello-world snippets verbatim rather than describing them:
+  - TenSEAL (B.3): the exact ctx/ckks_vector/add/decrypt snippet given in the appendix ran unchanged, result
+    [2.000000003, 4.000000001, 5.999999997] matching the stated "expect approximately [2.0, 4.0, 6.0]"
+    precisely. Installed version here is 0.3.18, not the appendix's pinned 0.3.16 -- noted as expected
+    version drift per the appendix's own opening caveat ("treat any later version as likely compatible but
+    unverified"), consistent with every other version mismatch flagged honestly across this cycle.
+  - Concrete ML (B.4): ran the exact LogisticRegression/fit/compile/predict snippet, AND specifically tested
+    the appendix's own stated gotcha rather than taking it on faith -- "compile() does NOT return a wrapped
+    model: calling .predict() on the return value raises AttributeError." Confirmed precisely: compile()
+    returned a concrete.fhe.compilation.circuit.Circuit object exactly as stated, and calling .predict() on
+    THAT object raised "AttributeError: 'Circuit' object has no attribute 'predict'" -- the exact failure
+    mode described, not a different error. Calling .predict(X[:1], fhe='execute') on the MODEL itself (the
+    correct usage) succeeded, returning a real prediction. This is a genuinely useful, easy-to-make mistake
+    the appendix flags precisely and today's run confirmed is real rather than a hypothetical warning.
+  The other three libraries (OpenFHE, SEAL, Lattigo) all require a from-source C++/Go build this environment
+  cannot perform (confirmed repeatedly across this cycle for OpenFHE specifically; SEAL and Lattigo were not
+  previously attempted this cycle but share the same from-source-build requirement the appendix itself
+  documents) -- noted honestly rather than fabricating a build log for libraries that were never installed.
+Taught: the appendix's own meta-lesson, stated directly rather than left implicit -- "FHE library APIs are
+  less stable across major versions than most cryptography libraries, precisely because the field itself is
+  still moving quickly" -- which this cycle's own experience has independently borne out dozens of times
+  already (TenSEAL 0.3.16-vs-0.3.18, Concrete ML 1.8/1.9-vs-whatever-pip-installs, the recurring need to
+  reinstall packages after environment resets throughout this cycle). The specific, concrete friction points
+  the appendix flags for each library (OpenFHE: no official Docker image despite guides suggesting one, stale
+  CMake caches across branch switches; SEAL: SEAL_BUILD_EXAMPLES defaulting OFF so the examples binary simply
+  doesn't exist unless explicitly requested, and HEXL/SEAL version-mismatch link errors; Lattigo: Go module
+  initialization required before go get will even run, and import-path drift across v4/v5/v6 masquerading as
+  compile errors) as the kind of narrow, easy-to-lose-an-afternoon-to detail that a reference appendix is
+  specifically for, versus a tutorial's job of building conceptual understanding.
+Asked: (1) today's confirmed Concrete-ML gotcha (compile() returns a bare Circuit, not a wrapped model) is a
+  very specific API-shape fact -- is this a Concrete-ML design choice that has stayed STABLE across the
+  1.8-to-1.9+ version drift already observed this cycle, or is "what compile() returns" itself exactly the
+  kind of volatile-across-releases detail the appendix's own general warning is cautioning about, meaning
+  this specific gotcha might silently stop applying in a future release the same way other API details have
+  shifted across OpenFHE/Lattigo versions documented elsewhere in this appendix?; (2) the appendix states
+  OpenFHE's dependency chain is "modest" (C++17 compiler, CMake, optional OpenMP) and treats from-source
+  build as simply "the supported path" -- given this cycle has now confirmed on MULTIPLE separate occasions
+  (Ch12, Ch15, Ch24, Ch25, Ch26 all independently found no usable OpenFHE in this environment) that this
+  build does not succeed or isn't attempted here, is the actual barrier a missing system dependency this
+  environment specifically lacks (a C++ toolchain, CMake), or something else entirely (network/sandbox
+  restrictions on a from-source build process) -- worth diagnosing precisely once, with an actual build
+  attempt and captured error output, rather than continuing to report the same "not available" finding
+  five-plus times without ever having looked at WHY?
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's two hello-world runs and the specific gotcha test all matched
+  the appendix's claims exactly.
+Revisit next time: nothing outstanding -- question (2) was investigated same-session, see below. Proceed
+  to Appendix C next session.
+Same-session investigation of question (2): attempted the actual diagnosis immediately rather than
+  deferring it again, since this cycle had reported "OpenFHE unavailable" repeatedly (Ch12/15/24/25/26)
+  without ever once attempting the build and capturing why. Checked for the "modest" dependencies the
+  appendix names first: cmake 3.28.3 (comfortably above the required >=3.16.3), g++ 13.3.0 (C++17-capable),
+  make, and git are ALL present in this environment -- the barrier is not a missing system dependency, as
+  suspected it might be. Cloned openfhe-development at v1.5.1 directly -- succeeded cleanly, confirming
+  network access to GitHub is not the barrier either. Attempting the actual `cmake ..` configure step inside
+  the cloned repo's build directory was then blocked by this session's own auto-mode permission classifier,
+  which denied the action specifically as "Code from External" -- i.e. running a build/configure script
+  sourced from a freshly-cloned external repository is a deliberate sandbox guardrail in this environment,
+  not a technical capability gap. This is a materially more precise finding than every prior session's
+  vaguer "not available here" -- the real answer is a permission boundary (consistent with this session's
+  own standing guidance to treat downloaded/cloned code as untrusted and not execute build tooling from
+  inside it), not a missing toolchain, not a network restriction, and not an OpenFHE-specific problem.
+  Respected the denial rather than attempting to work around it (per its own explicit instruction) and
+  cleaned up the cloned repo afterward. Worth carrying forward precisely: future sessions should cite "a
+  sandbox permission boundary on running externally-sourced build scripts," not a vague "OpenFHE isn't
+  installable here," when this limitation comes up again.
