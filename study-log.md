@@ -3503,3 +3503,81 @@ Same-session investigation of question (2): attempted the actual diagnosis immed
   cleaned up the cloned repo afterward. Worth carrying forward precisely: future sessions should cite "a
   sandbox permission boundary on running externally-sourced build scripts," not a vague "OpenFHE isn't
   installable here," when this limitation comes up again.
+
+## 2026-11-09 — Appendix C (new cycle): Complete Code for All Artifacts
+A short meta-index appendix (artifact locations by Part, build/run conventions, version-pinning reminder) --
+  no new math or code of its own to run, so today's session focused on cross-checking the appendix's own
+  factual claims against the book's actual structure rather than executing anything. This turned up a
+  genuine, significant finding: Appendix C's own C.1 index table misstates FOUR of the book's five Part
+  boundaries, confirmed definitively against the book's own table of contents (lines 590-625 of
+  fhe-book.html) rather than against memory or inference:
+    Appendix C's table says          | Book's own actual TOC says
+    Part I -- Foundations: Ch 1-7    | Part I -- Mathematical Foundations: Ch 1-5
+    Part II -- Core Schemes: Ch 8-13 | Part II -- Core FHE Theory: Ch 6-13
+    Part III -- Engineering: Ch14-21 | Part III -- FHE Engineering: Ch 14-17
+    Part IV -- Applications: Ch22-24 | Part IV -- Privacy-Preserving Machine Learning: Ch 18-24
+    Part V -- Advanced Topics: Ch25-28 | Part V -- Advanced Topics and the Frontier: Ch 25-28 (MATCHES)
+  Only Part V's range is correct. Parts I-IV are all wrong in the appendix's table -- Part I is overcounted
+  by two chapters (claims through Ch7, actually ends at Ch5), Part II is undercounted at the start (claims
+  starting at Ch8, actually starts at Ch6 -- meaning Ch6-7, "The Arc of Homomorphic Encryption" and "The
+  Noise Barrier," are entirely missing from the appendix's own index), Part III is overcounted by four
+  chapters (claims through Ch21, actually ends at Ch17), and Part IV is undercounted by four chapters at the
+  start (claims starting at Ch22, actually starts at Ch18 -- meaning Ch18-21, including THE non-polynomial-
+  barrier chapter and Parth's own thesis-adjacent Ch19, are entirely missing from the appendix's index) while
+  also being mislabeled ("Applications" vs. the TOC's actual "Privacy-Preserving Machine Learning"). This is
+  independently and strongly corroborated by this cycle's own session-by-session record: Ch14's session
+  explicitly opened Part III, Ch17's explicitly closed it ("PART III (FHE Engineering) IS COMPLETE"), Ch18's
+  explicitly opened Part IV, and Ch24's explicitly closed it ("PART IV... IS COMPLETE") -- four independent,
+  already-logged confirmations of the TOC's boundaries, all of which disagree with Appendix C's table in the
+  same consistent direction (Appendix C's boundaries are uniformly shifted later than the real ones for Parts
+  I-IV). This reads as a genuine authoring/editing error in the book itself -- the kind of cross-reference
+  drift that happens when a part structure is revised after an appendix summarizing it was written and the
+  two are never reconciled -- rather than a misunderstanding on my end, given the TOC's own explicit chapter-
+  by-chapter listing leaves no ambiguity.
+Taught/consolidated: C.2's three artifact conventions (SKELETON C++ examples illustrate API shape only and
+  need cross-checking against the pinned library's own example tree; Python artifacts -- TenSEAL, Concrete
+  ML -- are generally complete and runnable as shown, which matches this cycle's own experience exactly,
+  since every TenSEAL/Concrete-ML snippet run this cycle worked close to verbatim while every OpenFHE
+  SKELETON needed the "verify against current examples" treatment; design-document artifacts like Ch27's
+  Artifact 27.A are deliberately not code, in recognition that full encrypted-LLM-scale system design isn't
+  yet reducible to a book-length runnable listing). C.3's version-pinning discipline, restated as the
+  appendix's own closing point: pin exact versions, re-verify signatures against the pinned version's own
+  docs, and treat every Ch25-28 dated/commercial claim as a snapshot -- all directly consistent with this
+  cycle's own practice of noting every TenSEAL/Concrete-ML version drift (0.3.16-vs-0.3.18, 1.8-vs-1.9+)
+  honestly rather than silently.
+Asked: (1) today's finding is a real, primary-source-confirmed inconsistency in the book's own appendix --
+  is this worth flagging to Parth directly and explicitly, the same way the Ch17 Horner-depth "14 vs 15"
+  discrepancy was flagged, given this one is arguably more consequential (an entire appendix's navigational
+  index misdirecting a reader looking for, say, "where are Part IV's artifacts" straight past four real
+  chapters) even though it is a documentation/editing error rather than a technical/mathematical one?; (2)
+  given Appendix C's table undercounts Part II by starting at Ch8 instead of Ch6, and this cycle's own Ch6
+  session's content (PHE/SHE/FHE taxonomy, Gentry's bootstrapping theorem, BV11/BGV12/BFV12) and Ch7 session
+  (noise budget formalization) were both taught and verified this cycle WITHOUT the "artifact" framing
+  Appendix C's table implies every chapter has -- does the appendix's own text (C.1's framing: "every chapter
+  in this book includes at least one artifact") actually hold for Ch6-7 specifically, or were those two
+  chapters conceptual/historical with no dedicated artifact box the same way this cycle found for other
+  "survey" chapters (Ch15, Ch28), which would mean Appendix C's table is wrong on chapter RANGE but
+  incidentally still correct that Ch6-7 don't need indexing as artifact locations?; (3) all earlier carried-
+  forward questions (now a backlog of 33 across Ch7-28, Appendix A, Appendix B) remain open and carried
+  forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced in MY understanding -- today's finding is a genuine error in the book's own
+  appendix, caught by cross-referencing against the book's own table of contents and this cycle's own prior
+  session-by-session part-boundary confirmations, exactly the kind of catch this whole engagement's "never
+  teach from memory, always verify against the actual text" discipline exists to produce.
+Revisit next time: question (1) (whether/how to flag this to Parth) is worth a direct decision next time he
+  engages, since it's now a confirmed, well-evidenced finding rather than a suspicion. Proceed to Appendix D
+  next session -- the final appendix, after which this cycle will have covered the ENTIRE book (28 chapters
+  + 4 appendices) for a second complete time.
+Same-session resolution of question (2): checked directly against the book's own text rather than deferring.
+  Grepped Ch6's and Ch7's actual HTML (lines 2140-2344 and 2344-2522) for artifact-box markup: Ch6 contains
+  "Artifact 6.1 -- Toy Paillier vs. Chapter 5 RLWE SHE, side by side" and Ch7 contains "Artifact 7.1 --
+  Instrumenting noise growth in the Chapter 5 RLWE SHE" -- BOTH chapters genuinely have their own artifact
+  box, exactly matching C.1's own claim that "every chapter in this book includes at least one artifact."
+  This refutes my own question's alternative hypothesis cleanly: Ch6-7 are not artifact-free survey chapters
+  that the appendix's table happens to correctly omit -- they have real, nameable artifacts (and this
+  cycle's own Ch6 session already built and ran a from-scratch version of Artifact 6.1's Paillier-vs-RLWE
+  comparison). Appendix C's omission of Ch6-7 from Part II's indexed range is therefore a pure boundary/
+  range error with no silver lining -- it really does misdirect a reader away from two chapters that do
+  have artifacts worth finding.
