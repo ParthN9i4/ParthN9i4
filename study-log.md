@@ -3581,3 +3581,82 @@ Same-session resolution of question (2): checked directly against the book's own
   comparison). Appendix C's omission of Ch6-7 from Part II's indexed range is therefore a pure boundary/
   range error with no silver lining -- it really does misdirect a reader away from two chapters that do
   have artifacts worth finding.
+
+## 2026-11-12 — Appendix D (new cycle): Sources and Further Reading -- ENTIRE BOOK COMPLETE (2nd time)
+NOTE: the daily routine fired on 2026-11-10 and 2026-11-11 while this session was idle, with no response to
+  either; resuming today (2026-11-12) with ONE session covering the final appendix rather than replaying the
+  missed days separately -- gap noted here, not repeated, consistent with this engagement's standing
+  practice for idle gaps.
+Final appendix of the book -- a bibliography/further-reading list, no exercise or code of its own. In the
+  spirit of the appendix's own opening line ("Where this book and a source disagree, the source wins --
+  several corrections in the current revision came from exactly that comparison"), applied that same
+  standard to the appendix's OWN internal cross-references rather than taking them on faith, and found a
+  second real citation problem in the book's back matter (yesterday's Appendix C session found the first,
+  an index-table range error; today's is a different kind -- two specific chapter citations pointing at the
+  wrong chapter):
+  - D.2's Jeremy Kun citation says his overview is "Strong on the CGGI-versus-CKKS trade-off, programmable
+    bootstrapping, and the compiler/hardware landscape that Chapters 16 and 27 survey." Grepped Ch16's full
+    text (CKKS Scale and Level Management in Practice) and Ch27's full text (FHE for CV/NLP/LLMs) directly
+    for "CGGI," "programmable bootstrap," "compiler," and "DPRIVE" -- ZERO matches in either chapter. Ch11
+    ("TFHE and Programmable Bootstrapping") literally opens by defining "TFHE (also called CGGI, for
+    Chillotti-Gama-Georgieva-Izabachene)" and is explicitly about programmable bootstrapping by title and
+    content; Ch28 ("Hardware Acceleration, Standardization, and Open Problems") contains Section 28.3
+    "Compilers" covering exactly the compiler/hardware landscape described. The citation should almost
+    certainly read "Chapter 11 and Chapter 28," not "Chapters 16 and 27."
+  - D.3's Duality Technologies citation says it is "useful for... the DARPA DPRIVE hardware work discussed
+    in Chapter 27." Ch27 contains zero DPRIVE mentions; Ch28's own Section 28.1 is literally titled "DARPA
+    DPRIVE and the Race to 10x" and is where all of this cycle's own Ch28 session content on Intel HERACLES,
+    Duality TREBUCHET, and SRI CraterLake-lineage work came from. This citation should read "Chapter 28,"
+    not "Chapter 27."
+  Both errors share a pattern worth naming: both misdirect toward Ch27 (once paired with 16, once alone)
+  when the actual content is in Ch28 -- consistent with yesterday's Appendix C finding of a late-book cross-
+  reference drift, though today's errors are specific mis-citations rather than a systematic table shift.
+  Spot-checked the OTHER D.3 citations for completeness rather than assuming they were also wrong: FHERMA's
+  "See Chapter 17 §5" is CORRECT (Ch17's own Section 17.5 is literally titled "FHERMA -- community-optimized
+  components," confirmed in this cycle's own Ch17 session); HomomorphicEncryption.org's implicit tie to
+  Chapter 14 is CORRECT (Ch14's own text explicitly centers the Security Standard table and dimension/
+  modulus limits). So the appendix's citations are a mix of correct and incorrect -- worth knowing precisely
+  which, rather than distrusting the whole appendix or trusting it uncritically.
+Taught/consolidated: Gentry's 2009 Stanford thesis as the founding document, still recommended for its
+  Chapters 1-4 even skipping the ideal-lattice algebra, and its precise point about bootstrappability
+  (Definition 4.1.3) alone yielding leveled FHE with no circular-security assumption needed -- directly the
+  same distinction this cycle's own Ch12 session drew from this exact source chain. Barak's lecture notes as
+  the best short treatment of compactness's precise definition (Eval's output bounded by a fixed polynomial
+  in the security parameter ALONE, independent of input count or function size) and why no homomorphic
+  scheme can be CCA2-secure (malleability is the feature, not a bug to patch around). Ko's arXiv textbook and
+  its GLWE unifying device (a single ciphertext form of which LWE is k=1... wait, n=1, and RLWE is k=1 --
+  recovering the four schemes as one construction rather than unrelated constructions) as explicitly "the
+  closest work to this book, and the best complement to it" -- plus its explicit note that BOTH encryption
+  sign conventions exist in the literature and are proven equivalent, worth knowing before concluding a
+  formula mismatch across papers is an error rather than a convention difference. The "how to use these"
+  closing guide (Barak then Gentry for definitions; Ko alongside Part II for mechanics; library docs always
+  for API specifics, since "API surfaces move faster than any book"; the MIT course and FHERMA archive for
+  research directions) as a genuinely practical reading roadmap beyond this book's own scope.
+Asked: (1) today's two citation errors and yesterday's Appendix C table error are now THREE confirmed,
+  independently-evidenced mistakes in this book's back matter (Appendices C and D specifically) -- is there
+  a pattern suggesting the appendices were drafted or last-edited at a different point in the book's revision
+  history than the main 28 chapters (which this cycle has found to be extremely well-checked and internally
+  consistent, with only the much smaller Ch17 Horner "14 vs 15" depth-count issue as a comparable-scale
+  finding across 28 full chapters), making the appendices specifically -- rather than the book as a whole --
+  the place future sessions should apply extra skepticism to any cross-reference or index claim?; (2) all
+  earlier carried-forward questions (now a backlog of 34 across Ch7-28, Appendix A-C) remain open and
+  carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced in my own understanding -- today's findings are, like yesterday's, genuine
+  errors in the book's own back matter, caught by applying the appendix's own stated standard (check against
+  primary sources, here the book's own chapter content) to the appendix's own citations.
+Revisit next time: question (1) above (whether the appendices specifically need elevated scrutiny on any
+  future re-read) is worth keeping in mind rather than actively investigating further right now.
+THE ENTIRE BOOK -- ALL 28 CHAPTERS PLUS ALL 4 APPENDICES -- IS NOW COMPLETE FOR A SECOND FULL TIME THIS
+  ENGAGEMENT (first pass: pre-restart cycle, 45 sessions, logged earlier in this file, followed by an
+  extensive FHERMA-practice/research-gap-finder arc before the "reset curriculum pacing" restart; second
+  pass: this restarted cycle, Ch1 through Appendix D, roughly 2026-10-08 through today, 2026-11-12). No
+  standing instruction specifies what happens after a second full completion, and Parth has not engaged to
+  redirect. Following the precedent set after the FIRST full completion (which moved into FHERMA-practice
+  and research-gap-finding rather than immediately restarting Ch1 again), defaulting to the same choice this
+  time: NEXT SESSION will begin working through fhe-foundations/tier4_fherma's challenge-preparation
+  exercises (ex17_fherma_template.py, ex18_activation_challenge.py) rather than looping back to Chapter 1 for
+  a third pass -- a reasonable, precedented judgment call given the standing instructions' emphasis on
+  FHERMA-challenge readiness and Parth's stated research focus, made explicit here so it is a visible,
+  reasoned decision rather than a silent default, and reversible if Parth ever redirects.
