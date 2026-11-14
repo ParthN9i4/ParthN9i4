@@ -3745,3 +3745,84 @@ Same-session resolution of question (1): checked immediately, since both session
   consistent with and extrapolatable from Ch19's own measured sigmoid convergence curve, rather than being
   an independent, unrelated number -- the same underlying smooth-function convergence behavior is showing up
   consistently across two different exercises built at different points in this engagement.
+
+## 2026-11-14 — FHERMA practice, session 2: a from-scratch mock challenge (tanh, zero-rotation case)
+Built a genuine mock FHERMA-style challenge from scratch rather than re-running yesterday's exercise files,
+  per yesterday's own plan: "Approximate tanh on [-6,6] to max error 0.01, CKKS at 128-bit security, packed
+  batch of 64 (an LSTM/RNN gate width)." Worked the full pipeline -- degree search, real depth budget,
+  parameter derivation, rotation-key analysis, and a written eval() plan:
+  - Degree search found something cleaner and more striking than any symmetry effect seen so far this cycle:
+    the error curve showed EXACT pairing -- degree 3 and degree 4 gave IDENTICAL error (0.33519), degree 5
+    and 6 identical (0.20642), all the way up through 17/18 identical (0.01370), with every pair separated
+    by a real drop to the next pair. This is a sharper version of yesterday's sigmoid finding: tanh is
+    EXACTLY odd (not merely antisymmetric after a 0.5 shift like sigmoid), so every even-degree Chebyshev
+    coefficient is precisely zero by symmetry, not just small -- meaning a degree-d fit for even d adds
+    LITERALLY NOTHING over degree-(d-1), not just little. The minimal degree clearing the 0.01 threshold was
+    19 (necessarily odd, confirming the pattern completely) at error 0.00850.
+  - Real depth budget: degree 19 falls in Fact 19.3's 14-27 bracket -> 6 levels, versus the naive formula's
+    ceil(log2(20))=5 -- understated by 1 this time (smaller gap than some of this cycle's other examples,
+    e.g. degree 15's gap of 2, but the same systematic direction every time: the real table always costs
+    at least as much as the formula, never less).
+  - Parameter derivation (Ch14's method): chain [60,40,40,40,40,40,40,60], log2(q)=360 bits, minimum N at
+    128-bit security = 16384 (78-bit margin under its 438-bit ceiling), 8192 available slots comfortably
+    covering the 64-slot batch requirement.
+  - NEW observation this session, distinct from every prior FHERMA-adjacent exercise this cycle: this
+    challenge needs ZERO rotation keys. Every previous rotation-count discussion this cycle (Ch13's diagonal
+    matvec, Ch17's BSGS, today's own fherma_config.py review yesterday) involved cross-slot structure
+    (matmul, dot-product reduction) that needs EvalRotate. A PURE pointwise activation applied independently
+    to each of 64 packed slots needs none -- EvalChebyshevFunction operates slot-wise with no internal
+    rotation requirement when there's no reduction or repacking around it. Worth naming explicitly as its
+    own FHERMA archetype: "pointwise activation only" challenges are the simplest possible submission shape
+    (one function call, a known depth, an empty rotation-key list), distinct from the matmul-heavy or
+    reduction-heavy shapes this cycle has spent more time on.
+  - Worked eval() plan (not compiled -- OpenFHE unavailable, per the precise sandbox diagnosis from two
+    sessions ago): deserialize CC/public-key/eval-mult-key (explicitly skip eval-rotation-key, since none is
+    needed) and the one input ciphertext; call EvalChebyshevFunction(tanh, ct, -6, 6, 19) in one line,
+    leaning on OpenFHE's own Paterson-Stockmeyer-optimized internal evaluation rather than a manual Horner
+    loop (contrasting this cycle's own Ch20 finding that TenSEAL needs a hand-rolled Horner workaround since
+    it lacks this convenience); serialize the output. Three real steps, one FHE call, matching
+    config.json's mult_depth=6 and an empty indexes_for_rotation_key list exactly.
+Taught/consolidated: exact function symmetry (tanh, genuinely odd) gives a STRONGER, cleaner version of the
+  near-symmetry effect (sigmoid, odd only after shifting) already seen -- worth distinguishing precisely
+  going forward: "this function is exactly odd/even" (zero coefficients, exact degree-pairing in the error
+  curve) versus "this function is approximately antisymmetric around some point" (near-zero coefficients,
+  the error curve still improves slightly at the "wasted" even degree due to floating-point/fitting noise,
+  as seen in yesterday's sigmoid degree-3-vs-4 case which did NOT pair exactly). Also consolidated: not every
+  FHERMA-style challenge needs rotation-key planning at all -- pointwise-only activation challenges are a
+  genuinely simpler submission category than the packing-heavy examples this cycle has focused on most.
+Asked: (1) today's tanh fit never pairs with error EXACTLY zero difference in the printed 5-decimal output
+  (0.33519 appears as literally the same string for degree 3 and 4) -- is that floating-point coincidence at
+  5-decimal rounding, or is it provably exact to full double precision given tanh's provable exact oddness,
+  checkable by printing more decimal places or comparing the raw floats directly rather than their rounded
+  string representations?; (2) today's "zero rotation keys needed" finding was specific to a PURE pointwise
+  challenge -- would a slightly more realistic LSTM-gate-shaped challenge (e.g. apply tanh to the OUTPUT of
+  a small linear projection, rather than to a bare pre-supplied input) reintroduce rotation requirements via
+  the projection's own matmul, meaning "zero rotations" is a property of today's specific artificially-
+  isolated challenge scope rather than something that would hold for anything resembling a real gate
+  computation -- worth checking by extending today's script with a toy linear layer in front of the tanh and
+  recomputing the rotation-key list?; (3) all earlier carried-forward questions (now a backlog of 37 across
+  Ch7-28, all four appendices, and yesterday's FHERMA session) remain open and carried forward without
+  repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none newly surfaced -- today's session was a clean, from-scratch build that worked correctly on
+  the first full run, surfacing a genuinely new (not previously observed this cycle) FHERMA archetype rather
+  than a gap in understanding.
+Revisit next time: nothing outstanding -- both questions were checked same-session, see below. Proceed to
+  the next FHERMA-practice session -- likely tackling a genuinely different challenge TYPE next (e.g. an
+  encrypted-comparison or matrix-operation challenge per the tier's own README table, rather than another
+  activation-approximation variant, to broaden coverage beyond the Chebyshev-fitting skill already exercised
+  twice now).
+Same-session resolution of both questions. (1): printed the degree-3 and degree-4 fitted coefficients
+  directly rather than just the rounded error strings -- every even-index coefficient (indices 0, 2 for
+  degree 3; 0, 2, 4 for degree 4) sat at machine epsilon (1e-16 to 1e-17), and degree-4's genuinely NEW
+  coefficient (index 4, the one degree-3 doesn't have) was exactly 0.0, not just small. The two errors agreed
+  to 13 decimal places (0.3351850560689166 vs 0.33518505606891613). This is a real mathematical fact --
+  tanh's exact oddness forces exactly-zero even coefficients -- not a rounding coincidence in the printed
+  output. (2): extended the scenario to a toy tanh(W@x+b) gate (n=8) computed via the diagonal method: a
+  naive diagonal matvec needs rotation offsets 0 through n-1, and BSGS factorization (n1=3, n2=3) reduces
+  this to {0,1,2,3,6}. So today's "zero rotations needed" finding is real but genuinely scoped to the BARE
+  pointwise-activation challenge type specifically -- the moment a linear projection sits in front of the
+  activation (as in any real gate computation), rotation-key planning returns immediately, exactly as Ch13/
+  Ch21 described. Today's archetype and the matmul-heavy archetype are both real FHERMA shapes; neither
+  generalizes to the other.
