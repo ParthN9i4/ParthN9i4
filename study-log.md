@@ -3826,3 +3826,76 @@ Same-session resolution of both questions. (1): printed the degree-3 and degree-
   activation (as in any real gate computation), rotation-key planning returns immediately, exactly as Ch13/
   Ch21 described. Today's archetype and the matmul-heavy archetype are both real FHERMA shapes; neither
   generalizes to the other.
+
+## 2026-11-15 — FHERMA practice, session 3: encrypted comparison, genuinely run under real TFHE
+Tackled a genuinely different challenge type per the plan from two sessions ago: "encrypted comparison"
+  (implement > on encrypted integers, EXACT result required) per the tier4 README's own challenge-type
+  table. Unlike the CKKS/OpenFHE mock challenges this phase has built so far (planned on paper only, since
+  OpenFHE is confirmed unavailable in this environment), this one was ACTUALLY RUN under real encryption --
+  the full `concrete.fhe` compiler framework (not just Concrete-ML's sklearn wrapper) is installed here and
+  genuinely compiles and executes real TFHE circuits:
+  - Compiled `a > b` for two 6-bit encrypted integers via fhe.Compiler, calibrated against a grid spanning
+    the full [0,63] domain. Tested 8 pairs covering edge cases (equal values, domain extremes, adjacent
+    values): ALL 8 correct, exactly (0/1, never approximately close) -- a real, measured confirmation of
+    Ch18's "comparison is exactly a 1-bit lookup table, evaluated exactly" claim, in contrast to every CKKS
+    polynomial-approximation result this cycle has measured in terms of error tolerance rather than
+    exactness.
+  - Latency investigation, done carefully rather than taking the first number at face value: an initial
+    5-run average gave ~505ms/call. Breaking that into encrypt/run/decrypt stages on fresh calls revealed
+    something worth isolating properly -- the very FIRST encrypt() call cost 3823ms, dropping to ~3.7ms on
+    every subsequent call (confirmed across 4 repeated calls), while the actual circuit RUN step (the real
+    homomorphic execution) steady-stated at 480-540ms per call regardless of repetition, and decrypt stayed
+    under 2ms throughout. So: the first call's ~3.8s encrypt cost was a one-time hidden cost (almost
+    certainly lazy keyset/evaluation-key generation happening inside the first encrypt() rather than at
+    compile time), NOT a per-call cost -- and once isolated from that, steady-state encryption matches
+    Ch11's ms-scale claim for the client-side step. But the RUN step's measured ~480-540ms is genuinely
+    higher than Ch11's own cited "single-digit to double-digit milliseconds per gate on CPU" range for PBS --
+    reported honestly as a real discrepancy rather than smoothed over. Most likely explanation, stated as a
+    hypothesis rather than a certainty: a 6-bit integer comparison almost certainly decomposes into several
+    chained PBS calls internally (Ch11's own Integer-API description: "wider integers built by composing
+    multiple shortint blocks... with carry propagation handled by additional PBS calls between blocks"), so
+    "one comparison" is not "one PBS call," and this environment's CPU (sandboxed, no confirmed AVX-512/HEXL-
+    style vectorization, no GPU) sits toward the pessimistic end of the hardware range the book's figures
+    span -- several genuinely-milliseconds-each PBS calls, serialized, plausibly reaching several hundred ms
+    in aggregate without needing anything to be wrong with either the book's claim or today's measurement.
+Taught/consolidated: TFHE's cost model has NO depth concept at all, in sharp contrast to every CKKS/BFV/BGV
+  challenge this cycle has budgeted -- a comparison's cost is driven by INPUT BIT-WIDTH (how large a LUT the
+  bootstrap's accumulator must cover, Ch22's accumulator discipline) and the number of composed PBS calls
+  needed for that bit-width, never by how "sharp" the comparison boundary is. This is precisely Ch18's
+  structural point about TFHE sidestepping the near-a-kink polynomial-approximation problem made concrete
+  with a real, running circuit rather than just cited from the text.
+Asked: (1) today's hypothesis (6-bit comparison = multiple chained PBS calls, not one) is checkable directly
+  -- does compiling and timing a 1-bit (Boolean) comparison instead of a 6-bit one show a correspondingly
+  SMALLER run-step latency, consistent with fewer composed PBS calls, which would make the hypothesis a
+  measured fact rather than a plausible guess?; (2) the book's "1-10ms CPU PBS" figure and today's measured
+  ~480-540ms run-step both describe "CPU," but across what's almost certainly very different hardware classes
+  (a published benchmark's dedicated server-class CPU vs. this environment's sandboxed/virtualized compute)
+  -- is there a way to get a rough read on which hardware tier this environment's CPU actually sits in,
+  which would help calibrate how much of today's gap is "expected hardware variance" the book itself already
+  flags ("treat any specific millisecond figure as an order-of-magnitude guide... not a portable constant")
+  versus something else?; (3) all earlier carried-forward questions (now a backlog of 39 across Ch7-28, all
+  four appendices, and two prior FHERMA sessions) remain open and carried forward without repeating them in
+  full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none in understanding -- today's one real finding (the latency gap) was investigated carefully
+  rather than either dismissed or overclaimed, isolating a genuine one-time setup cost from a genuine,
+  still-unexplained-in-full-detail steady-state gap, and reporting both precisely.
+Revisit next time: nothing outstanding -- question (1) was checked same-session, see below. Proceed to the
+  next FHERMA-practice session -- likely a matrix-operation or statistical-function challenge (per the
+  tier's own remaining untried categories) to continue broadening past both challenge types tried so far.
+Same-session resolution of question (1): checked immediately (hit and fixed a bug in my own measurement
+  script along the way -- had been decrypting the INPUT ciphertext rather than capturing circuit.run()'s
+  output before decrypting it, which threw a shape-mismatch RuntimeError; fixed by capturing the run's
+  return value explicitly). Measured steady-state run-step latency (post-warmup, averaged over 4 calls) at
+  three bit-widths: 1-bit domain {0,1} -> 150.1ms; 2-bit domain [0,3] -> 244.7ms; 6-bit domain [0,63,step7]
+  (today's main result) -> 563.9ms. This confirms the hypothesis directly: latency scales clearly with input
+  bit-width, consistent with wider integers decomposing into more chained PBS calls internally, exactly as
+  Ch11's own Integer-API description predicts. But it only PARTLY explains today's gap against the book's
+  1-10ms range -- even the simplest possible 1-bit case (which should be closest to "one single PBS call")
+  still costs ~150ms, roughly 15-150x the book's cited ceiling on its own. So the honest, precise conclusion
+  is: bit-width scaling is REAL and measurably contributes (confirmed, not just hypothesized), but there is
+  ALSO a substantial fixed floor/overhead in this specific environment that bit-width alone doesn't account
+  for -- most plausibly the hardware-class difference question (2) raised (a sandboxed/virtualized CPU
+  likely lacking the AVX-512/HEXL-class vectorization a published benchmark's dedicated server would have),
+  though that second factor remains a reasonable hypothesis rather than something directly measured today.
