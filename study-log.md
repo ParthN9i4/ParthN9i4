@@ -3899,3 +3899,69 @@ Same-session resolution of question (1): checked immediately (hit and fixed a bu
   for -- most plausibly the hardware-class difference question (2) raised (a sandboxed/virtualized CPU
   likely lacking the AVX-512/HEXL-class vectorization a published benchmark's dedicated server would have),
   though that second factor remains a reasonable hypothesis rather than something directly measured today.
+
+## 2026-11-16 -- FHERMA practice session 4: oblivious sorting network, genuinely run under real TFHE
+
+Taught: a fourth distinct FHERMA archetype -- "statistical functions: sorting" per the tier4 README's own
+  table, whose stated key skill is "combining comparison + arithmetic." Built a 4-element oblivious sorting
+  network from scratch: compare-and-swap (cmpswap) implemented as `cond = a > b; lo = cond*b + (1-cond)*a;
+  hi = cond*a + (1-cond)*b` -- the only form of "conditional" TFHE/CKKS permit on encrypted data, since you
+  can never branch on an encrypted bit (Ch18's constraint, now showing up in a genuinely new shape: a whole
+  algorithm's control flow, not just one predicate). Wired 5 such comparators into Knuth's provably-optimal
+  n=4 sorting network: (0,1) (2,3) (0,2) (1,3) (1,2). Compiled with `concrete.fhe.Compiler` against 4
+  encrypted inputs / 4 encrypted outputs and actually ran it under real TFHE encryption (not planned on
+  paper, same as the comparison session two days ago).
+Exercise: correctness verified exactly (not approximately -- sorting requires exact results) across 12 test
+  cases: hand-picked edge cases (all-equal, already-sorted, reverse-sorted, interleaved duplicates) plus 5
+  random permutations over [0,15]. All 12/12 matched Python's own `sorted()` exactly.
+  - Latency investigation, done carefully given this cycle's own standing practice of checking surprising
+    numbers rather than taking them at face value: naively, 5 comparators "should" cost roughly 5x a single
+    bare comparison's latency. Measured same-process (both circuits compiled and timed in one script run, to
+    avoid cross-container timing drift): single comparator averaged 426.9ms/call; the full 5-comparator sort4
+    averaged 1164.5ms/call -- a ratio of only 2.73x, well under the naive 5x expectation. Investigated rather
+    than left unexplained: pulled Concrete's own internal `circuit.complexity` cost estimate and graph node
+    count for both circuits. complexity: single comparator 512,735,622 vs sort4 4,561,054,650 -- a ratio of
+    8.90x, much closer to (even exceeding) the naive expectation, since each cmpswap does more nonlinear work
+    than a bare comparison (1 comparison + 2 ciphertext x ciphertext multiplies, each of which requires its
+    own PBS call(s), not a cheap plaintext scale). Node count: 3 vs 59 (~20x, dominated by the elementwise
+    linear-combine arithmetic around each comparator, most of which doesn't need its own bootstrap).
+  - So the two metrics disagree sharply (8.90x internal complexity vs 2.73x measured wall-clock), and the
+    honest conclusion is that end-to-end latency at this tiny scale is NOT purely complexity-proportional --
+    a substantial FIXED per-call overhead (serialization, encrypting/decrypting more ciphertexts, Python-level
+    call overhead) is being amortized differently across the two circuit sizes, compressing the wall-clock
+    ratio well below what the cryptographic work alone would predict. This is the same shape of lesson as
+    Ch26's own fixed-vs-per-unit cost framing, landing in a genuinely new place: a toy-scale FHE benchmark's
+    wall-clock ratio is not a reliable stand-in for its asymptotic/complexity-based scaling law, and the
+    internal complexity estimate is the more trustworthy number for reasoning about how costs will actually
+    grow with circuit size.
+Taught/consolidated: an oblivious sorting network's cost model is driven by COMPARATOR COUNT, a known
+  combinatorial quantity independent of the actual data (Knuth's optimal sizes: n=4 -> 5, n=8 -> 19,
+  n=16 -> 60), never by a CKKS-style multiplicative depth -- there is no rescaling/level concept in TFHE at
+  all. A genuinely new implication for Parth's own research angle, reasoned through rather than asserted:
+  since TFHE sorting cost scales with comparator count rather than polynomial-approximation depth, his
+  depth-optimal-polynomial research has NO direct leverage on this problem class -- a smarter Chebyshev fit
+  buys nothing where there is no polynomial to fit in the first place. This is a case where the CKKS and TFHE
+  cost models are genuinely orthogonal, not two views of the same underlying budget.
+Asked: (1) today's complexity-vs-latency discrepancy (8.90x vs 2.73x) was investigated down to "a fixed
+  per-call overhead is being amortized differently," but not further -- would isolating encrypt/run/decrypt
+  into separate timed stages (as a prior session did for the comparison challenge) show that fixed overhead
+  concentrated in one specific stage (e.g., encrypting/decrypting 4 ciphertexts vs 2), or is it spread across
+  all three?; (2) Knuth's S(n) sequence (5, 19, 60 for n=4,8,16) grows faster than linearly in n -- does it
+  grow closer to O(n log^2 n) (the known asymptotic bound for AKS-free sorting networks like Batcher's
+  odd-even merge, which is what these particular small-n optimal counts come from) or does the small-n
+  regime not yet reflect the asymptotic rate at all?; (3) all earlier carried-forward questions (backlog now
+  42 across Ch7-28, all four appendices, and three prior FHERMA sessions) remain open and carried forward
+  without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none in understanding -- today's genuinely surprising number (2.73x instead of ~5x-9x) was
+  investigated with real internal metrics rather than hand-waved, and the discrepancy between two legitimate
+  cost measures (complexity estimate vs wall-clock) was reported as a real, only-partially-explained finding
+  rather than forced into a tidy story.
+Revisit next time: proceed to the next FHERMA-practice session -- the "matrix operations" category (encrypted
+  matmul/transpose/inversion, key skill: slot packing + rotation optimization) is now the last of the five
+  tier4-listed challenge categories not yet attempted this phase (activation, comparison, and sorting are
+  done); it would need to be planned on paper for CKKS/OpenFHE (blocked here by the diagnosed sandbox
+  permission guardrail) but could plausibly be built and actually run under TenSEAL, which this environment
+  has used successfully in earlier chapters and which does expose real slot-rotation and dot-product/matmul
+  operations -- worth checking TenSEAL's availability first before falling back to a paper plan.
