@@ -3965,3 +3965,61 @@ Revisit next time: proceed to the next FHERMA-practice session -- the "matrix op
   permission guardrail) but could plausibly be built and actually run under TenSEAL, which this environment
   has used successfully in earlier chapters and which does expose real slot-rotation and dot-product/matmul
   operations -- worth checking TenSEAL's availability first before falling back to a paper plan.
+
+## 2026-11-17 -- FHERMA practice session 5: encrypted matrix-vector multiply, genuinely run under real CKKS
+
+Taught: the fifth and LAST of the five tier4-listed FHERMA challenge categories -- "matrix operations," key
+  skill "slot packing, rotation optimization" -- closing out the full sweep (activation, comparison, sorting,
+  now matrix ops). Framed the challenge as y = Wx: x an encrypted packed vector (length 8), W a known
+  plaintext matrix (4x8, a small linear-layer shape), output encrypted y. Built and ran it for real with
+  TenSEAL's CKKS `CKKSVector.matmul`, which implements Halevi-Shoup's diagonal method (Ch16) internally --
+  the direct opposite archetype from session 2's pointwise tanh, where rotation keys were proven unnecessary.
+Exercise: hit and fixed a real API-shape bug immediately: TenSEAL's `vec.matmul(M)` computes `x @ M`, not
+  `W @ x` -- passing W directly raised "matrix shape doesn't match with vector size"; fixed by passing `W.T`
+  (shape n_in x n_out), after which `x @ W.T = (W @ x)` matches exactly. Verified: decrypted y matched
+  `W @ x` to within floating-point noise (max abs error 0.000000, comfortably under the 0.01 threshold).
+  - Confirmed rotation keys are genuinely load-bearing, not just assumed: built a second context identical in
+    every parameter EXCEPT skipping `generate_galois_keys()`, and the same matmul call failed outright with
+    "the current context doesn't hold a Galois keys" -- a clean, direct confirmation of the contrast with
+    session 2's zero-rotation pointwise case, not an assertion taken on faith.
+  - Measured the concrete, often-overlooked cost of "rotation optimization" as a skill: serialized the public
+    context (secret key dropped, as a real FHERMA submission would ship it) with and without galois keys.
+    Without: 1,861,342 bytes. With: 35,287,976 bytes -- the galois keys alone add ~33.4MB, an ~19x (1796%)
+    size increase. This is a genuinely useful, previously-unmeasured number for Parth's own FHERMA planning:
+    rotation-key sets are not a free "optimization," they're a serialization/bandwidth cost that dwarfs
+    everything else in the submission payload for any matrix-shaped challenge.
+  - Scaling check across input size n and output size m: (n=8,m=4)->31.3ms, (n=16,m=4)->50.7ms (+62% for 2x
+    n), (n=8,m=8)->33.2ms (+6% for 2x m), (n=16,m=16)->60.7ms. Latency grows much more steeply with n (input/
+    packed-vector length, which drives how many diagonal rotations the Halevi-Shoup method needs) than with m
+    (output length, which mostly just adds more diagonal-sum terms reusing the same rotated ciphertexts) --
+    a clean empirical confirmation that rotation COUNT, not raw output size, is the real cost driver here.
+Taught/consolidated: across all five archetypes genuinely run this phase, the right cost model to report in
+  a FHERMA config/README is archetype-specific, never a reflexive "multiplicative depth" for everything:
+  mult_depth for activations (session 2), PBS count/input bit-width for comparison (session 3), comparator
+  count for sorting (session 4), and now rotation-key SET SIZE plus one extra ciphertext x plaintext
+  multiplicative level for matrix ops (session 5, today). Naming the right one per challenge type is
+  precisely the FHERMA-platform skill the tier4 README's own "Key Skill" column was pointing at all along.
+Asked: (1) today's scaling data (latency driven much more by n than m) matches Halevi-Shoup's diagonal
+  method in spirit, but was not checked against the BSGS-optimized rotation COUNT formula from Ch17 directly
+  -- would computing the exact number of rotations Halevi-Shoup (or its BSGS variant) predicts for n=8 vs
+  n=16 and comparing that ratio to today's measured 1.62x latency ratio confirm the mechanism precisely,
+  or does TenSEAL's internal implementation already deviate from the textbook formula in some way worth
+  finding out?; (2) the 19x galois-key-size blowup was measured at poly_modulus_degree=8192 -- does that
+  ratio hold roughly constant at larger N (16384, 32768), or does it grow/shrink, since galois key count
+  scales with log2(N) rotations needed for arbitrary shifts while each individual key's size also scales
+  with N itself?; (3) all earlier carried-forward questions (backlog now 45 across Ch7-28, all four
+  appendices, and four prior FHERMA sessions) remain open and carried forward without repeating them here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: none in understanding -- today's own API-shape bug (W vs W.T orientation) was caught immediately
+  from the library's own error message and fixed correctly on the first attempt, and the one substantive
+  numeric claim (19x key-size blowup) was measured directly via serialization rather than estimated.
+Revisit next time: all five tier4-listed FHERMA challenge categories (activation, comparison, matrix ops,
+  statistical/sorting, machine learning) have now been attempted at least once this phase except "machine
+  learning" (encrypted inference, key skill: everything from tier 3) -- tier0-3's own ex13 (logistic
+  regression) and ex16 (encrypted NN) already cover this ground from earlier in the engagement, so the next
+  session should decide between (a) a fresh, harder ML-inference mock challenge (e.g., a small 2-layer
+  encrypted NN with an approximated activation, combining BOTH the depth-budgeting skill from session 2 and
+  the rotation-planning skill from today) to close the full five-category loop with something genuinely new,
+  or (b) starting a first dedicated backlog-review pass over the now-45-question carried-forward list, since
+  the five-category FHERMA sweep is now complete and a natural phase boundary has been reached.
