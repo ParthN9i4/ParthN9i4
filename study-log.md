@@ -4023,3 +4023,70 @@ Revisit next time: all five tier4-listed FHERMA challenge categories (activation
   the rotation-planning skill from today) to close the full five-category loop with something genuinely new,
   or (b) starting a first dedicated backlog-review pass over the now-45-question carried-forward list, since
   the five-category FHERMA sweep is now complete and a natural phase boundary has been reached.
+
+## 2026-11-18 -- Backlog-review session 1: resolving four carried-forward FHERMA questions via computation
+
+With all five tier4 FHERMA challenge categories now swept (sessions 1-5) and no engagement from Parth to
+  redirect, chose option (b) from yesterday's own logged plan: a first dedicated pass mining the 45-question
+  carried-forward backlog for genuinely tractable items, rather than building a sixth mock challenge. Picked
+  the four most recent, most concretely computable open questions (session 4's Q1-Q2, session 5's Q1-Q2) and
+  resolved all four with real code rather than reasoning in the abstract.
+Exercise/findings:
+  - Session 4 Q1 (where does sort4's fixed overhead concentrate -- encrypt, run, or decrypt?): isolated all
+    three stages for both circuits. single comparator: encrypt=2.9ms, run=176ms, decrypt=1.3ms. sort4:
+    encrypt=5-6ms, run=1057-1070ms, decrypt=2.6-3.2ms. Ratios: encrypt ~2x (matches the 2-vs-4-ciphertext
+    client-side scaling exactly), decrypt ~2-2.5x (same), but RUN step ratio is ~6x -- much larger than
+    yesterday's naive end-to-end 2.73x measurement. This resolves yesterday's open question directly: the
+    homomorphic work itself (the run step) scales close to the ~5-9x range yesterday's complexity estimate
+    predicted; it's specifically the FIRST overall end-to-end measurement being diluted by something that
+    isn't visible once stages are separated -- most likely process-level JIT/caching effects from the earlier
+    combined-script run rather than a genuine encrypt/decrypt-stage overhead, since encrypt+decrypt together
+    account for only ~8ms of a >1000ms call either way. Today's cleaner per-stage numbers are the more
+    trustworthy ones to cite going forward.
+  - Session 4 Q2 (does Knuth's S(n) sequence track O(n log^2 n), and does Batcher's method actually produce
+    it?): caught and fixed a real bug in my own first attempt at implementing Batcher's odd-even merge network
+    -- the first version had the wrong recursive structure and silently produced networks that FAIL to sort
+    for n>=8 (caught only because an exhaustive/sampled correctness check was run, not just a comparator
+    count). Fixed against the correct canonical pseudocode; all four sizes (4,8,16,32) then verified correct.
+    Genuinely different and more precise finding than assumed going in: Batcher's construction is EXACTLY
+    optimal at n=4 and n=8 (5=5, 19=19 -- matching the proven-minimal counts exactly), and only starts costing
+    MORE than optimal at n=16 (63 vs the proven-minimal 60, a real but small ~5% overhead) -- correcting both
+    prior sessions' casual claim that the cited 5/19/60 values "come from Batcher's odd-even merge," which is
+    true at n=4,8 but already false at n=16. Derived and verified the exact closed form for Batcher's own
+    count, T(n) = (n/4)*log2(n)*(log2(n)-1) + (n-1), which matched the constructed/verified counts exactly at
+    all four sizes -- confirming Batcher's construction is Theta(n log^2 n) exactly, not just asymptotically,
+    and since true-optimal S(n) <= Batcher's count always, with the gap only 0%/0%/~5% so far, the proven-
+    optimal sequence tracks this same growth rate closely at these sizes rather than diverging from it.
+  - Session 5 Q1 (does the BSGS-predicted rotation-count ratio for n=8 vs n=16 match the measured 1.62x
+    matmul-latency ratio?): computed the exact BSGS rotation-offset sets directly (n=8: n1=3,n2=3, set
+    {0,1,2,3,6}, size 5; n=16: n1=4,n2=4, set {0,1,2,3,4,8,12}, size 7). BSGS-predicted ratio 7/5=1.40x; naive
+    (no-BSGS) ratio 16/8=2.00x; measured 1.62x sits between the two, closer to the BSGS prediction than the
+    naive one but matching neither exactly -- a real partial confirmation, not a clean match, honestly
+    reported with two live hypotheses (TenSEAL's internal split may not be the exact min-(n1,n2) BSGS choice;
+    or a fixed per-call overhead, the same effect found in session 4, is blending into the ratio).
+  - Session 5 Q2 (does the ~19x galois-key serialization blowup hold at larger N?): measured directly at
+    N=8192 (18.98x, confirming yesterday's number), N=16384 (20.57x), and N=32768 (22.04x) -- the ratio does
+    NOT stay constant, it GROWS with N, exactly matching the hypothesis session 5's own question raised:
+    galois key count scales with O(log2 N) while each key's size also scales with N, so total galois storage
+    grows roughly like N*log2(N), outpacing the base context's own closer-to-linear-in-N growth.
+Taught/consolidated: a backlog-review pass is a genuinely productive use of a session when the alternative is
+  building a sixth near-duplicate mock challenge -- four real, previously-open questions converted into
+  measured, precise answers (one of which corrected a casual claim from two prior sessions, and one of which
+  caught a real implementation bug via the engagement's own "verify, don't just count" discipline).
+Asked: (1) session 5 Q1's partial-but-not-exact BSGS match (1.62x measured vs 1.40x predicted) was left as
+  two live hypotheses rather than fully resolved -- would inspecting TenSEAL's actual rotation calls (e.g. via
+  a debugger or instrumenting the library) settle which of the two explanations is responsible, or is that
+  level of internals inspection out of scope for this environment?; (2) all earlier carried-forward questions
+  (backlog now 45 minus the four resolved today, so 41, across Ch7-28, all four appendices, and five FHERMA
+  sessions) remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: caught and fixed a real bug in my own first Batcher implementation today (wrong recursive
+  structure, silently non-sorting for n>=8) -- a genuine lapse, caught only because correctness was actually
+  checked rather than trusted from the comparator count alone. Worth noting as a reminder that "my own code"
+  needs exactly the same skepticism this engagement applies to the book's text.
+Revisit next time: the backlog is still large (41 questions) even after today's productive pass -- worth
+  continuing the review pattern (pick a handful of the most computationally tractable remaining items each
+  session) rather than reverting to only generating new FHERMA challenges, alternating between the two as
+  seems most useful. Older backlog items (Ch7-Ch19 era, more conceptual/recall-based) have not yet been
+  reviewed this way and are the natural next targets.
