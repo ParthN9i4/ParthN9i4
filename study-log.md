@@ -4090,3 +4090,58 @@ Revisit next time: the backlog is still large (41 questions) even after today's 
   session) rather than reverting to only generating new FHERMA challenges, alternating between the two as
   seems most useful. Older backlog items (Ch7-Ch19 era, more conceptual/recall-based) have not yet been
   reviewed this way and are the natural next targets.
+
+## 2026-11-19 -- Backlog-review session 2: resolving four Ch2-Ch5 questions via computation
+
+Continuing yesterday's new backlog-review pattern, per its own logged plan to target older, earlier-cycle
+  items next. Picked four tractable open questions from the very start of the restarted cycle (Ch2 Q2, Ch3
+  Q3, Ch4 Q2, Ch5 Q2) and resolved each with real arithmetic/code.
+Findings:
+  - Ch2 Q2 (is Theorem 2.1's expansion-factor slack structural or input-dependent?): tested both random
+    small-coefficient inputs and an adversarial all-ones input across N=8,16,32,64. Random inputs showed real,
+    N-growing slack (ratio 0.36 down to 0.12 of the bound). The all-ones adversarial input hit the bound
+    EXACTLY -- ratio 1.000 at every N, not merely "closer" as first assumed before actually reading the printed
+    numbers (an error in my own first-draft write-up, caught and corrected before logging it). Worked out why
+    by hand for N=8: the underlying linear convolution of two all-ones vectors peaks at exactly N at index
+    N-1, and that specific index is never touched by the negacyclic wraparound subtraction, so the peak
+    survives intact. Clean, precise answer: delta_R=N is a TIGHT bound (provably, confirmed by a concrete
+    construction), and the slack seen on random inputs says nothing about the bound's own looseness --
+    a useful general lesson for reading "<=" bounds in the book going forward.
+  - Ch3 Q3 (how much larger a block size does a quantum-secure target need, numerically, from the 0.292 vs
+    0.257 sieving exponents?): the ratio is flat at 0.292/0.257 = 1.136 regardless of beta (both cost models
+    are linear in beta), i.e. a ~13.6% larger block size -- confirmed numerically at beta=350/400/438, each
+    giving exactly the same 13.6% increase. Precisely confirms the chapter's "adjusted at the margin" framing
+    with real numbers rather than leaving it qualitative.
+  - Ch4 Q2 (concrete numbers for the sigma/alpha correctness-vs-security tension): used the book's own
+    practical "safe" sigma=3.2 (from Artifact 4.1) at a toy n=512, q=2^27. alpha=sigma/q~2.38e-8, giving
+    gamma~n/alpha~2.15e10 -- an astronomically large approximation factor, corresponding via Regev's reduction
+    to assuming hardness of approximating SVP within a factor easily solvable by LLL-class algorithms per
+    Ch3's own content. Demonstrates with real numbers exactly what the chapter states qualitatively: a
+    correctness-driven, genuinely-used sigma value gives an asymptotic reduction that is numerically vacuous
+    at deployed parameters -- real confidence comes from direct BKZ-cost cryptanalysis (Ch3), not this gamma.
+  - Ch5 Q2 (how much extra depth does doubling log2(q) buy, at fixed t,N?): using d~(log2(q/2t)-log2(B))/log2(C)
+    with t=256, N=16384, B=2^20: depth goes from 8.59 (log2q=218) to 18.50 (log2q=436) -- a 2.15x increase,
+    slightly MORE than doubling (the formula is affine, not purely proportional, in log2(q), so the fixed
+    numerator terms matter less as log2(q) grows). But flagged the honest catch: Ch14's own security table ties
+    log2(q)'s ceiling directly to N (N=8192 caps at log2(q)<=218 for 128-bit security), so doubling log2(q)
+    to 436 REQUIRES also doubling N just to hold security -- the depth gain isn't free, it's paid for by a
+    comparable N increase with its own real NTT/key-size costs.
+Taught/consolidated: the backlog-review pattern continues to be productive -- today both confirmed one
+  question's qualitative claim with precise numbers (Ch3, Ch4) and corrected a genuine error in my own
+  same-session write-up before it was logged (Ch2's all-ones ratio is exactly 1.000, not the "~0.5" a first
+  draft assumed without checking the actual printed output), reinforcing that the engagement's own
+  "verify, don't trust, even your own draft text" discipline applies at every step, not just to the book.
+Asked: (1) Ch2's finding that delta_R=N is tight (not just approached) for the all-ones input -- does this
+  tightness persist for ANY cyclotomic ring (general Phi_m(X)), or is it specific to the power-of-two
+  negacyclic case (X^N+1) where the peak-surviving argument above relied specifically on negacyclic wraparound
+  structure?; (2) all earlier carried-forward questions (backlog now 41 minus the four resolved today, so 37,
+  across Ch2-28, all four appendices, and five FHERMA sessions) remain open and carried forward without
+  repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: caught and fixed a real error in my own same-session write-up today (Ch2's all-ones ratio,
+  claimed as "~0.5" before actually checking the printed numbers, which read exactly 1.000) -- same class of
+  lapse as yesterday's Batcher bug, a second reminder this session that draft prose needs the same checking
+  discipline as code.
+Revisit next time: continue alternating backlog review (next targets: Ch7-Ch19 era, not yet touched by either
+  review session) with fresh FHERMA practice, as logged two sessions ago.
