@@ -4145,3 +4145,58 @@ Weak spots: caught and fixed a real error in my own same-session write-up today 
   discipline as code.
 Revisit next time: continue alternating backlog review (next targets: Ch7-Ch19 era, not yet touched by either
   review session) with fresh FHERMA practice, as logged two sessions ago.
+
+## 2026-11-20 -- FHERMA practice session 6: small encrypted NN, combining depth-budgeting + rotation-planning
+
+Fresh container this session (repo and all packages gone again) -- re-cloned at b2eb4ca (no work lost, log
+  persisted on the remote as always) and reinstalled tenseal (hit a real environment quirk: `pip install`
+  resolved to python3.13's site-packages while `python3` itself runs 3.11 -- fixed by using `python3 -m pip
+  install` explicitly, which installs into the interpreter that will actually run the code).
+Per session 5's own deferred plan (option a), built a small 2-layer encrypted NN -- y = W2*sigmoid(W1*x+b1)+b2,
+  x length 8, hidden width 4, output width 2 -- deliberately combining session 2's depth-budgeting skill with
+  session 5's rotation-planning skill in ONE real circuit under real CKKS (TenSEAL), rather than two separate
+  single-skill exercises. Fit sigmoid's degree-7 Chebyshev approximation (session 1's own found-optimal degree
+  for a 0.05 threshold) over a domain CHECKED against the actual pre-activation values (not assumed), got max
+  fit error 0.032 (pass).
+Exercise/findings -- built and compared TWO activation implementations on the real encrypted pipeline:
+  - (a) naive Horner (plain monomial-basis, one ciphertext x ciphertext mult per degree step -- the "hand-
+    rolled workaround" this cycle's own Ch20 session found TenSEAL needs, since it lacks OpenFHE's
+    EvalChebyshevFunction convenience): ran successfully, decrypted output matched the degree-7-polynomial
+    plaintext target to max abs error 0.013. Needed 9 total multiplicative levels (1 matmul1 + 7 Horner + 1
+    matmul2), forcing N=32768 since log2(q)=480 exceeds N=16384's 438-bit security ceiling.
+  - (b) Paterson-Stockmeyer-style activation, PORTING Ch17's own baby-step/giant-step technique into TenSEAL
+    by hand (degree-7 split as q0(x)+x^4*q1(x), with x^2/x^3/x^4 built via a balanced, non-chained
+    construction matching Ch17's own xk-from-half-times-half fix): also ran successfully, matching numbers.
+    First hand-derived a theoretical depth count ("3 levels for the activation, 5 total") -- WRONG, caught by
+    actually trying it: a 5-level chain failed with "scale out of bounds." Bisected properly (the engagement's
+    own established practice rather than trusting the hand-derivation) and found the REAL minimal level count
+    is 6, not 5 -- the hand-count had missed that each plaintext-scalar multiply in the baby-step linear
+    combination ALSO consumes a level in TenSEAL's cost model, not just the ciphertext x ciphertext
+    multiplications. Still a genuine, measured win: 6 levels vs naive Horner's 9, enough to drop the required
+    ring dimension from N=32768 to N=16384 -- half the ciphertext/key size, and (per session 5's own measured
+    galois-key-size finding) a correspondingly much smaller rotation-key payload for a real submission.
+Taught/consolidated: Ch17's depth-optimization technique (the Paterson-Stockmeyer baby-step/giant-step
+  construction) IS library-agnostic -- it genuinely transfers from OpenFHE into a hand-built TenSEAL
+  construction and genuinely helps there too, not just as a theoretical curiosity. But the EXACT payoff (how
+  many levels it actually saves) is implementation-specific and must be measured per library rather than
+  assumed to transfer one-for-one from OpenFHE's own published cost table (Fact 19.3) -- a precise, directly
+  research-relevant finding for Parth's own depth-optimal-polynomial-approximation work: the OPTIMIZATION
+  PRINCIPLE generalizes across FHE stacks, but a specific library's own multiplication-cost accounting
+  (e.g. whether plaintext-scalar multiplies consume a level) does not, and needs checking per target library.
+Asked: (1) today's P-S construction used a fixed k=4 baby-step split for degree 7 -- would trying k=2 or k=3
+  splits (searching over the baby-step size, as real Paterson-Stockmeyer implementations do to minimize total
+  cost) find an even-lower-level construction for this specific degree, or is k=4 (near sqrt(8)) already
+  level-optimal for this case?; (2) all earlier carried-forward questions (backlog now 37, across Ch2-28, all
+  four appendices, and six FHERMA sessions -- today added one new item above rather than resolving old ones,
+  back to the pure-practice half of the alternating pattern) remain open and carried forward without repeating
+  them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: caught a real error in my own hand-derived depth count today (claimed 3 levels for the P-S
+  activation / 5 total, actual measured minimum was 6) -- a THIRD instance this week of catching my own
+  unverified claim before it was logged (after the Batcher bug and the Ch2 ratio mix-up), reinforcing that
+  hand-derived circuit-depth counts specifically are exactly the kind of claim this engagement's own practice
+  of "measure, don't just derive" needs to keep applying to its own work, not only the book's.
+Revisit next time: continue alternating backlog review (next targets: Ch7-Ch19 era, still untouched) with
+  fresh FHERMA practice, as logged three sessions ago -- today was a practice session, so the next session
+  should return to backlog review.
