@@ -4200,3 +4200,65 @@ Weak spots: caught a real error in my own hand-derived depth count today (claime
 Revisit next time: continue alternating backlog review (next targets: Ch7-Ch19 era, still untouched) with
   fresh FHERMA practice, as logged three sessions ago -- today was a practice session, so the next session
   should return to backlog review.
+
+## 2026-11-21 -- Backlog-review session 3: Ch10, Ch13 resolved; Ch7 hit a real unresolved bug
+
+Repo persisted this time (no re-clone needed). Continuing the alternating pattern, back to backlog review per
+  three sessions ago's plan, targeting Ch7-Ch19 (untouched by either prior review session).
+Findings:
+  - Ch10 Q2 (principled way to find the smallest Delta meeting a target accuracy, to buy back levels): since
+    Ch10's own measured scaling law is error~1/Delta (order-1 constant, confirmed exactly across 30 bits in
+    the original session), the rule is a direct inversion: log2(Delta) ~ -log2(target_eps). For a typical ML
+    accuracy target (1e-2 to 1e-4), that's only 7-14 bits -- far below the 40 bits this cycle has defaulted to
+    throughout. Per Ch10's own worked example, using 2^14 instead of 2^40 buys back ~1.9x as many levels from
+    the same modulus budget -- a concrete, previously-unquantified overprovisioning cost of the "big Delta for
+    safety" default.
+  - Ch13 Q1 (does TenSEAL's plain, no-argument generate_galois_keys() really cover only power-of-two rotation
+    offsets, as that session's own write-up claimed?): tested directly, three ways. First discovered CKKSVector
+    exposes NO public .rotate() method at all in this TenSEAL version (checked via dir()) -- rotation is an
+    internal primitive hidden inside matmul/dot/sum, not separately callable. So tested the real mechanism:
+    ran matmul at n=8, 12, 13, each forcing genuinely non-power-of-two BSGS offsets (3, 6, 3, 3, 12) with only
+    a plain generate_galois_keys() call. ALL THREE SUCCEEDED (errors ~1e-7). This directly CORRECTS the Ch13
+    session's own claim -- TenSEAL's Python-level default galois key set is a FULL set (every rotation up to
+    N/2), not a power-of-two-only subset. The original claim may describe raw SEAL's lower-level C++ API
+    (which does distinguish a cheaper restricted mode), but TenSEAL's own default is not that restricted mode.
+    Retroactively explains why session 5's own BSGS matmul test (needing offset 6) worked with zero special
+    handling -- there was never a gap to fall into.
+  - Ch7 Q2 (is the ~1.7-bit measured-vs-predicted noise-budget-drop gap rounding slack or sample luck, checked
+    by averaging many trials?): rebuilt a small from-scratch unrelinearized BFV-style toy (N=64, log2(q)=40,
+    t=16) to run 150 trials. Result was NOT trustworthy and is reported as such rather than forced into an
+    answer: measured mean drop 17.75 bits (vs predicted log2(tN)=10.00), std 18.47 -- and, critically, a
+    MINIMUM of -1.12 bits, i.e. some trials showed the noise budget INCREASING after a multiplication, which
+    is physically impossible for a correct implementation. Caught this as a red flag rather than reporting it
+    as "the bound is loose" (my first instinct). Investigated one specific hypothesis -- that rescaling the
+    exact-integer tensor product by t/q via ordinary float division was silently losing precision (tensor
+    coefficients reach ~2^80-2^100, far past float64's 53-bit mantissa) -- confirmed the precision loss IS
+    real (a direct side-by-side check showed float rounding differing from exact-Fraction rounding by ~15 at
+    that magnitude) but switching to exact Fraction-based rounding produced IDENTICAL results to 2 decimal
+    places, proving that specific hypothesis was not the actual cause of the anomaly. The real bug remains
+    undiagnosed. Rather than spend more of today's session chasing it or, worse, report a plausible-looking
+    but unverified conclusion, logging this honestly as an open implementation issue -- the same category as
+    the Ch8 "relinearization bug" saga from this cycle's own history, where a wrong-looking result eventually
+    turned out to need careful root-causing rather than a quick explanation.
+Taught/consolidated: today is a clean example of the difference between a confirmed finding and a red flag --
+  two questions (Ch10, Ch13) were resolved with clean, internally-consistent numbers; the third (Ch7) produced
+  numbers with an outright impossible feature (negative noise-budget drop) and was correctly NOT reported as
+  resolved, even after a plausible first hypothesis for the anomaly checked out partially true but failed to
+  explain the actual effect. Being willing to say "I don't yet know why" is as much a part of this engagement's
+  verification discipline as confirming a clean result.
+Asked: (1) the undiagnosed Ch7 toy-BFV bug produces its most visible symptom (impossible negative drop) only
+  on SOME trials -- would isolating which specific random draws (which m1/m2/noise values) trigger it, rather
+  than aggregating across 150 trials, narrow down the cause faster than trying to reason about the whole
+  distribution at once?; (2) all earlier carried-forward questions (backlog now 37 minus the two resolved
+  today, plus one newly opened reasoning question, so 36, across Ch2-28, four appendices, and six FHERMA
+  sessions) remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: a real, currently-unresolved bug in my own quick BFV-toy rebuild today (symptom: physically
+  impossible negative noise-budget drops on some trials; one investigated hypothesis -- float-precision loss
+  in the t/q rescale -- ruled out as the cause after direct verification). Carrying this forward as an open
+  item rather than a closed one, and not using its numbers to answer the original Ch7 question.
+Revisit next time: if revisiting Ch7 Q2, root-cause the toy BFV bug properly (most likely candidates not yet
+  checked: the s^2 negacyclic-wraparound sign convention, or the target message's mod-t reduction timing
+  relative to the rescale step) before trusting any noise numbers from it. Otherwise continue alternating
+  backlog review (Ch14-19 still untouched) with fresh FHERMA practice.
