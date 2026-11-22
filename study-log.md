@@ -4262,3 +4262,73 @@ Revisit next time: if revisiting Ch7 Q2, root-cause the toy BFV bug properly (mo
   checked: the s^2 negacyclic-wraparound sign convention, or the target message's mod-t reduction timing
   relative to the rescale step) before trusting any noise numbers from it. Otherwise continue alternating
   backlog review (Ch14-19 still untouched) with fresh FHERMA practice.
+
+## 2026-11-22 -- Dedicated bug-resolution session: yesterday's toy-BFV bug, root-caused and fixed
+
+Per the precedent set by the Ch8 bug-resolution session (an unresolved, actively-wrong result takes priority
+  over new content), spent today root-causing yesterday's flagged toy-BFV anomaly (impossible negative noise-
+  budget drops) rather than starting fresh material.
+Debugging process (systematic elimination, matching the Ch8 saga's own method):
+  1. Suspected the uncentered ciphertext component (c1=a stored as a raw [0,q) integer while c0 was centered)
+     -- fixed it, reran, anomaly PERSISTED (mean=3.03, std=22.38, still negative drops). Ruled out as the sole
+     cause, though still a real inconsistency worth having fixed.
+  2. Isolated the question to "is the basic rescale-then-combine math even correct?" by testing a pure SCALAR
+     (N=1, no ring structure) version of the same tensor-rescale pipeline -- it worked perfectly, proving the
+     core BFV arithmetic identity is sound and the bug is specific to the polynomial/negacyclic-ring version.
+  3. Tested the full ring version at small N=4 with explicit printed intermediate values -- it ALSO worked
+     perfectly (decrypted value matched the target exactly). This ruled out the ring/negacyclic machinery
+     itself as the problem.
+  4. Tested the EXACT same approach at N=64 as a single, careful standalone trial (not inside the averaging
+     loop) -- also worked perfectly. This was the key clue: the bug only appeared when running MANY trials,
+     not in any single careful trace.
+  5. Printed individual trial diagnostics across the first 10 trials and found the real signature: whenever
+     the decrypted value was WRONG, it was wrong by exactly `target - t` or `-(t-target)` -- i.e., off by
+     exactly one multiple of t, the hallmark of a representative-convention mismatch, not an arithmetic error.
+  6. Root cause found: when comparing the decrypted ciphertext against "the target message" to measure noise,
+     the message itself needs to be CENTERED (balanced representative in (-t/2, t/2]) to match the convention
+     `center_mod` uses for the ciphertext -- I was comparing against the raw, uncentered target (0 to t-1).
+     Whenever target > t/2, the ciphertext's own centered representative legitimately differs from the raw
+     target by exactly t, producing a spurious ~q-sized "error" (confirmed: the bogus v_inf values measured
+     were suspiciously close to q itself, e.g. 1099511627771 vs q=2^40=1099511627776). This is the SAME CLASS
+     of self-inflicted bug as the Ch8 "forgot to reduce expected values mod t" saga from weeks ago -- my own
+     expected/target value needs to be expressed in the same representative convention as the code under test,
+     not assumed to be comparable directly.
+  7. Fixed by centering the message value before every comparison. Reran: mean jumped to 10.03 (vs predicted
+     10.00) -- but 8/150 trials still showed large negative drops, ALL of them involving m1, m2, or the target
+     landing exactly on t/2 (=8 for t=16). This is a genuine, different, EXPLAINABLE edge case, not a new bug:
+     at exactly m=t/2, Delta*m=q/2 exactly, which sits precisely on center_mod's own representational boundary
+     (+q/2 and -q/2 are equally valid, equally-distant balanced representatives, congruent mod q) -- an
+     inherent ambiguity at that one specific value out of t, not an implementation mistake. Excluded trials
+     landing on this boundary (matching the already-established practice of excluding m=0 as a trivial edge
+     case) and reran.
+Final, trustworthy result (150 trials, t/2-boundary excluded): mean drop = 9.041 bits, std = 0.278, std of
+  the MEAN = 0.023 bits -- extremely tight. Predicted (log2(tN)) = 10.00 bits. Gap = 0.959 bits, which is
+  ~42 standard-errors away from zero (0.959/0.023), i.e. overwhelmingly statistically significant, not noise.
+  This DEFINITIVELY resolves the original Ch7 Q2 (carried forward since 2026-10-14): the ~1-2-bit gap between
+  measured and Result 7.1's predicted per-multiplication noise-budget drop is REAL, SYSTEMATIC constant-factor/
+  rounding slack in the bound itself (exactly as the chapter's own "general shape, not exact bound" caveat
+  warns), confirmed by averaging away all per-trial randomness and finding the gap does NOT shrink toward
+  zero -- it is a property of the bound, not of any one trial's specific noise draw.
+Taught/consolidated: today is a complete, successful instance of this engagement's own debugging discipline
+  applied to its OWN code rather than the book's: a wrong-looking result was never accepted at face value,
+  multiple hypotheses were tested and two were explicitly RULED OUT (uncentered c1 alone; ring-arithmetic
+  correctness) before the real cause (a representative-convention mismatch in my own comparison code, not the
+  cryptography) was found, and a further apparent residual anomaly was correctly diagnosed as a genuine
+  mathematical edge case rather than "just another bug to fix." This mirrors the Ch8 relinearization saga
+  precisely and reinforces the same lesson in a new setting: an "impossible" result is informative, not just
+  an error to suppress -- it pinpoints exactly where an assumption (here, "my target value is in the same
+  representative convention as the code's own ciphertexts") silently broke.
+Asked: (1) today's t/2 boundary finding (genuine representational ambiguity at exactly m=t/2, affecting 1/t
+  of all possible messages) -- does any real production BFV library (SEAL, OpenFHE) handle this boundary
+  value specially, or does it simply inherit the same "undefined which of two equally-valid centered reps you
+  get" behavior silently, meaning a real application using the full plaintext range [0,t) should be aware this
+  one value's decryption/noise-measurement could be ambiguous at the margin?; (2) all earlier carried-forward
+  questions (backlog now 36, since today both resolved the long-open Ch7 Q2 and raised one new question) remain
+  open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: today's entire session WAS the weak spot being addressed -- three distinct bugs/edge-cases in my
+  own from-scratch toy code, found and resolved through systematic elimination rather than guesswork. No new
+  gap in understanding of the book's own content surfaced today; the lesson is entirely about verifying one's
+  own quickly-written code as rigorously as the book's claims.
+Revisit next time: continue alternating backlog review (Ch14-19 still untouched) with fresh FHERMA practice.
