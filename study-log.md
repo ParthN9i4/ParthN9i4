@@ -4380,3 +4380,75 @@ Weak spots: none newly surfaced -- today's one partial-confidence answer (Ch14) 
   average rather than a single lucky run.
 Revisit next time: continue alternating backlog review (Ch17-19 remain, plus the Ch14 GitHub-source follow-up
   flagged above) with fresh FHERMA practice.
+
+## 2026-11-24 -- Quick follow-up + FHERMA practice session 7: Remez algorithm built from scratch
+
+Quick follow-up first, closing out yesterday's flagged item: fetched Microsoft SEAL's actual source directly
+  (raw.githubusercontent.com -- `gh api` needed an explicit add_repo grant this session doesn't have for
+  third-party repos, but a plain HTTPS fetch of a public raw file needed no such grant) rather than relying on
+  yesterday's indirect side-channel-paper inference. `keygenerator.cpp`'s `generate_sk()` calls
+  `sample_poly_ternary(...)` directly; `rlwe.cpp`'s implementation is exactly `uniform_int_distribution<uint64_t>
+  dist(0, 2)` then coefficient = `rand - 1` -- a literal, unweighted uniform draw from {-1, 0, 1}. This is now
+  a FULLY confirmed answer (upgrading yesterday's partial one): SEAL's default secret-key distribution
+  genuinely is uniform ternary, read straight from primary source, no ambiguity left. Bonus: the same
+  `sample_poly_ternary` function is reused for the ephemeral encryption randomness `u` in public-key
+  encryption (rlwe.cpp line 230) -- that value is ternary too, not just the secret key.
+
+Main session: implemented the classical Remez exchange algorithm from scratch -- a skill the tier4 README
+  names directly (tip #5: "Remez gives the true minimax polynomial, optimal; start with Chebyshev, try Remez
+  if you need to shave off one more degree") but this engagement has never actually built, across every prior
+  polynomial-fitting session (Ch17/19/21/24, all FHERMA sessions) using Chebyshev truncation only.
+  Caught and fixed a real bug in my own first attempt before trusting any numbers from it: the exchange
+  step's extrema-picking used a naive "evenly spaced by index across all detected extrema" heuristic, which
+  silently DROPPED a genuine larger-magnitude extremum -- caught because the reported converged error
+  (0.0361) didn't match the actual full-domain-scan max error, and because the "converged" result was
+  WORSE than plain Chebyshev truncation at the same degree, which is mathematically impossible for a
+  correctly-converged minimax solution (Remez can never do worse than Chebyshev in the sup norm). Root-caused
+  to the picking heuristic and replaced it with the textbook approach: enforce strict sign alternation among
+  all detected extrema (merging same-signed neighbors, keeping the larger), then slide a window of size n
+  and keep the one maximizing the MINIMUM magnitude in the window. After the fix, the equioscillation check
+  passed cleanly (every final reference point: exactly 0.018892, alternating sign) and matched a fine
+  50,000-point full-domain scan exactly.
+  Cross-validated independently rather than trusting my own fixed implementation alone: installed scipy and
+  solved the SAME degree-7 minimax problem via linear programming (a completely different, globally-optimal
+  numerical method -- minimize E subject to |poly(x_i)-f(x_i)|<=E over a 2000-point grid). LP result:
+  E=0.0188922 -- matching my from-scratch Remez's 0.018892 to 5+ significant figures. This gives real
+  confidence in the numbers below, not just "it converged and looked plausible."
+Exercise/findings (all numbers verified as above):
+  - Degree 7, sigmoid on [-8,8]: Chebyshev max error 0.03191; Remez max error 0.01889 -- a genuine, verified
+    40.8% error reduction at the SAME degree.
+  - Degree search at two thresholds: target 0.05 -> Chebyshev needs degree 7, Remez needs degree 6 (one
+    degree saved). Target 0.02 -> Chebyshev needs degree 9, Remez needs degree 7 (TWO degrees saved).
+  - Checked whether either degree saving crosses a real Fact 19.3 depth-bracket boundary: NO in both cases --
+    degrees 6,7,9 all fall in the same 6-13 bracket (5 levels), so despite Remez's real, measured, now-
+    verified accuracy advantage, neither test case today actually buys a saved multiplicative level. An
+    honest, precise finding rather than an oversold one: Remez's accuracy gain is real and substantial at
+    fixed degree, but translating that into a saved LEVEL depends on hitting a bracket boundary, which is
+    a separate, not-guaranteed condition.
+Taught/consolidated: Remez's minimax guarantee (equioscillating error, provably optimal in sup-norm) is now
+  built, debugged, and independently cross-validated -- a genuinely new, trustworthy tool for Parth's own
+  depth-optimal-polynomial-approximation research, not just a name cited from the tier4 README. Equally
+  important: today's bug (a flawed exchange step producing a result WORSE than the baseline it was supposed
+  to beat) is exactly the kind of self-check this whole engagement's discipline exists to catch -- "my
+  provably-optimal algorithm did worse than the heuristic it's supposed to dominate" is as strong a red flag
+  as any of this cycle's other caught bugs, and was treated with the same seriousness rather than reported
+  as a surprising-but-real finding.
+Asked: (1) today's bracket-boundary search tried only two thresholds (0.05, 0.02) by hand and found no
+  level-saving case -- would a systematic scan across many thresholds (say every 0.001 from 0.001 to 0.1)
+  reliably find at least one threshold where Chebyshev and Remez's minimal degrees land in DIFFERENT Fact
+  19.3 brackets, demonstrating a genuine saved level rather than two near-misses, and is that worth running
+  as a dedicated follow-up?; (2) today's LP-based independent cross-check used a FIXED 2000-point grid rather
+  than a continuous guarantee -- is the LP's E=0.0188922 itself only a lower bound relative to the true
+  continuous minimax value (since the grid could miss an even-worse point between samples), and would
+  refining the grid change the 5th significant figure enough to matter for how tightly today's cross-
+  validation claim should be stated?; (3) all earlier carried-forward questions (backlog now 35, since
+  today's Ch14 follow-up fully resolved without opening a new question on that front) remain open and carried
+  forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: caught a real, serious bug in my own first Remez implementation today (a result that violated
+  Remez's own optimality guarantee relative to Chebyshev) -- the kind of internal-consistency red flag that
+  should always halt a result before logging it, and did.
+Revisit next time: question (1) above (a systematic threshold scan for a genuine bracket-crossing case) is a
+  natural, cheap next step if this thread continues. Otherwise continue alternating backlog review (Ch17-19
+  remain) with fresh FHERMA practice.
