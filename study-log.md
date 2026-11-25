@@ -4452,3 +4452,60 @@ Weak spots: caught a real, serious bug in my own first Remez implementation toda
 Revisit next time: question (1) above (a systematic threshold scan for a genuine bracket-crossing case) is a
   natural, cheap next step if this thread continues. Otherwise continue alternating backlog review (Ch17-19
   remain) with fresh FHERMA practice.
+
+## 2026-11-25 -- Remez follow-up: systematic threshold scan finds a genuine saved level
+
+Direct continuation of yesterday's own flagged next step (question 1): yesterday's two hand-picked thresholds
+  (0.05, 0.02) both happened to land in the same Fact 19.3 depth bracket for Chebyshev vs Remez on sigmoid/
+  [-8,8], so today ran a systematic scan (0.002 to 0.100, step 0.001) instead of guessing more thresholds by hand.
+Process, including a real bug caught mid-scan:
+  - First full scan (all degrees 3-20) flagged 29 "crossing" thresholds, but inspecting them surfaced an
+    impossible result at degree 5: Remez error 0.08798 WORSE than Chebyshev's 0.06107 at the same degree --
+    mathematically impossible for a correctly-converged Remez fit, the same category of red flag as
+    yesterday's caught bug. Diagnosed directly: degree 5's Remez run had n_iter=1 (the exchange loop exited
+    after a single pass) with every reference-point error reported as ~0.0 -- a degenerate linear-system
+    solve, not genuine convergence. Checked all degrees 3-20 for this signature and found exactly two affected
+    (5 and 9, both odd); every other degree (3,4,6,7,8,10-20) converged over 4-7 real exchange iterations and
+    was independently self-consistent (converged max-error matched a fine 50,000-point full-domain scan).
+    Not root-caused today (an initialization-specific degeneracy, not yet understood) -- flagged honestly as
+    a known, unresolved edge case in my Remez implementation, the same way the earlier t/2 boundary case was
+    handled in a different session: exclude it from conclusions rather than quietly patch over it or, worse,
+    report the degenerate number as real.
+  - Re-ran the scan correctly: computed Chebyshev's error at EVERY degree 3-20 (no bug there, no reason to
+    exclude anything), but only used Remez's error at the 16 non-degenerate degrees. This matters because a
+    first, careless attempt at the exclusion accidentally dropped degree 5 from BOTH tables, manufacturing a
+    FALSE "Remez needs an extra level" artifact (degree 5's correct, trustworthy Chebyshev number got hidden
+    by the exclusion, not because Remez was actually worse) -- caught and fixed before it went in this log.
+  - Clean result: exactly ONE genuine, trustworthy bracket-crossing threshold in the entire scanned range --
+    at target~0.002, Chebyshev needs degree 15 (Fact 19.3 bracket 14-27, depth 6) while Remez needs only
+    degree 13 (bracket 6-13, depth 5) -- a real, systematically-found 1-level saving, in contrast to
+    yesterday's two near-misses. Independently cross-validated the key number (Remez's degree-13 error) via
+    the same linear-programming method used yesterday: LP gives 0.0018916, Remez gives 0.00189 -- matching
+    closely, giving real confidence in this specific, actionable finding.
+Taught/consolidated: today is a clean worked example of why systematic search beats hand-picked spot checks
+  for "does this ever cross a boundary" questions -- two manually chosen thresholds yesterday found nothing,
+  while a full scan found exactly one crossing out of ~98 tested thresholds, a genuinely rare event that
+  hand-picking was never likely to land on. Equally important: a mathematically-impossible intermediate
+  result (Remez worse than Chebyshev) was caught TWICE today -- once from the raw scan, and a second time
+  from my own careless first attempt at excluding the known-bad degrees, which silently broke a DIFFERENT,
+  perfectly healthy degree's number in the process. Both catches follow directly from this engagement's
+  standing discipline of treating an impossible-looking result as a signal to investigate, not a fact to log.
+Asked: (1) the unresolved degree-5/9 degeneracy (n_iter=1, near-zero equioscillating error) remains a real,
+  not-yet-understood gap in this from-scratch Remez implementation -- would initializing the reference set
+  from slightly PERTURBED Chebyshev extrema (rather than the exact textbook values) for just these two
+  degrees reveal whether this is a true degeneracy in the underlying linear system for this specific (n,
+  domain, function) combination, or an artifact of the exact starting point chosen, checkable directly by
+  retrying degree 5 and 9 with a randomized-but-seeded initial reference set and seeing if it then converges
+  properly over multiple iterations like every other degree did?; (2) all earlier carried-forward questions
+  (backlog now 35, since today fully resolved its own follow-up question without opening new ones) remain
+  open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: two real bugs/near-misses caught today in quick succession (the degree-5/9 degeneracy itself, and
+  my own careless first attempt at excluding it, which broke something else) -- both caught by the same
+  "does this violate a known mathematical guarantee" check rather than two different techniques, reinforcing
+  how load-bearing that one specific sanity check (compare against the baseline Remez should never lose to)
+  has been across this entire week's sessions.
+Revisit next time: question (1) above (diagnosing the degree-5/9 degeneracy properly) is a natural follow-up
+  if this Remez thread continues. Otherwise continue alternating backlog review (Ch17-19 remain) with fresh
+  FHERMA practice.
