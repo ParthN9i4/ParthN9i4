@@ -4509,3 +4509,61 @@ Weak spots: two real bugs/near-misses caught today in quick succession (the degr
 Revisit next time: question (1) above (diagnosing the degree-5/9 degeneracy properly) is a natural follow-up
   if this Remez thread continues. Otherwise continue alternating backlog review (Ch17-19 remain) with fresh
   FHERMA practice.
+
+## 2026-11-26 -- Backlog-review session 6: Ch19 equioscillation check, Ch20 BGV plaintext-multiply question
+
+After three practice-oriented sessions in a row (FHERMA NN, Remez build, Remez scan), returning to backlog
+  review per the alternating plan, targeting Ch19-20 (Ch17-18's own carried-forward items were either already
+  resolved this week via the Remez work or less directly testable).
+Findings:
+  - Ch19 Q2 (how close does plain Chebyshev truncation already get to true equioscillation, without running
+    Remez?): reused yesterday's now-verified Remez/extrema-finding machinery to inspect truncation's own error
+    curve directly. At degrees 4/8/15/27, truncation's error curve has AT LEAST as many extrema as Theorem
+    19.2's d+2 requirement (6,10,18,30 found vs 6,10,17,29 required) -- but their magnitudes vary widely
+    (43-74% relative spread between the biggest and smallest extremum), with only a handful (2-6) sitting
+    within 2x of the dominant maximum. This gives a precise, structural answer to the original question:
+    truncation is NOT strictly equioscillating, but its WORST-CASE error is effectively set by a small cluster
+    of dominant boundary-region extrema that sit close in magnitude to each other, while a long tail of much
+    smaller interior extrema doesn't affect the max-error metric at all -- consistent with both the chapter's
+    "rarely changes downstream accuracy by more than a fraction of a percent" framing AND yesterday's own
+    measured 20-40% Chebyshev-vs-Remez max-error gap (the gap exists and is real, but comes from a few
+    dominant extrema being measurably non-equal, not from a globally different error shape).
+  - Ch20 Q2 (does a plaintext x ciphertext multiply in BGV also secretly force a level-consuming operation,
+    the way CKKS's rescale does, or does BGV's exact-arithmetic structure avoid this?): built a small toy BGV
+    scheme (Definition 9.1's c0+c1*s=m+t*e relation) to test directly. Caught and fixed a real bug immediately
+    before trusting any result: the first encryption routine was missing the negative sign on a*s (wrote
+    c0=a*s+t*e+m instead of c0=-a*s+t*e+m), which decrypted garbage even for a FRESH ciphertext -- caught
+    because the measured fresh noise came back as ~34 billion (absurd against a noise bound of 8) and the
+    plaintext-multiply test downstream decrypted to the wrong value. Fixed the sign, reran: fresh noise = 8.00
+    (matches the bound exactly), and multiplying by a plaintext scalar 3 grew noise to exactly 24.00 -- a
+    clean, textbook-exact 3x (linear in the plaintext value, not the multiplicatively-compounding growth a
+    ciphertext-ciphertext tensor product causes) -- and the result decrypted CORRECTLY (15, matching 5*3 mod
+    16) with NO modulus switch performed at all. This directly and cleanly answers Ch20's own question: BGV
+    genuinely does NOT force a mandatory level-consuming step after a plaintext multiply -- noise still grows
+    (so you'll eventually need to switch to control it before hitting the q/(2t) correctness ceiling), but
+    that switch is a budget CHOICE, not an operation-mandated cost. This confirms the "plaintext multiply
+    secretly costs a level" gotcha Ch20 flagged is CKKS-specific, a direct consequence of rescale's dual
+    noise/scale role (Ch16's "double duty" point), not a universal leveled-scheme trap.
+Taught/consolidated: today paired a structural/statistical finding (Ch19, no bug involved) with a
+  computational one that needed a real bug caught and fixed first (Ch20, the same sign-error class of mistake
+  this cycle's own toy-scheme sessions have hit several times now) -- reinforcing, yet again, that every
+  from-scratch toy implementation in this engagement needs the same immediate correctness check (does the
+  FRESH, simplest case decrypt right?) before any downstream claim is trusted, regardless of how many times
+  this exact lesson has already been learned this week.
+Asked: (1) today's BGV finding (linear noise growth, no forced level cost from a plaintext multiply) is
+  specific to BGV's additive m+t*e structure -- does BFV's multiplicative Delta*m+v structure behave the same
+  way for a plaintext multiply (no forced rescale), given BFV also has no CKKS-style "scale" concept needing
+  correction, or does BFV's own rescale-and-round step inside ciphertext-ciphertext multiplication (Ch8's
+  Definition 8.5 pipeline) actually get triggered by a plaintext multiply too for a different reason, worth
+  checking directly with this cycle's own already-built Ch8 BFV toy rather than assuming by analogy to BGV?;
+  (2) all earlier carried-forward questions (backlog now 34, since today resolved two without opening new
+  ones beyond question 1 above) remain open and carried forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: caught and fixed a real sign-error bug in today's own BGV toy (c0 missing a negative sign),
+  caught immediately via the same "does the simplest case even work" check this cycle has now applied
+  successfully several times in a row -- the discipline is holding up consistently, which is itself worth
+  noting after a week with an unusually high rate of self-caught bugs.
+Revisit next time: question (1) above (checking BFV specifically, not just BGV, for the same plaintext-
+  multiply question) is a natural, cheap follow-up. Otherwise continue alternating backlog review (Ch21+
+  remain untouched by this review pass) with fresh FHERMA practice.
