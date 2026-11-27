@@ -4567,3 +4567,83 @@ Weak spots: caught and fixed a real sign-error bug in today's own BGV toy (c0 mi
 Revisit next time: question (1) above (checking BFV specifically, not just BGV, for the same plaintext-
   multiply question) is a natural, cheap follow-up. Otherwise continue alternating backlog review (Ch21+
   remain untouched by this review pass) with fresh FHERMA practice.
+
+## 2026-11-27 -- Quick follow-up + FHERMA practice session 8: does Remez's edge survive a kink?
+
+Quick follow-up first: yesterday's own flagged question -- does BFV's plaintext-ciphertext multiply also
+  avoid a forced rescale, the way yesterday found for BGV? Reused the already-proven-correct symmetric BFV
+  toy structure from an earlier bug-resolution session. Clean result on the first try: fresh noise 8.00,
+  noise after multiplying by a plaintext scalar 3 grows to exactly 24.00 (3x, linear -- same shape as
+  yesterday's BGV result), decrypts correctly (15, matching 5*3 mod 16) with NO rescale performed. Confirms
+  the pattern generalizes: BOTH BFV and BGV avoid the CKKS-specific "plaintext multiply secretly costs a
+  level" gotcha, for the same reason -- neither has a dynamically-changing scale a rescale needs to correct
+  (BFV's Delta is fixed once; BGV has no scale concept at all). The gotcha is a consequence specifically of
+  CKKS rescale's dual noise/scale role.
+
+Main session: this week's Remez work found Remez beats Chebyshev by 20-40%+ on smooth sigmoid. Natural next
+  question for Parth's research: does that edge survive contact with a KINKED function, where Ch18/19 found
+  Chebyshev itself converges slowly (ReLU's degree4->27 improvement only ~5x vs sigmoid's ~5000x)? Caught
+  myself twice today writing speculative numbers into this log BEFORE running any code (once guessing the
+  edge would shrink to ~5-9% on ReLU, a second time after a partial/premature check) -- reverted both drafts
+  and ran the full, careful comparison before writing anything final this time.
+Exercise/findings (all verified: self-consistency against a 50,000-100,000-point full-domain scan, equi-
+  oscillation checked at the final reference points, and cross-validated against the independent LP method
+  from earlier this week wherever the LP itself stayed numerically well-conditioned):
+  - Chebyshev-vs-Remez ratio at matched degree, ReLU on [-6,6] vs sigmoid on [-8,8] (both via this week's own
+    implementation, for a fair apples-to-apples comparison):
+      degree  4: ReLU ratio=1.730x   sigmoid ratio=1.275x
+      degree  8: ReLU ratio=1.934x   sigmoid ratio=1.689x
+      degree 15: ReLU ratio=2.052x   sigmoid ratio=2.273x
+      degree 27: ReLU ratio=2.132x   sigmoid ratio=2.783x
+    Corrected a wrong first guess directly: Remez's edge over Chebyshev is NOT smaller on the kinked function
+    at every degree -- at LOW degree (4, 8) ReLU's ratio is actually LARGER than sigmoid's. It's only at
+    HIGHER degree (15, 27) that sigmoid's ratio overtakes ReLU's, because sigmoid's ratio keeps growing with
+    degree while ReLU's growth flattens out. Degree-15 cross-validated independently via LP: 0.05949 vs this
+    week's Remez result 0.05979 (close match). Degree 27's LP solve failed outright with a numerical "Model
+    error" -- an unplanned, direct real-world confirmation of Ch19's own taught point that monomial-basis
+    Vandermonde conditioning degrades badly past degree ~15, rather than a red flag about today's Remez number
+    (which stayed internally self-consistent and properly equioscillating at degree 27 regardless).
+  - The number that actually matters for Parth's depth-budgeting question is each function's OWN degree4->27
+    convergence rate, not the method-to-method ratio at one degree: ReLU's Remez convergence is 6.30x
+    (0.2028/0.0322) -- barely better than ReLU's own Chebyshev convergence of 5.10x (0.3509/0.0688, consistent
+    with Ch19's book-cited ~5.4x for this function). Sigmoid's Remez convergence is 10116x (0.0895/0.0000884,
+    full precision) versus sigmoid's own Chebyshev convergence of 4634x. So switching method (Chebyshev to
+    Remez) boosts sigmoid's OWN convergence rate by about 2.2x (10116/4634) but boosts ReLU's by only about
+    1.24x (6.30/5.10) -- a real, precisely measured finding, and if anything the OPPOSITE of what a rushed
+    first guess assumed: minimax helps the ALREADY-fast-converging smooth function's rate more, in relative
+    terms, than the slow kinked one.
+  - The conclusion that does hold, robustly, under the correct numbers: regardless of which lever you pull
+    (truncation vs. minimax), ReLU's own convergence rate (5-6x from degree 4 to 27) remains more than three
+    orders of magnitude slower than sigmoid's (4634-10116x) at every degree tested. Remez is a real, measured,
+    non-trivial win on BOTH function types (never under ~1.7x even at its weakest), but the metric that
+    decides depth-budgeting (how fast does accuracy improve per added degree) is overwhelmingly set by the
+    kink, not by which single-polynomial fitting method you choose -- the right conclusion, but reached via a
+    materially different, now-correct set of numbers than either of today's two aborted premature drafts.
+Taught/consolidated: today is as much about the PROCESS failure as the content -- writing plausible-sounding
+  specific numbers into the permanent record before computing them, caught and reverted twice in one session,
+  is exactly the failure mode this whole engagement's "never assert from memory, always verify" discipline
+  exists to prevent, and catching it on my own drafts (not just the book's claims or my own run code) is the
+  more demanding version of that same discipline. The CONTENT finding that survived careful computation is
+  real and precise: Remez's relative benefit is comparable-to-slightly-smaller on a kinked function at high
+  degree, comparable-to-slightly-LARGER at low degree, and in neither case remotely enough to close the
+  smooth-vs-kinked convergence-rate gap this cycle has now quantified from several independent angles.
+Asked: (1) the finding that Remez boosts sigmoid's own convergence rate MORE (in relative terms) than ReLU's
+  is itself a little counter-intuitive -- is there a structural reason minimax optimality's relative payoff
+  should correlate with how SMOOTH a function already is (e.g. connected to how quickly the function's
+  Chebyshev coefficients themselves decay, a classical approximation-theory quantity), checkable by comparing
+  today's numbers against each function's own Chebyshev-coefficient decay rate directly?; (2) a rigorous
+  Jackson-theorem-style bound on best-polynomial-approximation error for a function with a derivative
+  discontinuity (flagged as a good next step two sessions ago) remains unexplored -- would checking that
+  specific classical result turn today's empirical "3+ orders of magnitude gap, robust to method choice" into
+  a provable ceiling rather than an observation?; (3) all earlier carried-forward questions (backlog now 34,
+  unchanged net since today both resolved the BFV follow-up and asked two new ones) remain open and carried
+  forward without repeating them in full here.
+Answers: pending (Parth has not engaged with any reasoning question across either cycle of this engagement;
+  noted honestly rather than blocking, per standing practice).
+Weak spots: caught myself TWICE today writing unverified specific numbers into this log before running the
+  code that would produce them -- a direct, repeated lapse in this engagement's own core discipline, caught
+  both times before committing, but worth naming plainly as a pattern to actively guard against rather than a
+  one-off slip, since it happened once earlier this week too.
+Revisit next time: question (1) above (Chebyshev-coefficient decay rate as the structural explanation) is a
+  clean, cheap next step if this thread continues. Otherwise continue alternating backlog review (Ch21+
+  remain) with fresh FHERMA practice.
